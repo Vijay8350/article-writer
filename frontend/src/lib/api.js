@@ -74,6 +74,14 @@ export const getScheduledPosts = () => api.get('/scheduled-posts').then(r => r.d
 export const createScheduledPost = (data) => api.post('/scheduled-posts', data).then(r => r.data);
 export const cancelScheduledPost = (id) => api.delete(`/scheduled-posts/${id}`).then(r => r.data);
 
+// ─── Campaigns ──────────────────────────────────────────────
+export const getCampaigns = () => api.get('/campaigns').then(r => r.data);
+export const createCampaign = (data) => api.post('/campaigns', data).then(r => r.data);
+export const setCampaignStatus = (id, status) => api.patch(`/campaigns/${id}`, { status }).then(r => r.data);
+export const deleteCampaign = (id) => api.delete(`/campaigns/${id}`).then(r => r.data);
+export const runCampaignNow = (id) => api.post(`/campaigns/${id}/run-now`).then(r => r.data);
+export const getCampaignArticles = (id) => api.get(`/campaigns/${id}/articles`).then(r => r.data);
+
 // ─── Plan & Usage ───────────────────────────────────────────
 export const getUsage = () => api.get('/settings/usage').then(r => r.data);
 

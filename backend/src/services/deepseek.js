@@ -16,6 +16,11 @@ async function callDeepSeek(messages, temperature = 0.7, maxTokens = 16000, apiK
   return response.data.choices[0].message.content;
 }
 
+// Generic single-shot completion (used by keyword ideation, etc.)
+export async function complete(prompt, apiKey, { temperature = 0.7, maxTokens = 2000 } = {}) {
+  return callDeepSeek([{ role: 'user', content: prompt }], temperature, maxTokens, apiKey);
+}
+
 export async function generateArticle(prompt, ctx, apiKey) {
   const wordCount = ctx.wordCount || 1500;
   const minWords = Math.round(wordCount * 0.9);

@@ -39,6 +39,11 @@ async function callGemini(prompt, temperature = 0.8, maxTokens = 65000, apiKey) 
   }
 }
 
+// Generic single-shot completion (used by keyword ideation, etc.)
+export async function complete(prompt, apiKey, { temperature = 0.8, maxTokens = 2000 } = {}) {
+  return callGemini(prompt, temperature, maxTokens, apiKey);
+}
+
 export async function generateArticle(prompt, businessContext, apiKey) {
   const fullPrompt = buildArticlePrompt(prompt, businessContext);
   const result = await callGemini(fullPrompt, 0.9, 65000, apiKey);

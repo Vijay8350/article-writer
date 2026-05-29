@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Gauge, Shield, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut } from 'lucide-react';
 import { getSettings } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -8,6 +8,7 @@ const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/business-dna', icon: Dna, label: 'Business DNA' },
   { path: '/generate', icon: PenLine, label: 'Generate Article' },
+  { path: '/campaigns', icon: Rocket, label: 'Campaigns' },
   { path: '/articles', icon: FileText, label: 'Existing Articles' },
   { path: '/scheduled', icon: CalendarClock, label: 'Scheduled Posts' },
   { path: '/plan', icon: Gauge, label: 'Plan & Usage' },

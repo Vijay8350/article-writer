@@ -6,6 +6,7 @@ import BusinessDna from './pages/BusinessDna';
 import GenerateArticle from './pages/GenerateArticle';
 import ExistingArticles from './pages/ExistingArticles';
 import ScheduledPosts from './pages/ScheduledPosts';
+import Campaigns from './pages/Campaigns';
 import PlanUsage from './pages/PlanUsage';
 import Admin from './pages/Admin';
 import Settings from './pages/Settings';
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="/generate" element={<GenerateArticle />} />
         <Route path="/articles" element={<ExistingArticles />} />
         <Route path="/scheduled" element={<ScheduledPosts />} />
+        <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/plan" element={<PlanUsage />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/settings" element={<Settings />} />
