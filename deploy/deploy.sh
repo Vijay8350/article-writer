@@ -14,10 +14,16 @@ echo "==> Installing backend dependencies"
 cd "$APP_DIR/backend"
 npm ci --omit=dev
 
+echo "==> Running database migrations (skipped until a 'migrate' script exists)"
+# --if-present exits 0 when no migrate script is defined yet, so pre-SaaS deploys still pass.
+# Migrations must be idempotent + tracked (a schema_migrations table) so re-deploys are safe.
+npm run migrate --if-present
+
 echo "==> Installing & building frontend"
 cd "$APP_DIR/frontend"
 npm ci
-npm run build
+# Cap V8 heap so the Vite build can't OOM the 908MB instance (swap covers the rest).
+NODE_OPTIONS="--max-old-space-size=512" npm run build
 
 echo "==> Reloading PM2 process"
 cd "$APP_DIR"

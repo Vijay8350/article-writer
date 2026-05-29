@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Settings as SettingsIcon, Link2, Unlink, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { getSettings, connectShopify, disconnectShopify } from '../lib/api';
+import { Settings as SettingsIcon, Link2, Unlink, CheckCircle2, AlertCircle, Loader2, Save } from 'lucide-react';
+import { getSettings, connectShopify, disconnectShopify, saveAiKeys } from '../lib/api';
 import toast from 'react-hot-toast';
 
 export default function Settings() {
@@ -13,14 +13,41 @@ export default function Settings() {
   const [connecting, setConnecting] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Per-user AI keys (optional overrides)
+  const [geminiKey, setGeminiKey] = useState('');
+  const [deepseekKey, setDeepseekKey] = useState('');
+  const [keyPresence, setKeyPresence] = useState({ hasGemini: false, hasDeepseek: false });
+  const [savingKeys, setSavingKeys] = useState(false);
+
   useEffect(() => {
     getSettings().then(res => {
       const data = res.data || {};
       setStoreUrl(data.storeUrl || '');
       setIsConnected(data.connected || false);
+      setKeyPresence(data.aiKeys || { hasGemini: false, hasDeepseek: false });
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
+
+  const handleSaveKeys = async () => {
+    if (!geminiKey.trim() && !deepseekKey.trim()) {
+      return toast.error('Enter at least one API key to save');
+    }
+    setSavingKeys(true);
+    try {
+      const res = await saveAiKeys({
+        geminiKey: geminiKey.trim() || undefined,
+        deepseekKey: deepseekKey.trim() || undefined,
+      });
+      setKeyPresence(res.data || keyPresence);
+      setGeminiKey('');
+      setDeepseekKey('');
+      toast.success('AI keys saved');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to save keys');
+    }
+    setSavingKeys(false);
+  };
 
   const handleConnect = async () => {
     if (!storeUrl.trim() || !accessToken.trim()) {
@@ -125,27 +152,50 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* API Keys Info */}
+        {/* Per-user AI Keys */}
         <div className="card">
           <div className="card-header"><h2>🤖 AI Configuration</h2></div>
           <div className="card-body">
-            <div className="dna-section">
-              <div className="dna-section-title">Google Gemini</div>
-              <div className="flex items-center gap-8">
-                <CheckCircle2 size={16} style={{ color: 'var(--accent-success)' }} />
-                <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>API Key configured in .env</span>
-              </div>
+            <div className="form-helper mb-16">
+              Optional — add your own AI keys to use your own quota. Leave blank to use the platform's
+              shared keys. Keys are encrypted before storage and never shown again.
             </div>
-            <div className="dna-section mt-16">
-              <div className="dna-section-title">DeepSeek</div>
-              <div className="flex items-center gap-8">
-                <CheckCircle2 size={16} style={{ color: 'var(--accent-success)' }} />
-                <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>API Key configured in .env</span>
-              </div>
+
+            <div className="form-group">
+              <label className="form-label">
+                Google Gemini API Key
+                {keyPresence.hasGemini && (
+                  <span className="badge badge-success" style={{ marginLeft: 8 }}>● Set</span>
+                )}
+              </label>
+              <input
+                className="form-input"
+                type="password"
+                value={geminiKey}
+                onChange={e => setGeminiKey(e.target.value)}
+                placeholder={keyPresence.hasGemini ? '•••••••• (enter new key to replace)' : 'AIza...'}
+              />
             </div>
-            <div className="form-helper mt-16">
-              API keys are stored securely in the .env file. Edit the file directly to update them.
+
+            <div className="form-group">
+              <label className="form-label">
+                DeepSeek API Key
+                {keyPresence.hasDeepseek && (
+                  <span className="badge badge-success" style={{ marginLeft: 8 }}>● Set</span>
+                )}
+              </label>
+              <input
+                className="form-input"
+                type="password"
+                value={deepseekKey}
+                onChange={e => setDeepseekKey(e.target.value)}
+                placeholder={keyPresence.hasDeepseek ? '•••••••• (enter new key to replace)' : 'sk-...'}
+              />
             </div>
+
+            <button className="btn btn-primary w-full" onClick={handleSaveKeys} disabled={savingKeys}>
+              {savingKeys ? <><Loader2 size={16} className="spinning" /> Saving...</> : <><Save size={16} /> Save AI Keys</>}
+            </button>
           </div>
         </div>
       </div>

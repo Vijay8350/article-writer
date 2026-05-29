@@ -1,60 +1,46 @@
 import { Router } from 'express';
 import { getShopInfo, getProducts, getCollections, getBlogs, getArticles, getPages } from '../services/shopify.js';
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { requireAuth } from '../middleware/auth.js';
+import * as stores from '../repositories/stores.js';
+import * as dnaRepo from '../repositories/dna.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const dataDir = resolve(__dirname, '../data');
-const dnaPath = resolve(dataDir, 'businessDna.json');
 const router = Router();
+router.use(requireAuth);
 
-// In-memory cache
-let cachedDna = null;
-
-// Load from file on startup
-try {
-  if (existsSync(dnaPath)) {
-    cachedDna = JSON.parse(readFileSync(dnaPath, 'utf-8'));
-    console.log('📂 Loaded cached Business DNA');
+// Get this user's cached Business DNA
+router.get('/', async (req, res, next) => {
+  try {
+    const dna = await dnaRepo.getDna(req.user.id);
+    if (!dna) {
+      return res.json({ success: true, data: null, message: 'No Business DNA fetched yet. Click "Fetch Business DNA" to start.' });
+    }
+    res.json({ success: true, data: dna });
+  } catch (error) {
+    next(error);
   }
-} catch (e) { /* ignore */ }
-
-// Get cached Business DNA
-router.get('/', (req, res) => {
-  if (!cachedDna) {
-    return res.json({ success: true, data: null, message: 'No Business DNA fetched yet. Click "Fetch Business DNA" to start.' });
-  }
-  res.json({ success: true, data: cachedDna });
 });
 
-// Fetch Business DNA from Shopify
+// Fetch Business DNA from this user's Shopify store
 router.post('/fetch', async (req, res, next) => {
   try {
-    console.log('🧬 Fetching Business DNA...');
+    const creds = await stores.getDefaultStore(req.user.id);
+    if (!creds) {
+      return res.status(400).json({ success: false, error: 'No Shopify store connected. Connect one in Settings first.' });
+    }
 
-    // 1. Shop Info
-    const shop = await getShopInfo();
-    console.log(`  ✅ Shop: ${shop.name}`);
+    console.log(`🧬 Fetching Business DNA for user ${req.user.id}...`);
 
-    // 2. Products
-    const products = await getProducts();
-    console.log(`  ✅ Products: ${products.length}`);
+    const shop = await getShopInfo(creds);
+    const products = await getProducts(creds);
+    const collections = await getCollections(creds);
 
-    // 3. Collections
-    const collections = await getCollections();
-    console.log(`  ✅ Collections: ${collections.length}`);
-
-    // 4. Blogs & Articles (may fail if token lacks read_content scope)
     let blogs = [];
     let allArticles = [];
     const warnings = [];
     try {
-      blogs = await getBlogs();
-      console.log(`  ✅ Blogs: ${blogs.length}`);
-
+      blogs = await getBlogs(creds);
       for (const blog of blogs) {
-        const articles = await getArticles(blog.id);
+        const articles = await getArticles(creds, blog.id);
         allArticles = allArticles.concat(
           articles.map(a => ({
             id: a.id,
@@ -70,25 +56,19 @@ router.post('/fetch', async (req, res, next) => {
           }))
         );
       }
-      console.log(`  ✅ Articles: ${allArticles.length}`);
     } catch (e) {
       const is403 = e.response?.status === 403;
-      console.warn(`  ⚠️ Blogs/Articles: ${is403 ? 'Access denied (token needs read_content scope)' : e.message}`);
       if (is403) warnings.push('Blogs & Articles: Your access token lacks the "read_content" scope. Add it in Shopify Admin → Settings → Apps → Develop apps → API credentials.');
     }
 
-    // 5. Pages (may fail if token lacks read_content scope)
     let pages = [];
     try {
-      pages = await getPages();
-      console.log(`  ✅ Pages: ${pages.length}`);
+      pages = await getPages(creds);
     } catch (e) {
       const is403 = e.response?.status === 403;
-      console.warn(`  ⚠️ Pages: ${is403 ? 'Access denied (token needs read_content scope)' : e.message}`);
       if (is403) warnings.push('Pages: Your access token lacks the "read_content" scope.');
     }
 
-    // 6. Analyze business
     const productTypes = [...new Set(products.map(p => p.product_type).filter(Boolean))];
     const vendors = [...new Set(products.map(p => p.vendor).filter(Boolean))];
     const allTags = products.flatMap(p => (p.tags || '').split(',').map(t => t.trim())).filter(Boolean);
@@ -136,16 +116,9 @@ router.post('/fetch', async (req, res, next) => {
       pages: pages.map(p => ({ id: p.id, title: p.title, handle: p.handle })),
     };
 
-    // Cache to memory and file
-    cachedDna = dna;
-    try {
-      if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
-      writeFileSync(dnaPath, JSON.stringify(dna, null, 2));
-    } catch (e) {
-      console.warn('Could not write DNA cache:', e.message);
-    }
+    await dnaRepo.saveDna(req.user.id, creds.id, dna);
 
-    console.log('🧬 Business DNA fetched successfully!');
+    console.log('🧬 Business DNA fetched & stored.');
     res.json({ success: true, data: dna });
   } catch (error) {
     console.error('❌ Business DNA fetch error:', error.message);
@@ -153,20 +126,14 @@ router.post('/fetch', async (req, res, next) => {
   }
 });
 
-// Clear cached DNA
-router.delete('/', (req, res) => {
-  cachedDna = null;
+// Clear this user's DNA
+router.delete('/', async (req, res, next) => {
   try {
-    if (existsSync(dnaPath)) {
-      writeFileSync(dnaPath, '');
-    }
-  } catch (e) { /* ignore */ }
-  res.json({ success: true, message: 'Business DNA cleared' });
+    await dnaRepo.deleteDna(req.user.id);
+    res.json({ success: true, message: 'Business DNA cleared' });
+  } catch (error) {
+    next(error);
+  }
 });
-
-// Export for use by article generator
-export function getBusinessDna() {
-  return cachedDna;
-}
 
 export default router;

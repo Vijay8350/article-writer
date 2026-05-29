@@ -1,34 +1,24 @@
 import axios from 'axios';
 import config from '../config/env.js';
 
-// Runtime credentials that can be updated from the UI
-let runtimeCredentials = {
-  storeUrl: config.shopify.storeUrl,
-  accessToken: config.shopify.accessToken,
-};
+// Multi-tenant: every function takes a `creds` object { storeUrl, accessToken }.
+// There is no global credential state — callers load the current user's store
+// from the DB and pass it in per request.
 
-export function setShopifyCredentials(storeUrl, accessToken) {
-  runtimeCredentials = { storeUrl, accessToken };
-}
-
-export function getShopifyCredentials() {
-  return { ...runtimeCredentials };
-}
-
-function getHeaders() {
+function headers(creds) {
   return {
-    'X-Shopify-Access-Token': runtimeCredentials.accessToken,
+    'X-Shopify-Access-Token': creds.accessToken,
     'Content-Type': 'application/json',
   };
 }
 
-function getBaseUrl() {
-  const url = runtimeCredentials.storeUrl.replace(/\/$/, '').replace(/^https?:\/\//, '');
+function baseUrl(creds) {
+  const url = String(creds.storeUrl || '').replace(/\/$/, '').replace(/^https?:\/\//, '');
   return `https://${url}/admin/api/${config.shopify.apiVersion}`;
 }
 
-function ensureConnected() {
-  if (!runtimeCredentials.storeUrl || !runtimeCredentials.accessToken) {
+function ensure(creds) {
+  if (!creds || !creds.storeUrl || !creds.accessToken) {
     const err = new Error('Shopify store not connected. Go to Settings to connect.');
     err.status = 400;
     throw err;
@@ -36,37 +26,37 @@ function ensureConnected() {
 }
 
 // ─── Shop Info ──────────────────────────────────────────────
-export async function getShopInfo() {
-  ensureConnected();
-  const { data } = await axios.get(`${getBaseUrl()}/shop.json`, {
-    headers: getHeaders(),
+export async function getShopInfo(creds) {
+  ensure(creds);
+  const { data } = await axios.get(`${baseUrl(creds)}/shop.json`, {
+    headers: headers(creds),
     timeout: 15000,
   });
   return data.shop;
 }
 
 // ─── Blogs ──────────────────────────────────────────────────
-export async function getBlogs() {
-  ensureConnected();
-  const { data } = await axios.get(`${getBaseUrl()}/blogs.json`, {
-    headers: getHeaders(),
+export async function getBlogs(creds) {
+  ensure(creds);
+  const { data } = await axios.get(`${baseUrl(creds)}/blogs.json`, {
+    headers: headers(creds),
     timeout: 15000,
   });
   return data.blogs || [];
 }
 
 // ─── Articles ───────────────────────────────────────────────
-export async function getArticles(blogId, limit = 250) {
-  ensureConnected();
+export async function getArticles(creds, blogId, limit = 250) {
+  ensure(creds);
   let allArticles = [];
   let pageInfo = null;
 
   do {
-    let url = `${getBaseUrl()}/blogs/${blogId}/articles.json?limit=${Math.min(limit, 250)}`;
+    let url = `${baseUrl(creds)}/blogs/${blogId}/articles.json?limit=${Math.min(limit, 250)}`;
     if (pageInfo) url += `&page_info=${pageInfo}`;
 
     const response = await axios.get(url, {
-      headers: getHeaders(),
+      headers: headers(creds),
       timeout: 30000,
     });
 
@@ -84,17 +74,17 @@ export async function getArticles(blogId, limit = 250) {
   return allArticles;
 }
 
-export async function getArticle(blogId, articleId) {
-  ensureConnected();
+export async function getArticle(creds, blogId, articleId) {
+  ensure(creds);
   const { data } = await axios.get(
-    `${getBaseUrl()}/blogs/${blogId}/articles/${articleId}.json`,
-    { headers: getHeaders(), timeout: 15000 }
+    `${baseUrl(creds)}/blogs/${blogId}/articles/${articleId}.json`,
+    { headers: headers(creds), timeout: 15000 }
   );
   return data.article;
 }
 
-export async function createArticle(blogId, articleData) {
-  ensureConnected();
+export async function createArticle(creds, blogId, articleData) {
+  ensure(creds);
   const payload = {
     article: {
       title: articleData.title,
@@ -108,12 +98,10 @@ export async function createArticle(blogId, articleData) {
     },
   };
 
-  // Add featured image if provided
   if (articleData.image) {
     payload.article.image = articleData.image;
   }
 
-  // Add SEO metafields
   if (articleData.seoTitle) {
     payload.article.metafields.push({
       namespace: 'global',
@@ -136,15 +124,15 @@ export async function createArticle(blogId, articleData) {
   }
 
   const { data } = await axios.post(
-    `${getBaseUrl()}/blogs/${blogId}/articles.json`,
+    `${baseUrl(creds)}/blogs/${blogId}/articles.json`,
     payload,
-    { headers: getHeaders(), timeout: 30000 }
+    { headers: headers(creds), timeout: 30000 }
   );
   return data.article;
 }
 
-export async function updateArticle(blogId, articleId, articleData) {
-  ensureConnected();
+export async function updateArticle(creds, blogId, articleId, articleData) {
+  ensure(creds);
   const payload = {
     article: {
       id: articleId,
@@ -161,16 +149,15 @@ export async function updateArticle(blogId, articleId, articleData) {
   }
 
   const { data } = await axios.put(
-    `${getBaseUrl()}/blogs/${blogId}/articles/${articleId}.json`,
+    `${baseUrl(creds)}/blogs/${blogId}/articles/${articleId}.json`,
     payload,
-    { headers: getHeaders(), timeout: 30000 }
+    { headers: headers(creds), timeout: 30000 }
   );
 
-  // Update SEO metafields separately
   if (articleData.seoTitle) {
     try {
       await axios.post(
-        `${getBaseUrl()}/articles/${articleId}/metafields.json`,
+        `${baseUrl(creds)}/articles/${articleId}/metafields.json`,
         {
           metafield: {
             namespace: 'global',
@@ -179,7 +166,7 @@ export async function updateArticle(blogId, articleId, articleData) {
             type: 'single_line_text_field',
           },
         },
-        { headers: getHeaders(), timeout: 15000 }
+        { headers: headers(creds), timeout: 15000 }
       );
     } catch (e) {
       console.warn('Failed to set SEO title metafield:', e.message);
@@ -189,7 +176,7 @@ export async function updateArticle(blogId, articleId, articleData) {
   if (articleData.seoDescription) {
     try {
       await axios.post(
-        `${getBaseUrl()}/articles/${articleId}/metafields.json`,
+        `${baseUrl(creds)}/articles/${articleId}/metafields.json`,
         {
           metafield: {
             namespace: 'global',
@@ -198,7 +185,7 @@ export async function updateArticle(blogId, articleId, articleData) {
             type: 'single_line_text_field',
           },
         },
-        { headers: getHeaders(), timeout: 15000 }
+        { headers: headers(creds), timeout: 15000 }
       );
     } catch (e) {
       console.warn('Failed to set SEO description metafield:', e.message);
@@ -208,27 +195,27 @@ export async function updateArticle(blogId, articleId, articleData) {
   return data.article;
 }
 
-export async function deleteArticle(blogId, articleId) {
-  ensureConnected();
+export async function deleteArticle(creds, blogId, articleId) {
+  ensure(creds);
   await axios.delete(
-    `${getBaseUrl()}/blogs/${blogId}/articles/${articleId}.json`,
-    { headers: getHeaders(), timeout: 15000 }
+    `${baseUrl(creds)}/blogs/${blogId}/articles/${articleId}.json`,
+    { headers: headers(creds), timeout: 15000 }
   );
   return true;
 }
 
 // ─── Products ───────────────────────────────────────────────
-export async function getProducts(limit = 250) {
-  ensureConnected();
+export async function getProducts(creds, limit = 250) {
+  ensure(creds);
   let allProducts = [];
   let pageInfo = null;
 
   do {
-    let url = `${getBaseUrl()}/products.json?limit=${Math.min(limit, 250)}&fields=id,title,handle,product_type,tags,images,vendor,body_html`;
-    if (pageInfo) url = `${getBaseUrl()}/products.json?limit=250&page_info=${pageInfo}`;
+    let url = `${baseUrl(creds)}/products.json?limit=${Math.min(limit, 250)}&fields=id,title,handle,product_type,tags,images,vendor,body_html`;
+    if (pageInfo) url = `${baseUrl(creds)}/products.json?limit=250&page_info=${pageInfo}`;
 
     const response = await axios.get(url, {
-      headers: getHeaders(),
+      headers: headers(creds),
       timeout: 30000,
     });
 
@@ -247,17 +234,16 @@ export async function getProducts(limit = 250) {
 }
 
 // ─── Collections ────────────────────────────────────────────
-export async function getCollections() {
-  ensureConnected();
+export async function getCollections(creds) {
+  ensure(creds);
 
-  // Fetch both custom and smart collections
   const [customRes, smartRes] = await Promise.all([
-    axios.get(`${getBaseUrl()}/custom_collections.json?limit=250`, {
-      headers: getHeaders(),
+    axios.get(`${baseUrl(creds)}/custom_collections.json?limit=250`, {
+      headers: headers(creds),
       timeout: 15000,
     }).catch(() => ({ data: { custom_collections: [] } })),
-    axios.get(`${getBaseUrl()}/smart_collections.json?limit=250`, {
-      headers: getHeaders(),
+    axios.get(`${baseUrl(creds)}/smart_collections.json?limit=250`, {
+      headers: headers(creds),
       timeout: 15000,
     }).catch(() => ({ data: { smart_collections: [] } })),
   ]);
@@ -280,10 +266,10 @@ export async function getCollections() {
 }
 
 // ─── Pages ──────────────────────────────────────────────────
-export async function getPages() {
-  ensureConnected();
-  const { data } = await axios.get(`${getBaseUrl()}/pages.json?limit=250`, {
-    headers: getHeaders(),
+export async function getPages(creds) {
+  ensure(creds);
+  const { data } = await axios.get(`${baseUrl(creds)}/pages.json?limit=250`, {
+    headers: headers(creds),
     timeout: 15000,
   });
   return data.pages || [];

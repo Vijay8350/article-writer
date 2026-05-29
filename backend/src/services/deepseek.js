@@ -2,21 +2,21 @@ import axios from 'axios';
 import config from '../config/env.js';
 
 const DEEPSEEK_URL = config.deepseek.baseUrl;
-const DEEPSEEK_KEY = config.deepseek.apiKey;
 
-async function callDeepSeek(messages, temperature = 0.7, maxTokens = 16000) {
+async function callDeepSeek(messages, temperature = 0.7, maxTokens = 16000, apiKey) {
+  const key = apiKey || config.deepseek.apiKey;
   const response = await axios.post(
     `${DEEPSEEK_URL}/chat/completions`,
     { model: 'deepseek-chat', messages, temperature, max_tokens: maxTokens },
     {
-      headers: { Authorization: `Bearer ${DEEPSEEK_KEY}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       timeout: 300000, // 5 minutes for long articles
     }
   );
   return response.data.choices[0].message.content;
 }
 
-export async function generateArticle(prompt, ctx) {
+export async function generateArticle(prompt, ctx, apiKey) {
   const wordCount = ctx.wordCount || 1500;
   const minWords = Math.round(wordCount * 0.9);
 
@@ -35,11 +35,11 @@ You return ONLY valid JSON. Never markdown code blocks. Never explanations.`;
   const result = await callDeepSeek([
     { role: 'system', content: sys },
     { role: 'user', content: userPrompt }
-  ], 0.9, 16000);
+  ], 0.9, 16000, apiKey);
   return parseResponse(result);
 }
 
-export async function enhanceArticle(article, instructions, ctx) {
+export async function enhanceArticle(article, instructions, ctx, apiKey) {
   const sys = `You are an expert blog editor. Enhance articles to be more human-sounding, better SEO-optimized, and longer. Keep content AT LEAST as long as the original. Remove AI phrases. Add internal links. Return ONLY valid JSON.`;
 
   const prompt = `Enhance this article:
@@ -68,7 +68,7 @@ Return ONLY JSON: {"title":"","handle":"","bodyHtml":"KEEP IT LONG","summary":""
   const result = await callDeepSeek([
     { role: 'system', content: sys },
     { role: 'user', content: prompt }
-  ], 0.7, 16000);
+  ], 0.7, 16000, apiKey);
   return parseResponse(result);
 }
 
@@ -85,6 +85,14 @@ function buildPrompt(userPrompt, ctx) {
   const products = ctx.products?.slice(0, 30).map(p => `- "${p.title}" → /products/${p.handle}`).join('\n') || 'None';
   const collections = ctx.collections?.slice(0, 15).map(c => `- "${c.title}" → /collections/${c.handle}`).join('\n') || 'None';
   const articles = ctx.existingArticles?.slice(0, 20).map(a => `- "${a.title}" → /blogs/${a.blogHandle || 'news'}/${a.handle}`).join('\n') || 'None';
+
+  const imgs = ctx.selectedImages || [];
+  const imageBlock = imgs.length
+    ? `IMAGES — embed EACH real product image below using EXACTLY:
+<figure><img src="IMG_URL" alt="ALT" loading="lazy" /><figcaption><a href="/products/HANDLE">TITLE</a></figcaption></figure>
+Use the exact IMG_URL (never invent URLs). Place near relevant text.
+${imgs.map(i => `- IMG_URL: ${i.imageUrl} | PRODUCT: "${i.title}" → /products/${i.handle} | ALT: ${i.alt}`).join('\n')}`
+    : `IMAGES — no product images available; add 3-5 placeholders: <div class="article-image-placeholder" data-prompt="DETAIL"><p>[Image: CAPTION]</p></div>`;
 
   return `████████████████████████████████████████
 ██  WRITE EXACTLY ${wordCount} WORDS.         ██
@@ -111,7 +119,7 @@ STRUCTURE REQUIRED:
 - 2-4 <h3> sub-sections
 - <strong>Bold</strong> 8-15 key phrases throughout
 - 3-5 <ul> or <ol> lists
-- 3-5 image placeholders: <div class="article-image-placeholder" data-prompt="DETAIL"><p>[Image: CAPTION]</p></div>
+${imageBlock}
 - Opening paragraph: hook + primary keyword (no H1 in body)
 - Closing section: soft CTA mentioning ${ctx.storeName || 'the store'}
 

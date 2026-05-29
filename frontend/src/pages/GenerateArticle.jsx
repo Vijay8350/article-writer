@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { PenLine, Sparkles, Send, Copy, Eye, ChevronDown, Loader2, Check } from 'lucide-react';
-import { generateArticle, publishArticle, getBusinessDna } from '../lib/api';
+import { PenLine, Sparkles, Send, Copy, Eye, ChevronDown, Loader2, Check, Zap } from 'lucide-react';
+import { generateArticle, publishArticle, generateAndPublish, getBusinessDna, getUsage } from '../lib/api';
 import toast from 'react-hot-toast';
 import SeoScoreCard from '../components/SeoScoreCard';
 
@@ -12,10 +12,14 @@ export default function GenerateArticle() {
   const [selectedBlog, setSelectedBlog] = useState('');
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [instantPublishing, setInstantPublishing] = useState(false);
   const [article, setArticle] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [editedArticle, setEditedArticle] = useState(null);
   const [publishAsDraft, setPublishAsDraft] = useState(false);
+  const [usage, setUsage] = useState(null);
+
+  const refreshUsage = () => getUsage().then(res => setUsage(res.data)).catch(() => {});
 
   useEffect(() => {
     getBusinessDna().then(res => {
@@ -24,7 +28,10 @@ export default function GenerateArticle() {
         if (res.data.blogs?.length > 0) setSelectedBlog(res.data.blogs[0].id);
       }
     }).catch(() => {});
+    refreshUsage();
   }, []);
+
+  const limitReached = usage && usage.remaining <= 0;
 
   const handleGenerate = async () => {
     if (!topic.trim()) return toast.error('Please enter a topic');
@@ -37,8 +44,14 @@ export default function GenerateArticle() {
       setArticle(res.data);
       setEditedArticle({ ...res.data });
       toast.success('Article generated successfully!');
+      refreshUsage();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Generation failed');
+      if (err.response?.data?.code === 'LIMIT_REACHED') {
+        toast.error(err.response.data.error || 'Monthly limit reached');
+        refreshUsage();
+      } else {
+        toast.error(err.response?.data?.error || 'Generation failed');
+      }
     }
     setGenerating(false);
   };
@@ -56,6 +69,30 @@ export default function GenerateArticle() {
       toast.error(err.response?.data?.error || 'Publish failed');
     }
     setPublishing(false);
+  };
+
+  const handleGenerateAndPublish = async () => {
+    if (!topic.trim()) return toast.error('Please enter a topic');
+    if (!dna) return toast.error('Please fetch Business DNA first');
+    if (!selectedBlog) return toast.error('Select a blog first');
+
+    setInstantPublishing(true);
+    setArticle(null);
+    try {
+      const res = await generateAndPublish({ topic, wordCount, aiModel, blogId: selectedBlog });
+      setArticle(res.data.article);
+      setEditedArticle({ ...res.data.article });
+      toast.success('Generated & published to Shopify!');
+      refreshUsage();
+    } catch (err) {
+      if (err.response?.data?.code === 'LIMIT_REACHED') {
+        toast.error(err.response.data.error || 'Monthly limit reached');
+        refreshUsage();
+      } else {
+        toast.error(err.response?.data?.error || 'Generate & publish failed');
+      }
+    }
+    setInstantPublishing(false);
   };
 
   const copyHtml = () => {
@@ -86,6 +123,20 @@ export default function GenerateArticle() {
         </div>
       ) : (
         <>
+          {/* Usage / quota banner */}
+          {usage && (
+            <div className="card mb-24" style={limitReached ? { borderColor: 'rgba(239,68,68,0.4)' } : undefined}>
+              <div className="card-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+                  Plan <strong style={{ textTransform: 'capitalize' }}>{usage.planName || usage.planId}</strong> — {usage.used}/{usage.limit} articles used this month
+                </span>
+                {limitReached
+                  ? <span className="badge badge-danger">Limit reached — <a href="/plan" style={{ color: 'inherit', textDecoration: 'underline' }}>upgrade</a></span>
+                  : <span className="badge badge-success">{usage.remaining} remaining</span>}
+              </div>
+            </div>
+          )}
+
           {/* Input Section */}
           <div className="card mb-24">
             <div className="card-header"><h2>📝 Article Configuration</h2></div>
@@ -151,9 +202,14 @@ export default function GenerateArticle() {
                 </div>
               </div>
 
-              <button className="btn btn-primary btn-lg w-full" onClick={handleGenerate} disabled={generating}>
-                {generating ? <><Loader2 size={20} className="spinning" /> Generating Article...</> : <><Sparkles size={20} /> Generate Article</>}
-              </button>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                <button className="btn btn-primary btn-lg" style={{ flex: 1, minWidth: 200 }} onClick={handleGenerate} disabled={generating || instantPublishing || limitReached}>
+                  {generating ? <><Loader2 size={20} className="spinning" /> Generating...</> : <><Sparkles size={20} /> Generate Article</>}
+                </button>
+                <button className="btn btn-success btn-lg" style={{ flex: 1, minWidth: 200 }} onClick={handleGenerateAndPublish} disabled={generating || instantPublishing || limitReached}>
+                  {instantPublishing ? <><Loader2 size={20} className="spinning" /> Publishing...</> : <><Zap size={20} /> Generate & Publish Now</>}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -261,6 +317,32 @@ export default function GenerateArticle() {
                     )}
                   </div>
                 </div>
+
+                {/* Auto-inserted product images */}
+                {article?.insertedImages?.length > 0 && (
+                  <div className="card mb-24">
+                    <div className="card-header"><h3>🖼️ Inserted Product Images</h3></div>
+                    <div className="card-body">
+                      <div className="form-helper mb-16">
+                        The AI was given these real product images to embed in the article body.
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                        {article.insertedImages.map((img, i) => (
+                          <div key={i} style={{ textAlign: 'center' }}>
+                            <img
+                              src={img.imageUrl}
+                              alt={img.alt}
+                              style={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid rgba(139,92,246,0.2)' }}
+                            />
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={img.title}>
+                              {img.title}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Publish */}
                 <div className="card">

@@ -1,12 +1,15 @@
 import axios from 'axios';
 import config from '../config/env.js';
 
-const GEMINI_URL = `${config.gemini.baseUrl}/models/${config.gemini.model}:generateContent?key=${config.gemini.apiKey}`;
+function geminiUrl(apiKey) {
+  const key = apiKey || config.gemini.apiKey;
+  return `${config.gemini.baseUrl}/models/${config.gemini.model}:generateContent?key=${key}`;
+}
 
-async function callGemini(prompt, temperature = 0.8, maxTokens = 65000) {
+async function callGemini(prompt, temperature = 0.8, maxTokens = 65000, apiKey) {
   try {
     const response = await axios.post(
-      GEMINI_URL,
+      geminiUrl(apiKey),
       {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
@@ -36,15 +39,15 @@ async function callGemini(prompt, temperature = 0.8, maxTokens = 65000) {
   }
 }
 
-export async function generateArticle(prompt, businessContext) {
+export async function generateArticle(prompt, businessContext, apiKey) {
   const fullPrompt = buildArticlePrompt(prompt, businessContext);
-  const result = await callGemini(fullPrompt, 0.9, 65000);
+  const result = await callGemini(fullPrompt, 0.9, 65000, apiKey);
   return parseArticleResponse(result);
 }
 
-export async function enhanceArticle(article, instructions, businessContext) {
+export async function enhanceArticle(article, instructions, businessContext, apiKey) {
   const prompt = buildEnhancePrompt(article, instructions, businessContext);
-  const result = await callGemini(prompt, 0.7, 65000);
+  const result = await callGemini(prompt, 0.7, 65000, apiKey);
   return parseArticleResponse(result);
 }
 
@@ -80,6 +83,11 @@ function buildArticlePrompt(userPrompt, ctx) {
   const productsSection = ctx.products?.slice(0, 30).map(p => `- "${p.title}" → /products/${p.handle}`).join('\n') || 'No products available';
   const collectionsSection = ctx.collections?.slice(0, 15).map(c => `- "${c.title}" → /collections/${c.handle}`).join('\n') || 'No collections available';
   const articlesSection = ctx.existingArticles?.slice(0, 20).map(a => `- "${a.title}" → /blogs/${a.blogHandle || 'news'}/${a.handle}`).join('\n') || 'No existing articles';
+
+  const images = ctx.selectedImages || [];
+  const imageSection = images.length
+    ? images.map(img => `- IMG_URL: ${img.imageUrl}\n  PRODUCT: "${img.title}" → /products/${img.handle}\n  ALT: ${img.alt}`).join('\n')
+    : '';
 
   return `You are a senior content strategist and professional blog writer who has written for major publications. You write like a real human — opinionated, thoughtful, and with genuine expertise. You NEVER sound like AI.
 
@@ -143,11 +151,21 @@ INTERNAL LINKING (MANDATORY — this is critical for SEO):
 - Anchor text must be descriptive keywords, NEVER "click here" or "learn more"
 - Links should feel naturally woven into sentences, not forced
 
-IMAGE PLACEHOLDERS (add 3-5):
-Between sections, insert:
+IMAGES (CRITICAL — use the REAL product images below):
+${imageSection
+    ? `You have been given REAL product images from this store. Embed EACH of them in the body at a relevant point using EXACTLY this pattern (use the exact IMG_URL — do not invent URLs):
+<figure>
+  <img src="IMG_URL" alt="ALT" loading="lazy" />
+  <figcaption><a href="/products/HANDLE">PRODUCT TITLE</a></figcaption>
+</figure>
+Place each image near text where its product is genuinely relevant, and put a contextual link to that product near the image.
+
+AVAILABLE PRODUCT IMAGES:
+${imageSection}`
+    : `No matching product images are available. Insert 3-5 placeholders between sections instead:
 <div class="article-image-placeholder" data-prompt="DETAILED_IMAGE_DESCRIPTION_FOR_GENERATION">
   <p>[Image: SHORT_CAPTION]</p>
-</div>
+</div>`}
 
 === OUTPUT FORMAT ===
 Return ONLY valid JSON. No markdown code fences. No explanation before or after. Just the raw JSON object:
