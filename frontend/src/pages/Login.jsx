@@ -21,7 +21,12 @@ export default function Login() {
       toast.success('Welcome back!');
       navigate(location.state?.from || '/', { replace: true });
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Login failed');
+      const code = err.response?.data?.code;
+      const msg = err.response?.data?.error
+        || (code === 'PENDING' ? 'Your account is awaiting approval.'
+          : code === 'SUSPENDED' ? 'Your account has been suspended.'
+          : 'Login failed');
+      toast.error(msg);
     }
     setSubmitting(false);
   };

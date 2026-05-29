@@ -85,10 +85,27 @@ export const getCampaignArticles = (id) => api.get(`/campaigns/${id}/articles`).
 // ─── Plan & Usage ───────────────────────────────────────────
 export const getUsage = () => api.get('/settings/usage').then(r => r.data);
 
-// ─── Admin ──────────────────────────────────────────────────
+// ─── Upgrade requests (user) ────────────────────────────────
+export const getUpgradePlans = () => api.get('/upgrade-requests/plans').then(r => r.data);
+export const getMyUpgradeRequests = () => api.get('/upgrade-requests/mine').then(r => r.data);
+export const requestUpgrade = (requestedPlan, note) =>
+  api.post('/upgrade-requests', { requestedPlan, note }).then(r => r.data);
+
+// ─── Admin console ──────────────────────────────────────────
 export const adminGetUsers = () => api.get('/admin/users').then(r => r.data);
+export const adminGetUser = (id) => api.get(`/admin/users/${id}`).then(r => r.data);
 export const adminGetPlans = () => api.get('/admin/plans').then(r => r.data);
+export const adminCreateUser = (data) => api.post('/admin/users', data).then(r => r.data);
 export const adminSetPlan = (userId, planId) =>
   api.post(`/admin/users/${userId}/plan`, { planId }).then(r => r.data);
+export const adminSetRole = (userId, role) =>
+  api.post(`/admin/users/${userId}/role`, { role }).then(r => r.data);
+export const adminApproveUser = (userId) => api.post(`/admin/users/${userId}/approve`).then(r => r.data);
+export const adminSuspendUser = (userId) => api.post(`/admin/users/${userId}/suspend`).then(r => r.data);
+export const adminReactivateUser = (userId) => api.post(`/admin/users/${userId}/reactivate`).then(r => r.data);
+export const adminGetActivity = () => api.get('/admin/activity').then(r => r.data);
+export const adminGetUpgradeRequests = () => api.get('/admin/upgrade-requests').then(r => r.data);
+export const adminApproveUpgrade = (id) => api.post(`/admin/upgrade-requests/${id}/approve`).then(r => r.data);
+export const adminRejectUpgrade = (id) => api.post(`/admin/upgrade-requests/${id}/reject`).then(r => r.data);
 
 export default api;

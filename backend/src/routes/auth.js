@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { query } from '../db/index.js';
 import config from '../config/env.js';
 import { requireAuth } from '../middleware/auth.js';
+import * as activity from '../repositories/activity.js';
 
 const router = Router();
 
@@ -33,16 +34,22 @@ router.post('/register', async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    // New signups are 'pending' (DB default) — no token issued until an admin approves.
     const { rows } = await query(
       `INSERT INTO users (email, password_hash, name)
        VALUES ($1, $2, $3)
-       RETURNING id, email, name, role, created_at`,
+       RETURNING id, email, name, role, status, created_at`,
       [email, passwordHash, name || null]
     );
 
     const user = rows[0];
-    const token = signToken(user);
-    res.status(201).json({ success: true, data: { token, user } });
+    activity.log(user.id, 'signup', user.email);
+    res.status(201).json({
+      success: true,
+      pending: true,
+      message: 'Account created. An administrator will review and approve your account shortly.',
+      data: { user: { id: user.id, email: user.email, status: user.status } },
+    });
   } catch (error) {
     next(error);
   }
@@ -57,7 +64,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     const { rows } = await query(
-      'SELECT id, email, name, role, password_hash FROM users WHERE email = $1',
+      'SELECT id, email, name, role, status, password_hash FROM users WHERE email = $1',
       [email]
     );
     const user = rows[0];
@@ -68,12 +75,21 @@ router.post('/login', async (req, res, next) => {
       return res.status(401).json({ success: false, error: 'Invalid email or password' });
     }
 
+    // Block login until approved / if suspended.
+    if (user.status === 'pending') {
+      return res.status(403).json({ success: false, code: 'PENDING', error: 'Your account is awaiting administrator approval.' });
+    }
+    if (user.status === 'suspended') {
+      return res.status(403).json({ success: false, code: 'SUSPENDED', error: 'Your account has been suspended.' });
+    }
+
+    activity.log(user.id, 'login', user.email);
     const token = signToken(user);
     res.json({
       success: true,
       data: {
         token,
-        user: { id: user.id, email: user.email, name: user.name, role: user.role },
+        user: { id: user.id, email: user.email, name: user.name, role: user.role, status: user.status },
       },
     });
   } catch (error) {
@@ -85,7 +101,7 @@ router.post('/login', async (req, res, next) => {
 router.get('/me', requireAuth, async (req, res, next) => {
   try {
     const { rows } = await query(
-      'SELECT id, email, name, role, created_at FROM users WHERE id = $1',
+      'SELECT id, email, name, role, status, created_at FROM users WHERE id = $1',
       [req.user.id]
     );
     if (rows.length === 0) {

@@ -10,6 +10,7 @@ import businessDnaRouter from './routes/businessDna.js';
 import articlesRouter from './routes/articles.js';
 import scheduledPostsRouter from './routes/scheduledPosts.js';
 import campaignsRouter from './routes/campaigns.js';
+import upgradeRequestsRouter from './routes/upgradeRequests.js';
 import adminRouter from './routes/admin.js';
 import { startScheduler } from './workers/scheduler.js';
 
@@ -33,6 +34,7 @@ app.use('/api/business-dna', businessDnaRouter);
 app.use('/api/articles', articlesRouter);
 app.use('/api/scheduled-posts', scheduledPostsRouter);
 app.use('/api/campaigns', campaignsRouter);
+app.use('/api/upgrade-requests', upgradeRequestsRouter);
 app.use('/api/admin', adminRouter);
 
 // Global error handler

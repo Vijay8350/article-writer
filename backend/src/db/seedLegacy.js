@@ -16,6 +16,14 @@ import * as dnaRepo from '../repositories/dna.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dnaPath = resolve(__dirname, '../data/businessDna.json');
 
+async function columnExists(table, column) {
+  const { rowCount } = await query(
+    'SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = $2',
+    [table, column]
+  );
+  return rowCount > 0;
+}
+
 async function run() {
   const email = process.env.ADMIN_EMAIL;
   const password = process.env.ADMIN_PASSWORD;
@@ -23,21 +31,24 @@ async function run() {
     throw new Error('Set ADMIN_EMAIL and ADMIN_PASSWORD env vars before running this seed.');
   }
 
-  // 1. Upsert admin user
+  // 1. Upsert superadmin user (status forced active via column default fallback below)
   let { rows } = await query('SELECT id FROM users WHERE email = $1', [email]);
   let userId;
+  const hasStatus = await columnExists('users', 'status');
   if (rows.length) {
     userId = rows[0].id;
-    await query("UPDATE users SET role = 'admin' WHERE id = $1", [userId]);
-    console.log(`  ✅ admin user exists: ${email}`);
+    await query("UPDATE users SET role = 'superadmin' WHERE id = $1", [userId]);
+    if (hasStatus) await query("UPDATE users SET status = 'active' WHERE id = $1", [userId]);
+    console.log(`  ✅ superadmin exists: ${email}`);
   } else {
     const hash = await bcrypt.hash(password, 10);
     const ins = await query(
-      "INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, 'Admin', 'admin') RETURNING id",
+      "INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, 'Admin', 'superadmin') RETURNING id",
       [email, hash]
     );
     userId = ins.rows[0].id;
-    console.log(`  ✅ created admin user: ${email}`);
+    if (hasStatus) await query("UPDATE users SET status = 'active' WHERE id = $1", [userId]);
+    console.log(`  ✅ created superadmin: ${email}`);
   }
 
   // 2. Import legacy Shopify creds from .env

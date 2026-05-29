@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { UserPlus, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { UserPlus, Loader2, MailCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
 export default function Signup() {
   const { register } = useAuth();
-  const navigate = useNavigate();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,13 +19,31 @@ export default function Signup() {
     setSubmitting(true);
     try {
       await register(email.trim(), password, name.trim() || undefined);
-      toast.success('Account created!');
-      navigate('/', { replace: true });
+      setSubmitted(true);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Sign up failed');
     }
     setSubmitting(false);
   };
+
+  if (submitted) {
+    return (
+      <div className="auth-wrap">
+        <div className="card auth-card" style={{ textAlign: 'center' }}>
+          <MailCheck size={48} style={{ color: 'var(--accent-success, #10b981)', margin: '0 auto 16px' }} />
+          <h2 style={{ marginBottom: 12 }}>Account created!</h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 20 }}>
+            Your account is <strong>awaiting administrator approval</strong>. You'll be able to sign in once it's approved.
+          </p>
+          <Link to="/login" className="btn btn-primary w-full">Back to Sign In</Link>
+          <style>{`
+            .auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+            .auth-card { width: 100%; max-width: 400px; padding: 32px; }
+          `}</style>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-wrap">

@@ -1,17 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { Gauge, Loader2 } from 'lucide-react';
-import { getUsage } from '../lib/api';
+import { Gauge, Loader2, ArrowUpCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { getUsage, getUpgradePlans, getMyUpgradeRequests, requestUpgrade } from '../lib/api';
 
 export default function PlanUsage() {
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [plans, setPlans] = useState([]);
+  const [myRequests, setMyRequests] = useState([]);
+  const [requesting, setRequesting] = useState(null);
+
+  const loadRequests = () => getMyUpgradeRequests().then(r => setMyRequests(r.data || [])).catch(() => {});
 
   useEffect(() => {
-    getUsage()
-      .then(res => setUsage(res.data))
+    Promise.all([getUsage(), getUpgradePlans()])
+      .then(([u, p]) => { setUsage(u.data); setPlans(p.data || []); })
       .catch(() => {})
       .finally(() => setLoading(false));
+    loadRequests();
   }, []);
+
+  const pendingRequest = myRequests.find(r => r.status === 'pending');
+
+  const handleRequest = async (planId) => {
+    setRequesting(planId);
+    try {
+      const res = await requestUpgrade(planId);
+      toast.success(res.message || 'Requested');
+      loadRequests();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to request upgrade');
+    }
+    setRequesting(null);
+  };
 
   if (loading) {
     return <div className="page-container"><div className="empty-state"><div className="spinner spinner-lg" /></div></div>;
@@ -50,14 +71,43 @@ export default function PlanUsage() {
         </div>
 
         <div className="card">
-          <div className="card-header"><h3>Need more?</h3></div>
+          <div className="card-header"><h3><ArrowUpCircle size={16} /> Upgrade your plan</h3></div>
           <div className="card-body">
-            <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-              Plans are assigned manually right now. To upgrade to Pro (50/mo) or Business (200/mo),
-              contact us and we'll bump your account.
-            </p>
+            {pendingRequest ? (
+              <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 'var(--radius-md)', padding: 16 }}>
+                <strong>Request pending</strong>
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>
+                  You've requested an upgrade to <strong style={{ textTransform: 'capitalize' }}>{pendingRequest.requested_plan}</strong>.
+                  An admin will review it shortly.
+                </p>
+              </div>
+            ) : (
+              <>
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
+                  Request a higher plan — an admin approves it and your limit increases immediately.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+                  {plans.filter(p => p.id !== usage?.planId && p.monthly_article_limit > (usage?.limit || 0)).map(p => (
+                    <div key={p.id} style={{ border: '1px solid rgba(139,92,246,0.2)', borderRadius: 'var(--radius-md)', padding: 16, textAlign: 'center' }}>
+                      <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>{p.name}</div>
+                      <div style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 12px' }}>
+                        {p.monthly_article_limit} articles/mo{p.price_inr ? ` · ₹${p.price_inr}` : ''}
+                      </div>
+                      <button className="btn btn-primary btn-sm w-full" disabled={requesting === p.id}
+                        onClick={() => handleRequest(p.id)}>
+                        {requesting === p.id ? <Loader2 size={14} className="spinning" /> : `Request ${p.name}`}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {plans.filter(p => p.monthly_article_limit > (usage?.limit || 0)).length === 0 && (
+                  <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>You're on the highest plan. 🎉</p>
+                )}
+              </>
+            )}
           </div>
         </div>
+        <style>{`.spinning { animation: spin 1s linear infinite; }`}</style>
       </div>
     </div>
   );

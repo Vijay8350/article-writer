@@ -6,6 +6,7 @@ import * as stores from '../repositories/stores.js';
 import * as aiKeysRepo from '../repositories/aiKeys.js';
 import * as dnaRepo from '../repositories/dna.js';
 import * as usage from './usage.js';
+import * as activity from '../repositories/activity.js';
 import { calculateSeoScore, countWords } from '../lib/seo.js';
 
 // Loads everything a generation needs for one user.
@@ -54,6 +55,7 @@ export async function generateArticleForUser(userId, { topic, wordCount, aiModel
 
   // Count usage only on a successful generation.
   await usage.incrementUsage(userId);
+  activity.log(userId, 'generate', article.title);
 
   const seoScore = calculateSeoScore(article);
   return {
@@ -109,7 +111,7 @@ export async function publishArticleForUser(userId, blogId, article) {
     e.status = 400;
     throw e;
   }
-  return shopifyService.createArticle(creds, blogId, {
+  const created = await shopifyService.createArticle(creds, blogId, {
     title: article.title,
     bodyHtml: article.bodyHtml,
     tags: article.tags,
@@ -121,4 +123,6 @@ export async function publishArticleForUser(userId, blogId, article) {
     seoDescription: article.seoDescription,
     image: article.image || undefined,
   });
+  activity.log(userId, article.published === false ? 'save_draft' : 'publish', article.title);
+  return created;
 }

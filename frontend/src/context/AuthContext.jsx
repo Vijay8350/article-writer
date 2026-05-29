@@ -26,11 +26,10 @@ export function AuthProvider({ children }) {
     return res.data.user;
   }, []);
 
+  // New accounts are 'pending' — registration does NOT log you in. Returns the
+  // server response so the UI can show the "awaiting approval" message.
   const register = useCallback(async (email, password, name) => {
-    const res = await api.register(email, password, name);
-    api.setToken(res.data.token);
-    setUser(res.data.user);
-    return res.data.user;
+    return api.register(email, password, name);
   }, []);
 
   const logout = useCallback(() => {
