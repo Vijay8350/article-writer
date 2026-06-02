@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, Link } from 'react-router-dom';
 import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2 } from 'lucide-react';
 import { getSettings } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -98,9 +98,13 @@ export default function Layout() {
               <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
                 Signed in as
               </div>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 10 }} title={user.email}>
+              <Link
+                to="/account"
+                title="Account & security"
+                style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 10, textDecoration: 'underline', textDecorationColor: 'rgba(255,255,255,0.15)' }}
+              >
                 {user.email}
-              </div>
+              </Link>
               <button className="btn btn-secondary w-full" onClick={logout} title="Log out">
                 <LogOut size={16} /> Log out
               </button>

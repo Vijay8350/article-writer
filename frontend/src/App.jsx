@@ -12,6 +12,7 @@ import Admin from './pages/Admin';
 import Settings from './pages/Settings';
 import Workspaces from './pages/Workspaces';
 import Members from './pages/Members';
+import Account from './pages/Account';
 import AcceptInvite from './pages/AcceptInvite';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/workspaces" element={<Workspaces />} />
         <Route path="/members" element={<Members />} />
+        <Route path="/account" element={<Account />} />
       </Route>
 
       {/* Anything else → landing for public, dashboard for authed */}

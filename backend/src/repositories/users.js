@@ -35,6 +35,16 @@ export async function getById(id) {
   return rows[0] || null;
 }
 
+export async function getPasswordHash(id) {
+  const { rows } = await query('SELECT password_hash FROM users WHERE id = $1', [id]);
+  return rows[0]?.password_hash || null;
+}
+
+export async function updatePasswordHash(id, hash) {
+  const { rowCount } = await query('UPDATE users SET password_hash = $2 WHERE id = $1', [id, hash]);
+  return rowCount > 0;
+}
+
 // Global user list for the admin console, with the user's workspace count.
 export async function listAll() {
   const { rows } = await query(

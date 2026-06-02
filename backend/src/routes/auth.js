@@ -7,6 +7,7 @@ import { requireAuth } from '../middleware/auth.js';
 import * as activity from '../repositories/activity.js';
 import * as workspaces from '../repositories/workspaces.js';
 import * as memberships from '../repositories/memberships.js';
+import * as usersRepo from '../repositories/users.js';
 
 const router = Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -80,6 +81,33 @@ router.post('/login', async (req, res, next) => {
         workspaces: ws,
       },
     });
+  } catch (error) { next(error); }
+});
+
+// POST /api/auth/change-password — user changes their own password
+router.post('/change-password', requireAuth, async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, error: 'currentPassword and newPassword are required' });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters' });
+    }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ success: false, error: 'New password must be different from the current one' });
+    }
+
+    const hash = await usersRepo.getPasswordHash(req.user.id);
+    if (!hash) return res.status(401).json({ success: false, error: 'Account not found' });
+
+    const ok = await bcrypt.compare(currentPassword, hash);
+    if (!ok) return res.status(401).json({ success: false, error: 'Current password is incorrect' });
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await usersRepo.updatePasswordHash(req.user.id, newHash);
+    activity.log(req.user.id, 'change_password', 'self');
+    res.json({ success: true, message: 'Password updated' });
   } catch (error) { next(error); }
 });
 

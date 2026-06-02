@@ -47,6 +47,8 @@ export const register = (email, password, name, workspaceName) =>
 export const login = (email, password) =>
   api.post('/auth/login', { email, password }).then(r => r.data);
 export const getMe = () => api.get('/auth/me').then(r => r.data);
+export const changeMyPassword = (currentPassword, newPassword) =>
+  api.post('/auth/change-password', { currentPassword, newPassword }).then(r => r.data);
 
 // ─── Workspaces / Members / Invitations ─────────────────────
 export const getMyWorkspaces = () => api.get('/workspaces').then(r => r.data);
@@ -55,6 +57,7 @@ export const renameWorkspace = (name) => api.patch('/workspaces/current', { name
 export const getMembers = () => api.get('/members').then(r => r.data);
 export const setMemberRole = (userId, role) => api.patch(`/members/${userId}/role`, { role }).then(r => r.data);
 export const removeMember = (userId) => api.delete(`/members/${userId}`).then(r => r.data);
+export const resetMemberPassword = (userId) => api.post(`/members/${userId}/reset-password`).then(r => r.data);
 export const getInvitations = () => api.get('/invitations').then(r => r.data);
 export const createInvitation = (email, role) => api.post('/invitations', { email, role }).then(r => r.data);
 export const revokeInvitation = (id) => api.delete(`/invitations/${id}`).then(r => r.data);
