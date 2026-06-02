@@ -4,6 +4,7 @@ import {
   Sparkles, Dna, Search, Image as ImageIcon, Send, CalendarClock, Cpu, Users, Library,
   ShoppingBag, ChevronDown, Check, Menu, X, Zap, Star, ArrowRight,
 } from 'lucide-react';
+import Seo, { APP_URL } from '../components/Seo';
 
 // ─── Plans data (edit pricing here) ───────────────────────────
 const PLANS = [
@@ -114,7 +115,7 @@ function Nav() {
     <nav className={`lp-nav ${scrolled ? 'lp-nav--scrolled' : ''}`}>
       <div className="lp-container lp-nav__inner">
         <Link to="/" className="lp-logo">
-          <span className="lp-logo__icon">✍️</span>
+          <img src="/favicon.svg" alt="" className="lp-logo__icon" width="24" height="24" />
           <span>Article Writer</span>
         </Link>
         <div className="lp-nav__links lp-nav__links--desktop">
@@ -339,7 +340,7 @@ function Footer() {
       <div className="lp-container lp-footer__inner">
         <div className="lp-footer__brand">
           <div className="lp-logo">
-            <span className="lp-logo__icon">✍️</span><span>Article Writer</span>
+            <img src="/favicon.svg" alt="" className="lp-logo__icon" width="24" height="24" /><span>Article Writer</span>
           </div>
           <p>AI blog writer for Shopify stores.</p>
         </div>
@@ -356,9 +357,45 @@ function Footer() {
   );
 }
 
+// Structured data that mirrors the visible page (no schema drift).
+const landingJsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Article Writer',
+    applicationCategory: 'BusinessApplication',
+    operatingSystem: 'Web',
+    description: 'AI blog writer for Shopify stores. Generates SEO-optimized articles with your real product images and publishes them to your Shopify blog instantly or on a schedule.',
+    url: `${APP_URL}/`,
+    publisher: { '@id': `${APP_URL}/#org` },
+    offers: PLANS.map((p) => ({
+      '@type': 'Offer',
+      name: p.name,
+      price: String(p.priceMonthly),
+      priceCurrency: 'INR',
+      url: `${APP_URL}/signup?plan=${p.id}`,
+    })),
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: FAQS.map((f) => ({
+      '@type': 'Question',
+      name: f.q,
+      acceptedAnswer: { '@type': 'Answer', text: f.a },
+    })),
+  },
+];
+
 export default function Landing() {
   return (
     <div className="lp">
+      <Seo
+        title="AI Blog Writer for Shopify"
+        description="AI blog writer for Shopify stores. Generates SEO articles with your real product images and auto-publishes to your blog. Start free — 5 articles."
+        path="/"
+        jsonLd={landingJsonLd}
+      />
       <Nav />
       <Hero />
       <Features />
@@ -385,7 +422,7 @@ const LANDING_CSS = `
   .lp-nav--scrolled { background: rgba(10,10,20,0.85); backdrop-filter: blur(12px); border-bottom-color: rgba(255,255,255,0.06); }
   .lp-nav__inner { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; gap: 24px; }
   .lp-logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text-primary); font-size: 17px; }
-  .lp-logo__icon { font-size: 20px; }
+  .lp-logo__icon { width: 24px; height: 24px; display: block; }
   .lp-nav__links--desktop { display: flex; gap: 22px; }
   .lp-nav__links--desktop a { color: var(--text-secondary); font-size: 14px; font-weight: 500; }
   .lp-nav__links--desktop a:hover { color: var(--text-primary); }

@@ -1,0 +1,24 @@
+User-agent: *
+Allow: /
+Allow: /pricing
+Allow: /login
+Allow: /signup
+Allow: /terms
+Allow: /privacy
+
+# Authenticated app area + API are not for crawling.
+Disallow: /dashboard
+Disallow: /business-dna
+Disallow: /generate
+Disallow: /articles
+Disallow: /scheduled
+Disallow: /campaigns
+Disallow: /plan
+Disallow: /admin
+Disallow: /settings
+Disallow: /workspaces
+Disallow: /members
+Disallow: /accept-invite/
+Disallow: /api/
+
+Sitemap: https://tools.apanjob.com/sitemap.xml

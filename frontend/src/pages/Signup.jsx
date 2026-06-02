@@ -4,6 +4,7 @@ import { UserPlus, Loader2, MailCheck, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import AuthCard from '../components/AuthCard';
+import Seo from '../components/Seo';
 
 const PLAN_LABELS = { free: 'Free trial', starter: 'Starter', growth: 'Growth', agency: 'Agency' };
 
@@ -61,6 +62,11 @@ export default function Signup() {
       badge={planLabel ? `You're signing up for: ${planLabel}` : null}
       footer={<>Already have an account? <Link to="/login">Sign in</Link></>}
     >
+      <Seo
+        title="Sign up free"
+        description="Create your Article Writer account and connect your Shopify store. Generate SEO articles with your real product images — 5 free articles to start."
+        path="/signup"
+      />
       <form onSubmit={handleSubmit} noValidate>
         <div className="form-group">
           <label className="form-label" htmlFor="su-name">Name <span style={{ color: 'var(--text-muted)' }}>(optional)</span></label>

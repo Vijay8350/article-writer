@@ -3,11 +3,61 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Article Writer — Shopify Blog Content Engine</title>
-  <meta name="description" content="AI-powered Shopify blog article generator with SEO optimization, internal linking, and direct publish." />
+  <meta name="theme-color" content="#6D28D9" />
+  <meta name="color-scheme" content="dark" />
+
+  <!-- Default robots: noindex by default; public pages re-enable indexing via <Seo />. -->
+  <meta name="robots" content="noindex, nofollow" />
+
+  <title>Article Writer — AI Blog Writer for Shopify</title>
+  <meta name="description" content="AI blog writer for Shopify stores. Generates SEO articles with your real product images and publishes them to your blog — instantly or on a schedule." />
+
+  <!-- Favicons / PWA -->
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/favicon.svg" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+
+  <!-- Open Graph defaults (per-page overrides via <Seo />) -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Article Writer" />
+  <meta property="og:title" content="Article Writer — AI Blog Writer for Shopify" />
+  <meta property="og:description" content="AI blog writer for Shopify stores. SEO articles with your real product images, published automatically." />
+  <meta property="og:url" content="https://tools.apanjob.com/" />
+  <meta property="og:image" content="https://tools.apanjob.com/favicon.svg" />
+
+  <!-- Twitter Card defaults -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Article Writer — AI Blog Writer for Shopify" />
+  <meta name="twitter:description" content="AI blog writer for Shopify stores. SEO articles with your real product images, published automatically." />
+  <meta name="twitter:image" content="https://tools.apanjob.com/favicon.svg" />
+
+  <!-- Resource hints + font (font-display:swap is in the CSS file URL) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Site-wide structured data: Organization + WebSite -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://tools.apanjob.com/#org",
+        "name": "Article Writer",
+        "url": "https://tools.apanjob.com/",
+        "logo": "https://tools.apanjob.com/favicon.svg"
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://tools.apanjob.com/#website",
+        "url": "https://tools.apanjob.com/",
+        "name": "Article Writer",
+        "publisher": { "@id": "https://tools.apanjob.com/#org" }
+      }
+    ]
+  }
+  </script>
 </head>
 <body>
   <div id="root"></div>

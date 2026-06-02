@@ -1,9 +1,15 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import Seo from '../components/Seo';
 
 export default function Privacy() {
   return (
     <div className="legal-page">
+      <Seo
+        title="Privacy Policy"
+        description="How Article Writer collects, stores, and uses your data."
+        path="/privacy"
+      />
       <Link to="/" className="legal-back">← Back to home</Link>
       <article className="legal-doc">
         <h1>Privacy Policy</h1>

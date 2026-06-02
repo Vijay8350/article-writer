@@ -36,7 +36,10 @@ export default function Layout() {
     <div className="app-layout">
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <h1>✍️ Article Writer</h1>
+          <h1 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <img src="/favicon.svg" alt="" width="24" height="24" />
+            Article Writer
+          </h1>
           <p>Shopify Blog Engine</p>
         </div>
 

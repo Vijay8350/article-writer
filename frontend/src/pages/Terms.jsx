@@ -1,9 +1,15 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import Seo from '../components/Seo';
 
 export default function Terms() {
   return (
     <div className="legal-page">
+      <Seo
+        title="Terms of Service"
+        description="The terms governing your use of Article Writer."
+        path="/terms"
+      />
       <Link to="/" className="legal-back">← Back to home</Link>
       <article className="legal-doc">
         <h1>Terms of Service</h1>

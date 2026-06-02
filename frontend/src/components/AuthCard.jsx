@@ -10,8 +10,8 @@ export default function AuthCard({ title, subtitle, children, footer, badge }) {
       <Link to="/" className="auth-back">← Back to home</Link>
       <div className="auth-grid">
         <aside className="auth-side">
-          <Link to="/" className="auth-logo">
-            <span style={{ fontSize: 24 }}>✍️</span>
+          <Link to="/" className="auth-logo" aria-label="Article Writer — back to home">
+            <img src="/favicon.svg" alt="" width="28" height="28" />
             <span>Article Writer</span>
           </Link>
           <h2>SEO blog content on autopilot — for your Shopify store.</h2>

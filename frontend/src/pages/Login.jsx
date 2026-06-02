@@ -4,6 +4,7 @@ import { LogIn, Loader2, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import AuthCard from '../components/AuthCard';
+import Seo from '../components/Seo';
 
 export default function Login() {
   const { login } = useAuth();
@@ -40,6 +41,11 @@ export default function Login() {
       subtitle="Sign in to your Article Writer account"
       footer={<>Don't have an account? <Link to="/signup">Sign up free</Link></>}
     >
+      <Seo
+        title="Sign in"
+        description="Sign in to your Article Writer account to generate and publish SEO articles to your Shopify blog."
+        path="/login"
+      />
       <form onSubmit={handleSubmit} noValidate>
         <div className="form-group">
           <label className="form-label" htmlFor="login-email">Email</label>

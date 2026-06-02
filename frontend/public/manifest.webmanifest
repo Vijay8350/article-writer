@@ -1,0 +1,12 @@
+{
+  "name": "Article Writer",
+  "short_name": "Article Writer",
+  "description": "AI blog writer for Shopify stores. Generates SEO articles with your real product images and publishes them automatically.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a14",
+  "theme_color": "#6D28D9",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
