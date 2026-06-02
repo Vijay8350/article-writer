@@ -1,46 +1,43 @@
 import { query } from '../db/index.js';
 
-// Counting rule: a NEW article generation (/generate and /generate-and-publish,
-// including the scheduled worker) counts as 1. Enhancement/regeneration of an
-// existing article does NOT count.
+// Counting rule: a NEW article generation counts as 1. Enhancement/regeneration does NOT count.
 
 function currentPeriod() {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; // YYYY-MM
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-// Returns the user's plan, defaulting to 'free' and creating the subscription
-// row lazily if missing (so existing users don't need a backfill).
-async function getPlan(userId) {
+// Returns the workspace's plan, defaulting to 'free' lazily.
+async function getPlan(workspaceId) {
   let { rows } = await query(
     `SELECT s.plan_id, p.name, p.monthly_article_limit
        FROM subscriptions s JOIN plans p ON p.id = s.plan_id
-      WHERE s.user_id = $1`,
-    [userId]
+      WHERE s.workspace_id = $1`,
+    [workspaceId]
   );
   if (rows.length === 0) {
     await query(
-      `INSERT INTO subscriptions (user_id, plan_id, current_period_start)
+      `INSERT INTO subscriptions (workspace_id, plan_id, current_period_start)
        VALUES ($1, 'free', now())
-       ON CONFLICT (user_id) DO NOTHING`,
-      [userId]
+       ON CONFLICT (workspace_id) DO NOTHING`,
+      [workspaceId]
     );
     ({ rows } = await query(
       `SELECT s.plan_id, p.name, p.monthly_article_limit
          FROM subscriptions s JOIN plans p ON p.id = s.plan_id
-        WHERE s.user_id = $1`,
-      [userId]
+        WHERE s.workspace_id = $1`,
+      [workspaceId]
     ));
   }
   return rows[0];
 }
 
-export async function getCurrentUsage(userId) {
-  const plan = await getPlan(userId);
+export async function getCurrentUsage(workspaceId) {
+  const plan = await getPlan(workspaceId);
   const period = currentPeriod();
   const { rows } = await query(
-    'SELECT articles_generated FROM usage_counters WHERE user_id = $1 AND period = $2',
-    [userId, period]
+    'SELECT articles_generated FROM usage_counters WHERE workspace_id = $1 AND period = $2',
+    [workspaceId, period]
   );
   const used = rows[0]?.articles_generated || 0;
   return {
@@ -53,9 +50,8 @@ export async function getCurrentUsage(userId) {
   };
 }
 
-// Throws a 402-style error when the monthly cap is hit.
-export async function assertCanGenerate(userId) {
-  const { used, limit } = await getCurrentUsage(userId);
+export async function assertCanGenerate(workspaceId) {
+  const { used, limit } = await getCurrentUsage(workspaceId);
   if (used >= limit) {
     const err = new Error(`Monthly article limit reached (${used}/${limit}). Upgrade your plan to generate more.`);
     err.code = 'LIMIT_REACHED';
@@ -64,14 +60,14 @@ export async function assertCanGenerate(userId) {
   }
 }
 
-export async function incrementUsage(userId) {
+export async function incrementUsage(workspaceId) {
   const period = currentPeriod();
   await query(
-    `INSERT INTO usage_counters (user_id, period, articles_generated)
+    `INSERT INTO usage_counters (workspace_id, period, articles_generated)
      VALUES ($1, $2, 1)
-     ON CONFLICT (user_id, period) DO UPDATE SET
+     ON CONFLICT (workspace_id, period) DO UPDATE SET
        articles_generated = usage_counters.articles_generated + 1`,
-    [userId, period]
+    [workspaceId, period]
   );
 }
 

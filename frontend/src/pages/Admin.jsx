@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Loader2, UserPlus, CheckCircle2, Ban, RotateCcw, Activity as ActivityIcon } from 'lucide-react';
+import { Loader2, UserPlus, CheckCircle2, Ban, RotateCcw, Activity as ActivityIcon, Building2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import {
-  adminGetUsers, adminGetPlans, adminSetPlan, adminSetRole, adminCreateUser,
+  adminGetUsers, adminGetPlans, adminSetRole, adminCreateUser,
   adminApproveUser, adminSuspendUser, adminReactivateUser, adminGetActivity,
   adminGetUpgradeRequests, adminApproveUpgrade, adminRejectUpgrade,
+  adminGetWorkspaces, adminSetWorkspacePlan, adminSuspendWorkspace, adminReactivateWorkspace,
 } from '../lib/api';
 
 const STATUS_BADGE = { active: 'badge-success', pending: 'badge-warning', suspended: 'badge-danger' };
@@ -14,23 +15,24 @@ const ROLE_BADGE = { superadmin: 'badge-danger', admin: 'badge-warning', user: '
 export default function Admin() {
   const { user: me } = useAuth();
   const isSuper = me?.role === 'superadmin';
-  const [tab, setTab] = useState('users');
+  const [tab, setTab] = useState('workspaces');
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
+  const [workspaces, setWorkspaces] = useState([]);
   const [plans, setPlans] = useState([]);
   const [requests, setRequests] = useState([]);
   const [activity, setActivity] = useState([]);
   const [busy, setBusy] = useState(null);
 
-  // create-user form
-  const [nu, setNu] = useState({ email: '', password: '', name: '', role: 'user', planId: 'free' });
+  const [nu, setNu] = useState({ email: '', password: '', name: '', role: 'user' });
   const [creating, setCreating] = useState(false);
 
   const loadAll = () => {
     setLoading(true);
-    Promise.all([adminGetUsers(), adminGetPlans(), adminGetUpgradeRequests(), adminGetActivity()])
-      .then(([u, p, r, a]) => {
+    Promise.all([adminGetUsers(), adminGetWorkspaces(), adminGetPlans(), adminGetUpgradeRequests(), adminGetActivity()])
+      .then(([u, w, p, r, a]) => {
         setUsers(u.data || []);
+        setWorkspaces(w.data || []);
         setPlans(p.data || []);
         setRequests(r.data || []);
         setActivity(a.data || []);
@@ -54,8 +56,8 @@ export default function Admin() {
     setCreating(true);
     try {
       await adminCreateUser(nu);
-      toast.success('User created');
-      setNu({ email: '', password: '', name: '', role: 'user', planId: 'free' });
+      toast.success('User created (with personal workspace)');
+      setNu({ email: '', password: '', name: '', role: 'user' });
       loadAll();
     } catch (err) { toast.error(err.response?.data?.error || 'Failed'); }
     setCreating(false);
@@ -77,21 +79,76 @@ export default function Admin() {
     <div className="page-container fade-in">
       <div className="page-header">
         <h1>🛡️ Admin Console</h1>
-        <p>{isSuper ? 'Superadmin — full control over users, roles, and plans' : 'Manage users, approvals, and plans'}</p>
+        <p>{isSuper ? 'Superadmin — full control over workspaces, users, and plans' : 'Manage workspaces, users, and upgrade requests'}</p>
       </div>
 
       <div className="flex gap-8 mb-24" style={{ flexWrap: 'wrap' }}>
+        <Tab id="workspaces" label="Workspaces" count={workspaces.length} />
         <Tab id="users" label="Users" count={users.length} />
-        <Tab id="pending" label="Pending approvals" count={pendingUsers.length} />
+        <Tab id="pending" label="Pending users" count={pendingUsers.length} />
         <Tab id="upgrades" label="Upgrade requests" count={requests.length} />
         <Tab id="activity" label="Activity" />
         <Tab id="create" label="+ Create user" />
       </div>
 
+      {/* WORKSPACES */}
+      {tab === 'workspaces' && (
+        <div className="card">
+          <div className="card-header"><h2><Building2 size={16} /> Workspaces</h2></div>
+          <div className="card-body" style={{ overflowX: 'auto' }}>
+            {workspaces.length === 0 ? (
+              <div className="empty-state"><p>No workspaces.</p></div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
+                    <th style={{ padding: '8px' }}>Workspace</th>
+                    <th style={{ padding: '8px' }}>Owner</th>
+                    <th style={{ padding: '8px' }}>Status</th>
+                    <th style={{ padding: '8px' }}>Plan / Usage</th>
+                    <th style={{ padding: '8px' }}>Members</th>
+                    <th style={{ padding: '8px' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workspaces.map(w => (
+                    <tr key={w.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <td style={{ padding: '8px' }}><strong>{w.name}</strong><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{w.slug}</div></td>
+                      <td style={{ padding: '8px' }}>{w.owner_email}</td>
+                      <td style={{ padding: '8px' }}><span className={`badge ${STATUS_BADGE[w.status]}`}>{w.status}</span></td>
+                      <td style={{ padding: '8px' }}>
+                        <select className="form-select" style={{ minWidth: 110, padding: '4px 8px', fontSize: 12 }}
+                          value={w.plan_id} disabled={busy === w.id}
+                          onChange={e => act(adminSetWorkspacePlan, w.id, e.target.value)}>
+                          {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                        <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{w.used}/{w.monthly_article_limit} used</div>
+                      </td>
+                      <td style={{ padding: '8px' }}>{w.member_count}</td>
+                      <td style={{ padding: '8px' }}>
+                        {w.status === 'active' ? (
+                          <button className="btn btn-danger btn-sm" disabled={busy === w.id} onClick={() => act(adminSuspendWorkspace, w.id)}>
+                            <Ban size={13} /> Suspend
+                          </button>
+                        ) : (
+                          <button className="btn btn-secondary btn-sm" disabled={busy === w.id} onClick={() => act(adminReactivateWorkspace, w.id)}>
+                            <RotateCcw size={13} /> Reactivate
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* USERS */}
       {(tab === 'users' || tab === 'pending') && (
         <div className="card">
-          <div className="card-header"><h2>{tab === 'pending' ? 'Pending approvals' : 'All users'}</h2></div>
+          <div className="card-header"><h2>{tab === 'pending' ? 'Pending user signups' : 'All users'}</h2></div>
           <div className="card-body" style={{ overflowX: 'auto' }}>
             {(tab === 'pending' ? pendingUsers : users).length === 0 ? (
               <div className="empty-state"><p>{tab === 'pending' ? 'No pending signups.' : 'No users.'}</p></div>
@@ -102,8 +159,7 @@ export default function Admin() {
                     <th style={{ padding: '8px' }}>Email</th>
                     <th style={{ padding: '8px' }}>Status</th>
                     <th style={{ padding: '8px' }}>Role</th>
-                    <th style={{ padding: '8px' }}>Plan / Usage</th>
-                    <th style={{ padding: '8px' }}>Store</th>
+                    <th style={{ padding: '8px' }}>Workspaces</th>
                     <th style={{ padding: '8px' }}>Actions</th>
                   </tr>
                 </thead>
@@ -123,15 +179,7 @@ export default function Admin() {
                           </select>
                         ) : <span className={`badge ${ROLE_BADGE[u.role]}`}>{u.role}</span>}
                       </td>
-                      <td style={{ padding: '8px' }}>
-                        <select className="form-select" style={{ minWidth: 110, padding: '4px 8px', fontSize: 12 }}
-                          value={u.plan_id} disabled={busy === u.id}
-                          onChange={e => act(adminSetPlan, u.id, e.target.value)}>
-                          {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                        <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{u.used}/{u.monthly_article_limit} used</div>
-                      </td>
-                      <td style={{ padding: '8px' }}>{u.store_connected ? '✅' : '—'}{u.dna_present ? ' 🧬' : ''}</td>
+                      <td style={{ padding: '8px' }}>{u.workspace_count}</td>
                       <td style={{ padding: '8px' }}>
                         <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
                           {u.status === 'pending' && (
@@ -166,13 +214,13 @@ export default function Admin() {
           <div className="card-header"><h2>Pending upgrade requests</h2></div>
           <div className="card-body">
             {requests.length === 0 ? (
-              <div className="empty-state"><p>No pending upgrade requests.</p></div>
+              <div className="empty-state"><p>No pending requests.</p></div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <tbody>
                   {requests.map(r => (
                     <tr key={r.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                      <td style={{ padding: '8px' }}>{r.email}</td>
+                      <td style={{ padding: '8px' }}><strong>{r.workspace_name}</strong><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.requester_email}</div></td>
                       <td style={{ padding: '8px' }}>→ <strong style={{ textTransform: 'capitalize' }}>{r.requested_plan}</strong></td>
                       <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{new Date(r.created_at).toLocaleString()}</td>
                       <td style={{ padding: '8px' }}>
@@ -195,7 +243,7 @@ export default function Admin() {
         <div className="card">
           <div className="card-header"><h2><ActivityIcon size={16} /> Recent activity</h2></div>
           <div className="card-body">
-            {activity.length === 0 ? <div className="empty-state"><p>No activity yet.</p></div> : (
+            {activity.length === 0 ? <div className="empty-state"><p>No activity.</p></div> : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <tbody>
                   {activity.map(a => (
@@ -231,24 +279,17 @@ export default function Admin() {
                 <label className="form-label">Name (optional)</label>
                 <input className="form-input" value={nu.name} onChange={e => setNu({ ...nu, name: e.target.value })} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div className="form-group">
-                  <label className="form-label">Role</label>
-                  <select className="form-select" value={nu.role} onChange={e => setNu({ ...nu, role: e.target.value })}>
-                    <option value="user">user</option>
-                    {isSuper && <option value="admin">admin</option>}
-                    {isSuper && <option value="superadmin">superadmin</option>}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Plan</label>
-                  <select className="form-select" value={nu.planId} onChange={e => setNu({ ...nu, planId: e.target.value })}>
-                    {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
+              <div className="form-group">
+                <label className="form-label">Role</label>
+                <select className="form-select" value={nu.role} onChange={e => setNu({ ...nu, role: e.target.value })}>
+                  <option value="user">user</option>
+                  {isSuper && <option value="admin">admin</option>}
+                  {isSuper && <option value="superadmin">superadmin</option>}
+                </select>
+                <div className="form-helper">A personal workspace is created automatically for the new user.</div>
               </div>
               <button className="btn btn-primary w-full" type="submit" disabled={creating}>
-                {creating ? <><Loader2 size={16} className="spinning" /> Creating...</> : <><UserPlus size={16} /> Create User (active)</>}
+                {creating ? <><Loader2 size={16} className="spinning" /> Creating...</> : <><UserPlus size={16} /> Create User</>}
               </button>
             </form>
           </div>

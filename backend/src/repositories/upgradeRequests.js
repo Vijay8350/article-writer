@@ -1,34 +1,35 @@
 import { query } from '../db/index.js';
 
-// One open request per user at a time: reject older pending ones implicitly by
-// returning the existing pending request if present.
-export async function createOrGetPending(userId, requestedPlan, note) {
+// One open request per workspace at a time.
+export async function createOrGetPending(workspaceId, requestedBy, requestedPlan, note) {
   const existing = await query(
-    "SELECT * FROM upgrade_requests WHERE user_id = $1 AND status = 'pending'",
-    [userId]
+    "SELECT * FROM upgrade_requests WHERE workspace_id = $1 AND status = 'pending'",
+    [workspaceId]
   );
   if (existing.rows.length) return { row: existing.rows[0], created: false };
 
   const { rows } = await query(
-    `INSERT INTO upgrade_requests (user_id, requested_plan, note)
-     VALUES ($1, $2, $3) RETURNING *`,
-    [userId, requestedPlan, note || null]
+    `INSERT INTO upgrade_requests (workspace_id, requested_by, requested_plan, note)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [workspaceId, requestedBy || null, requestedPlan, note || null]
   );
   return { row: rows[0], created: true };
 }
 
-export async function listForUser(userId) {
+export async function listForWorkspace(workspaceId) {
   const { rows } = await query(
-    'SELECT * FROM upgrade_requests WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20',
-    [userId]
+    'SELECT * FROM upgrade_requests WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT 20',
+    [workspaceId]
   );
   return rows;
 }
 
 export async function listPending() {
   const { rows } = await query(
-    `SELECT r.*, u.email
-       FROM upgrade_requests r JOIN users u ON u.id = r.user_id
+    `SELECT r.*, w.name AS workspace_name, u.email AS requester_email
+       FROM upgrade_requests r
+       JOIN workspaces w ON w.id = r.workspace_id
+       LEFT JOIN users u ON u.id = r.requested_by
       WHERE r.status = 'pending'
       ORDER BY r.created_at ASC`
   );

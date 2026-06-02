@@ -1,35 +1,33 @@
 import { query } from '../db/index.js';
 
-export async function create(userId, { topic, runAt, blogId, wordCount, aiModel, storeId }) {
+export async function create(workspaceId, createdBy, { topic, runAt, blogId, wordCount, aiModel, storeId }) {
   const { rows } = await query(
-    `INSERT INTO scheduled_posts (user_id, store_id, blog_id, topic, word_count, ai_model, run_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO scheduled_posts (workspace_id, created_by, store_id, blog_id, topic, word_count, ai_model, run_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING *`,
-    [userId, storeId || null, blogId || null, topic, wordCount || null, aiModel || null, runAt]
+    [workspaceId, createdBy || null, storeId || null, blogId || null, topic, wordCount || null, aiModel || null, runAt]
   );
   return rows[0];
 }
 
-export async function listForUser(userId) {
+export async function listForWorkspace(workspaceId) {
   const { rows } = await query(
-    'SELECT * FROM scheduled_posts WHERE user_id = $1 ORDER BY run_at DESC',
-    [userId]
+    'SELECT * FROM scheduled_posts WHERE workspace_id = $1 ORDER BY run_at DESC',
+    [workspaceId]
   );
   return rows;
 }
 
-// Only pending jobs can be cancelled by their owner.
-export async function cancel(userId, id) {
+// Only pending jobs in this workspace can be cancelled.
+export async function cancel(workspaceId, id) {
   const { rowCount } = await query(
-    "DELETE FROM scheduled_posts WHERE id = $1 AND user_id = $2 AND status = 'pending'",
-    [id, userId]
+    "DELETE FROM scheduled_posts WHERE id = $1 AND workspace_id = $2 AND status = 'pending'",
+    [id, workspaceId]
   );
   return rowCount > 0;
 }
 
-// Atomically claim ONE due job: flips pending → processing and returns it, or
-// null if nothing is due. The `WHERE status='pending'` guard makes this safe
-// even if two ticks overlap — only one wins the row.
+// Atomically claim ONE due job. Single-process worker + isRunning lock keeps this safe.
 export async function claimNextDue() {
   const { rows } = await query(
     `UPDATE scheduled_posts

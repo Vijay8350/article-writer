@@ -1,7 +1,8 @@
-// One-time migration of the old single-tenant data into a real user account.
-// Creates an admin user (ADMIN_EMAIL / ADMIN_PASSWORD), then imports the legacy
-// .env Shopify creds and backend/src/data/businessDna.json into that user's rows.
-// Safe to re-run: it upserts and skips anything already present / missing.
+// One-time migration of the old single-tenant data into a real account.
+// Creates a superadmin user (ADMIN_EMAIL / ADMIN_PASSWORD), ensures they own a
+// personal workspace, and imports the legacy .env Shopify creds + cached
+// backend/src/data/businessDna.json into that workspace.
+// Safe to re-run: idempotent at every step.
 //
 //   ADMIN_EMAIL=you@x.com ADMIN_PASSWORD=secret123 npm run seed:legacy
 import { readFileSync, existsSync } from 'fs';
@@ -12,70 +13,78 @@ import { pool, query } from './index.js';
 import config from '../config/env.js';
 import * as stores from '../repositories/stores.js';
 import * as dnaRepo from '../repositories/dna.js';
+import * as workspaces from '../repositories/workspaces.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dnaPath = resolve(__dirname, '../data/businessDna.json');
-
-async function columnExists(table, column) {
-  const { rowCount } = await query(
-    'SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = $2',
-    [table, column]
-  );
-  return rowCount > 0;
-}
 
 async function run() {
   const email = process.env.ADMIN_EMAIL;
   const password = process.env.ADMIN_PASSWORD;
   if (!email || !password) {
-    throw new Error('Set ADMIN_EMAIL and ADMIN_PASSWORD env vars before running this seed.');
+    throw new Error('Set ADMIN_EMAIL and ADMIN_PASSWORD before running this seed.');
   }
 
-  // 1. Upsert superadmin user (status forced active via column default fallback below)
+  // 1. Upsert superadmin
   let { rows } = await query('SELECT id FROM users WHERE email = $1', [email]);
   let userId;
-  const hasStatus = await columnExists('users', 'status');
   if (rows.length) {
     userId = rows[0].id;
-    await query("UPDATE users SET role = 'superadmin' WHERE id = $1", [userId]);
-    if (hasStatus) await query("UPDATE users SET status = 'active' WHERE id = $1", [userId]);
+    await query("UPDATE users SET role = 'superadmin', status = 'active' WHERE id = $1", [userId]);
     console.log(`  ✅ superadmin exists: ${email}`);
   } else {
     const hash = await bcrypt.hash(password, 10);
     const ins = await query(
-      "INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, 'Admin', 'superadmin') RETURNING id",
+      "INSERT INTO users (email, password_hash, name, role, status) VALUES ($1, $2, 'Admin', 'superadmin', 'active') RETURNING id",
       [email, hash]
     );
     userId = ins.rows[0].id;
-    if (hasStatus) await query("UPDATE users SET status = 'active' WHERE id = $1", [userId]);
     console.log(`  ✅ created superadmin: ${email}`);
   }
 
-  // 2. Import legacy Shopify creds from .env
+  // 2. Find or create a personal workspace
+  const { rows: wsRows } = await query(
+    `SELECT w.id FROM workspaces w
+       JOIN memberships m ON m.workspace_id = w.id
+      WHERE m.user_id = $1
+      ORDER BY w.created_at ASC LIMIT 1`,
+    [userId]
+  );
+  let workspaceId;
+  if (wsRows.length) {
+    workspaceId = wsRows[0].id;
+    console.log('  ✅ workspace exists');
+  } else {
+    const ws = await workspaces.createForOwner(userId, "Admin's Workspace");
+    workspaceId = ws.id;
+    console.log(`  ✅ created workspace: ${ws.name}`);
+  }
+
+  // 3. Import legacy Shopify creds from .env (if present and workspace has no store)
   if (config.shopify.legacyStoreUrl && config.shopify.legacyAccessToken) {
-    const existing = await stores.getStoreMeta(userId);
+    const existing = await stores.getStoreMeta(workspaceId);
     if (!existing) {
-      await stores.upsertStore(userId, config.shopify.legacyStoreUrl, config.shopify.legacyAccessToken, null);
+      await stores.upsertStore(workspaceId, config.shopify.legacyStoreUrl, config.shopify.legacyAccessToken, null);
       console.log(`  ✅ imported legacy Shopify store: ${config.shopify.legacyStoreUrl}`);
     } else {
-      console.log('  ⏭️  admin already has a store — skipping legacy store import');
+      console.log('  ⏭️  workspace already has a store — skipping legacy import');
     }
   } else {
     console.log('  ⏭️  no legacy SHOPIFY_STORE_URL/ACCESS_TOKEN in .env — skipping');
   }
 
-  // 3. Import legacy Business DNA json
+  // 4. Import legacy Business DNA json
   if (existsSync(dnaPath)) {
     try {
       const raw = readFileSync(dnaPath, 'utf-8').trim();
       if (raw) {
         const dna = JSON.parse(raw);
-        const existing = await dnaRepo.getDna(userId);
+        const existing = await dnaRepo.getDna(workspaceId);
         if (!existing) {
-          await dnaRepo.saveDna(userId, null, dna);
+          await dnaRepo.saveDna(workspaceId, null, dna);
           console.log('  ✅ imported legacy businessDna.json');
         } else {
-          console.log('  ⏭️  admin already has Business DNA — skipping json import');
+          console.log('  ⏭️  workspace already has Business DNA — skipping');
         }
       }
     } catch (e) {

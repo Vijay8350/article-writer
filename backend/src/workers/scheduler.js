@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import * as scheduled from '../repositories/scheduledPosts.js';
-import { generateAndPublishForUser } from '../services/articleService.js';
+import { generateAndPublishForWorkspace } from '../services/articleService.js';
 import { runDueCampaignArticle } from '../services/campaignService.js';
 
 // Runs inside the SINGLE PM2 fork process. This is the ONLY reason it's safe
@@ -18,14 +18,14 @@ async function tick() {
   try {
     const job = await scheduled.claimNextDue();
     if (job) {
-      console.log(`⏰ Processing scheduled post ${job.id} (user ${job.user_id}): "${job.topic}"`);
+      console.log(`⏰ Processing scheduled post ${job.id} (workspace ${job.workspace_id}): "${job.topic}"`);
       try {
-        const { created } = await generateAndPublishForUser(job.user_id, {
+        const { created } = await generateAndPublishForWorkspace(job.workspace_id, {
           topic: job.topic,
           wordCount: job.word_count,
           aiModel: job.ai_model,
           blogId: job.blog_id,
-        });
+        }, job.created_by);
         await scheduled.markPublished(job.id, created.id);
         console.log(`✅ Scheduled post ${job.id} published (article ${created.id})`);
       } catch (err) {

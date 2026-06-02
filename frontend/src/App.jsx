@@ -10,6 +10,9 @@ import Campaigns from './pages/Campaigns';
 import PlanUsage from './pages/PlanUsage';
 import Admin from './pages/Admin';
 import Settings from './pages/Settings';
+import Workspaces from './pages/Workspaces';
+import Members from './pages/Members';
+import AcceptInvite from './pages/AcceptInvite';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import { useAuth } from './context/AuthContext';
@@ -42,6 +45,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
       <Route path="/signup" element={<PublicOnly><Signup /></PublicOnly>} />
+      <Route path="/accept-invite/:token" element={<AcceptInvite />} />
 
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route index element={<Dashboard />} />
@@ -53,6 +57,8 @@ export default function App() {
         <Route path="/plan" element={<PlanUsage />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/workspaces" element={<Workspaces />} />
+        <Route path="/members" element={<Members />} />
       </Route>
     </Routes>
   );

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2 } from 'lucide-react';
 import { getSettings } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,22 +12,25 @@ const navItems = [
   { path: '/articles', icon: FileText, label: 'Existing Articles' },
   { path: '/scheduled', icon: CalendarClock, label: 'Scheduled Posts' },
   { path: '/plan', icon: Gauge, label: 'Plan & Usage' },
+  { path: '/members', icon: Users, label: 'Members' },
+  { path: '/workspaces', icon: Building2, label: 'Workspaces' },
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];
 
 export default function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, workspaces, activeWorkspaceId, activeRole, switchWorkspace } = useAuth();
   const [connected, setConnected] = useState(false);
   const [storeName, setStoreName] = useState('');
 
   useEffect(() => {
+    if (!activeWorkspaceId) return;
     getSettings()
       .then(res => {
         setConnected(res.data?.connected || false);
         setStoreName(res.data?.storeUrl || '');
       })
       .catch(() => {});
-  }, []);
+  }, [activeWorkspaceId]);
 
   return (
     <div className="app-layout">
@@ -36,6 +39,25 @@ export default function Layout() {
           <h1>✍️ Article Writer</h1>
           <p>Shopify Blog Engine</p>
         </div>
+
+        {workspaces.length > 0 && (
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Workspace</div>
+            <select
+              className="form-select"
+              style={{ width: '100%', padding: '6px 8px', fontSize: 13 }}
+              value={activeWorkspaceId || ''}
+              onChange={e => switchWorkspace(e.target.value)}
+            >
+              {workspaces.map(w => (
+                <option key={w.id} value={w.id}>{w.name} ({w.role})</option>
+              ))}
+            </select>
+            {activeRole && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>You are <strong>{activeRole}</strong></div>
+            )}
+          </div>
+        )}
 
         <nav className="sidebar-nav">
           {navItems.map(item => (

@@ -1,30 +1,25 @@
 import { Router } from 'express';
 import { getShopInfo } from '../services/shopify.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requireWorkspace, requireWorkspaceRole } from '../middleware/workspace.js';
 import * as stores from '../repositories/stores.js';
 import * as aiKeys from '../repositories/aiKeys.js';
 import { getCurrentUsage } from '../services/usage.js';
 
 const router = Router();
+router.use(requireAuth, requireWorkspace);
 
-// All settings routes require a logged-in user.
-router.use(requireAuth);
-
-// Current plan + monthly usage for the logged-in user
+// Current workspace's plan + usage
 router.get('/usage', async (req, res, next) => {
   try {
-    const usage = await getCurrentUsage(req.user.id);
-    res.json({ success: true, data: usage });
-  } catch (error) {
-    next(error);
-  }
+    res.json({ success: true, data: await getCurrentUsage(req.workspace.id) });
+  } catch (error) { next(error); }
 });
 
-// Get current user's store + AI key presence
 router.get('/', async (req, res, next) => {
   try {
-    const meta = await stores.getStoreMeta(req.user.id);
-    const keys = await aiKeys.getKeyPresence(req.user.id);
+    const meta = await stores.getStoreMeta(req.workspace.id);
+    const keys = await aiKeys.getKeyPresence(req.workspace.id);
     res.json({
       success: true,
       data: {
@@ -35,26 +30,19 @@ router.get('/', async (req, res, next) => {
         aiKeys: keys,
       },
     });
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 });
 
-// Test & save Shopify connection for this user
-router.post('/connect', async (req, res, next) => {
+// Connect / disconnect / save-keys mutate workspace state → admin or owner only.
+router.post('/connect', requireWorkspaceRole('owner', 'admin'), async (req, res) => {
   try {
     const { storeUrl, accessToken } = req.body || {};
     if (!storeUrl || !accessToken) {
       return res.status(400).json({ success: false, error: 'Store URL and access token are required' });
     }
-
     const cleanUrl = storeUrl.trim().replace(/\/$/, '').replace(/^https?:\/\//, '');
-
-    // Validate the credentials by hitting Shopify before persisting.
     const shop = await getShopInfo({ storeUrl: cleanUrl, accessToken });
-
-    await stores.upsertStore(req.user.id, cleanUrl, accessToken, shop.name);
-
+    await stores.upsertStore(req.workspace.id, cleanUrl, accessToken, shop.name);
     res.json({
       success: true,
       message: 'Connected successfully!',
@@ -71,29 +59,23 @@ router.post('/connect', async (req, res, next) => {
   }
 });
 
-// Disconnect this user's store
-router.post('/disconnect', async (req, res, next) => {
+router.post('/disconnect', requireWorkspaceRole('owner', 'admin'), async (req, res, next) => {
   try {
-    await stores.deleteStores(req.user.id);
+    await stores.deleteStores(req.workspace.id);
     res.json({ success: true, message: 'Disconnected' });
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 });
 
-// Save optional per-user AI keys (only non-empty values are stored)
-router.post('/ai-keys', async (req, res, next) => {
+router.post('/ai-keys', requireWorkspaceRole('owner', 'admin'), async (req, res, next) => {
   try {
     const { geminiKey, deepseekKey } = req.body || {};
-    await aiKeys.saveKeys(req.user.id, {
+    await aiKeys.saveKeys(req.workspace.id, {
       geminiKey: geminiKey ? geminiKey.trim() : undefined,
       deepseekKey: deepseekKey ? deepseekKey.trim() : undefined,
     });
-    const presence = await aiKeys.getKeyPresence(req.user.id);
+    const presence = await aiKeys.getKeyPresence(req.workspace.id);
     res.json({ success: true, message: 'AI keys saved', data: presence });
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) { next(error); }
 });
 
 export default router;

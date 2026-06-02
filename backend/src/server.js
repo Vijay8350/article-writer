@@ -11,6 +11,9 @@ import articlesRouter from './routes/articles.js';
 import scheduledPostsRouter from './routes/scheduledPosts.js';
 import campaignsRouter from './routes/campaigns.js';
 import upgradeRequestsRouter from './routes/upgradeRequests.js';
+import workspacesRouter from './routes/workspaces.js';
+import membersRouter from './routes/members.js';
+import invitationsRouter from './routes/invitations.js';
 import adminRouter from './routes/admin.js';
 import { startScheduler } from './workers/scheduler.js';
 
@@ -35,6 +38,9 @@ app.use('/api/articles', articlesRouter);
 app.use('/api/scheduled-posts', scheduledPostsRouter);
 app.use('/api/campaigns', campaignsRouter);
 app.use('/api/upgrade-requests', upgradeRequestsRouter);
+app.use('/api/workspaces', workspacesRouter);
+app.use('/api/members', membersRouter);
+app.use('/api/invitations', invitationsRouter);
 app.use('/api/admin', adminRouter);
 
 // Global error handler

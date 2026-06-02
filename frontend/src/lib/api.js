@@ -3,6 +3,7 @@ import axios from 'axios';
 const api = axios.create({ baseURL: '/api', timeout: 300000 }); // 5 minutes for long article generation
 
 const TOKEN_KEY = 'aw_token';
+const WS_KEY = 'aw_workspace_id';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (token) => {
@@ -10,10 +11,18 @@ export const setToken = (token) => {
   else localStorage.removeItem(TOKEN_KEY);
 };
 
-// Attach the JWT to every request.
+export const getActiveWorkspaceId = () => localStorage.getItem(WS_KEY);
+export const setActiveWorkspaceId = (id) => {
+  if (id) localStorage.setItem(WS_KEY, id);
+  else localStorage.removeItem(WS_KEY);
+};
+
+// Attach JWT + active workspace to every request.
 api.interceptors.request.use((cfg) => {
   const token = getToken();
   if (token) cfg.headers.Authorization = `Bearer ${token}`;
+  const ws = getActiveWorkspaceId();
+  if (ws) cfg.headers['X-Workspace-Id'] = ws;
   return cfg;
 });
 
@@ -33,11 +42,23 @@ api.interceptors.response.use(
 );
 
 // ─── Auth ───────────────────────────────────────────────────
-export const register = (email, password, name) =>
-  api.post('/auth/register', { email, password, name }).then(r => r.data);
+export const register = (email, password, name, workspaceName) =>
+  api.post('/auth/register', { email, password, name, workspaceName }).then(r => r.data);
 export const login = (email, password) =>
   api.post('/auth/login', { email, password }).then(r => r.data);
 export const getMe = () => api.get('/auth/me').then(r => r.data);
+
+// ─── Workspaces / Members / Invitations ─────────────────────
+export const getMyWorkspaces = () => api.get('/workspaces').then(r => r.data);
+export const createWorkspace = (name) => api.post('/workspaces', { name }).then(r => r.data);
+export const renameWorkspace = (name) => api.patch('/workspaces/current', { name }).then(r => r.data);
+export const getMembers = () => api.get('/members').then(r => r.data);
+export const setMemberRole = (userId, role) => api.patch(`/members/${userId}/role`, { role }).then(r => r.data);
+export const removeMember = (userId) => api.delete(`/members/${userId}`).then(r => r.data);
+export const getInvitations = () => api.get('/invitations').then(r => r.data);
+export const createInvitation = (email, role) => api.post('/invitations', { email, role }).then(r => r.data);
+export const revokeInvitation = (id) => api.delete(`/invitations/${id}`).then(r => r.data);
+export const acceptInvitation = (token) => api.post('/invitations/accept', { token }).then(r => r.data);
 
 // ─── Settings ───────────────────────────────────────────────
 export const getSettings = () => api.get('/settings').then(r => r.data);
@@ -96,13 +117,17 @@ export const adminGetUsers = () => api.get('/admin/users').then(r => r.data);
 export const adminGetUser = (id) => api.get(`/admin/users/${id}`).then(r => r.data);
 export const adminGetPlans = () => api.get('/admin/plans').then(r => r.data);
 export const adminCreateUser = (data) => api.post('/admin/users', data).then(r => r.data);
-export const adminSetPlan = (userId, planId) =>
-  api.post(`/admin/users/${userId}/plan`, { planId }).then(r => r.data);
 export const adminSetRole = (userId, role) =>
   api.post(`/admin/users/${userId}/role`, { role }).then(r => r.data);
 export const adminApproveUser = (userId) => api.post(`/admin/users/${userId}/approve`).then(r => r.data);
 export const adminSuspendUser = (userId) => api.post(`/admin/users/${userId}/suspend`).then(r => r.data);
 export const adminReactivateUser = (userId) => api.post(`/admin/users/${userId}/reactivate`).then(r => r.data);
+// Workspaces (plans/usage/suspend are at the WORKSPACE level now)
+export const adminGetWorkspaces = () => api.get('/admin/workspaces').then(r => r.data);
+export const adminSetWorkspacePlan = (wsId, planId) =>
+  api.post(`/admin/workspaces/${wsId}/plan`, { planId }).then(r => r.data);
+export const adminSuspendWorkspace = (wsId) => api.post(`/admin/workspaces/${wsId}/suspend`).then(r => r.data);
+export const adminReactivateWorkspace = (wsId) => api.post(`/admin/workspaces/${wsId}/reactivate`).then(r => r.data);
 export const adminGetActivity = () => api.get('/admin/activity').then(r => r.data);
 export const adminGetUpgradeRequests = () => api.get('/admin/upgrade-requests').then(r => r.data);
 export const adminApproveUpgrade = (id) => api.post(`/admin/upgrade-requests/${id}/approve`).then(r => r.data);

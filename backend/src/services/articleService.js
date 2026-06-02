@@ -9,30 +9,27 @@ import * as usage from './usage.js';
 import * as activity from '../repositories/activity.js';
 import { calculateSeoScore, countWords } from '../lib/seo.js';
 
-// Loads everything a generation needs for one user.
-export async function loadUserContext(userId) {
+// Loads everything a generation needs for one workspace.
+export async function loadWorkspaceContext(workspaceId) {
   const [creds, keys, dna] = await Promise.all([
-    stores.getDefaultStore(userId),
-    aiKeysRepo.getKeys(userId),
-    dnaRepo.getDna(userId),
+    stores.getDefaultStore(workspaceId),
+    aiKeysRepo.getKeys(workspaceId),
+    dnaRepo.getDna(workspaceId),
   ]);
   return { creds, keys, dna };
 }
 
-// Core generation used by both the /generate route and the scheduled worker.
-// Phase 3 augments this with image selection.
-export async function generateArticleForUser(userId, { topic, wordCount, aiModel }) {
-  // Enforce the monthly plan cap on every article-creating path.
-  await usage.assertCanGenerate(userId);
+// `actor` is the user who triggered the action (for activity logging).
+export async function generateArticleForWorkspace(workspaceId, { topic, wordCount, aiModel }, actor) {
+  await usage.assertCanGenerate(workspaceId);
 
-  const { keys, dna } = await loadUserContext(userId);
+  const { keys, dna } = await loadWorkspaceContext(workspaceId);
   if (!dna) {
     const e = new Error('Business DNA not fetched yet. Fetch it first from the Business DNA page.');
     e.status = 400;
     throw e;
   }
 
-  // Auto-pick the most relevant existing product images for this topic.
   const selectedImages = selectRelevantImages(topic, dna.products || [], { max: 4 });
 
   const businessContext = {
@@ -53,9 +50,8 @@ export async function generateArticleForUser(userId, { topic, wordCount, aiModel
 
   const article = await service.generateArticle(topic, businessContext, apiKey);
 
-  // Count usage only on a successful generation.
-  await usage.incrementUsage(userId);
-  activity.log(userId, 'generate', article.title);
+  await usage.incrementUsage(workspaceId);
+  if (actor) activity.log(actor, 'generate', article.title);
 
   const seoScore = calculateSeoScore(article);
   return {
@@ -63,12 +59,12 @@ export async function generateArticleForUser(userId, { topic, wordCount, aiModel
     seoScore,
     aiModel: aiModel || 'gemini',
     wordCount: countWords(article.bodyHtml),
-    insertedImages: selectedImages, // surfaced to the UI
+    insertedImages: selectedImages,
   };
 }
 
-export async function enhanceArticleForUser(userId, { article, instructions, aiModel }) {
-  const { keys, dna } = await loadUserContext(userId);
+export async function enhanceArticleForWorkspace(workspaceId, { article, instructions, aiModel }) {
+  const { keys, dna } = await loadWorkspaceContext(workspaceId);
   const ctx = dna ? {
     storeName: dna.shop.name,
     products: dna.products,
@@ -88,24 +84,19 @@ export async function enhanceArticleForUser(userId, { article, instructions, aiM
   return { ...enhanced, seoScore: calculateSeoScore(enhanced), wordCount: countWords(enhanced.bodyHtml) };
 }
 
-// Instant mode + worker: generate then immediately publish. Single place where
-// the monthly-limit check (Phase 5) is enforced for auto-publish paths.
-export async function generateAndPublishForUser(userId, { topic, wordCount, aiModel, blogId }) {
+export async function generateAndPublishForWorkspace(workspaceId, { topic, wordCount, aiModel, blogId }, actor) {
   if (!blogId) {
     const e = new Error('A blog must be selected to publish.');
     e.status = 400;
     throw e;
   }
-  // The limit check + usage increment happen inside generateArticleForUser, so
-  // both instant publish and the scheduled worker are covered automatically.
-  const generated = await generateArticleForUser(userId, { topic, wordCount, aiModel });
-  const created = await publishArticleForUser(userId, blogId, generated);
+  const generated = await generateArticleForWorkspace(workspaceId, { topic, wordCount, aiModel }, actor);
+  const created = await publishArticleForWorkspace(workspaceId, blogId, generated, actor);
   return { generated, created };
 }
 
-// Publishes to the user's connected store. Throws 400 if no store connected.
-export async function publishArticleForUser(userId, blogId, article) {
-  const creds = await stores.getDefaultStore(userId);
+export async function publishArticleForWorkspace(workspaceId, blogId, article, actor) {
+  const creds = await stores.getDefaultStore(workspaceId);
   if (!creds) {
     const e = new Error('No Shopify store connected.');
     e.status = 400;
@@ -123,6 +114,6 @@ export async function publishArticleForUser(userId, blogId, article) {
     seoDescription: article.seoDescription,
     image: article.image || undefined,
   });
-  activity.log(userId, article.published === false ? 'save_draft' : 'publish', article.title);
+  if (actor) activity.log(actor, article.published === false ? 'save_draft' : 'publish', article.title);
   return created;
 }

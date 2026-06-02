@@ -1,19 +1,19 @@
 import { query } from '../db/index.js';
 
-export async function create(userId, c) {
+export async function create(workspaceId, createdBy, c) {
   const { rows } = await query(
     `INSERT INTO campaigns
-       (user_id, name, collection_handle, collection_title, cadence, articles_per_run,
+       (workspace_id, created_by, name, collection_handle, collection_title, cadence, articles_per_run,
         word_count, ai_model, blog_id, publish_mode, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'active')
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'active')
      RETURNING *`,
-    [userId, c.name, c.collectionHandle || null, c.collectionTitle, c.cadence,
+    [workspaceId, createdBy || null, c.name, c.collectionHandle || null, c.collectionTitle, c.cadence,
      c.articlesPerRun, c.wordCount, c.aiModel, c.blogId || null, c.publishMode]
   );
   return rows[0];
 }
 
-export async function listForUser(userId) {
+export async function listForWorkspace(workspaceId) {
   const { rows } = await query(
     `SELECT c.*,
             COALESCE(a.published, 0) AS published_count,
@@ -25,45 +25,42 @@ export async function listForUser(userId) {
                 COUNT(*) AS total
            FROM campaign_articles GROUP BY campaign_id
        ) a ON a.campaign_id = c.id
-      WHERE c.user_id = $1
+      WHERE c.workspace_id = $1
       ORDER BY c.created_at DESC`,
-    [userId]
+    [workspaceId]
   );
   return rows;
 }
 
-export async function getOwned(userId, id) {
-  const { rows } = await query('SELECT * FROM campaigns WHERE id = $1 AND user_id = $2', [id, userId]);
+export async function getOwned(workspaceId, id) {
+  const { rows } = await query('SELECT * FROM campaigns WHERE id = $1 AND workspace_id = $2', [id, workspaceId]);
   return rows[0] || null;
 }
 
-export async function setStatus(userId, id, status) {
+export async function setStatus(workspaceId, id, status) {
   const { rowCount } = await query(
-    'UPDATE campaigns SET status = $3 WHERE id = $1 AND user_id = $2',
-    [id, userId, status]
+    'UPDATE campaigns SET status = $3 WHERE id = $1 AND workspace_id = $2',
+    [id, workspaceId, status]
   );
   return rowCount > 0;
 }
 
-export async function remove(userId, id) {
-  const { rowCount } = await query('DELETE FROM campaigns WHERE id = $1 AND user_id = $2', [id, userId]);
+export async function remove(workspaceId, id) {
+  const { rowCount } = await query('DELETE FROM campaigns WHERE id = $1 AND workspace_id = $2', [id, workspaceId]);
   return rowCount > 0;
 }
 
-// "Run now": start a run immediately by setting it due with a full quota.
-export async function triggerNow(userId, id) {
+export async function triggerNow(workspaceId, id) {
   const { rows } = await query(
     `UPDATE campaigns
         SET next_run_at = now(), run_remaining = articles_per_run, status = 'active'
-      WHERE id = $1 AND user_id = $2
+      WHERE id = $1 AND workspace_id = $2
       RETURNING *`,
-    [id, userId]
+    [id, workspaceId]
   );
   return rows[0] || null;
 }
 
-// Worker: the next active campaign that is due. Single-process worker + the
-// scheduler's isRunning lock guarantee no concurrent processing, so no row lock.
 export async function findDue() {
   const { rows } = await query(
     `SELECT * FROM campaigns
@@ -81,30 +78,30 @@ export async function updateRunState(id, { runRemaining, nextRunAt }) {
   );
 }
 
-export async function logArticle(campaignId, userId, entry) {
+export async function logArticle(campaignId, workspaceId, entry) {
   await query(
-    `INSERT INTO campaign_articles (campaign_id, user_id, keyword, title, status, published_article_id, error)
+    `INSERT INTO campaign_articles (campaign_id, workspace_id, keyword, title, status, published_article_id, error)
      VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-    [campaignId, userId, entry.keyword || null, entry.title || null, entry.status,
+    [campaignId, workspaceId, entry.keyword || null, entry.title || null, entry.status,
      entry.publishedArticleId || null, entry.error || null]
   );
 }
 
-export async function listArticles(userId, campaignId) {
+export async function listArticles(workspaceId, campaignId) {
   const { rows } = await query(
     `SELECT * FROM campaign_articles
-      WHERE campaign_id = $1 AND user_id = $2
+      WHERE campaign_id = $1 AND workspace_id = $2
       ORDER BY created_at DESC LIMIT 100`,
-    [campaignId, userId]
+    [campaignId, workspaceId]
   );
   return rows;
 }
 
-// Titles this tool already produced for a user (dedup ledger).
-export async function coveredTitles(userId) {
+// Titles this workspace already produced (dedup ledger).
+export async function coveredTitles(workspaceId) {
   const { rows } = await query(
-    "SELECT title FROM campaign_articles WHERE user_id = $1 AND title IS NOT NULL",
-    [userId]
+    "SELECT title FROM campaign_articles WHERE workspace_id = $1 AND title IS NOT NULL",
+    [workspaceId]
   );
   return rows.map((r) => r.title);
 }
