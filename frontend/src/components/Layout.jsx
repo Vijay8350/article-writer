@@ -91,17 +91,15 @@ export default function Layout() {
             )}
           </div>
           {user && (
-            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={user.email}>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                Signed in as
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 10 }} title={user.email}>
                 {user.email}
-              </span>
-              <button
-                className="btn btn-ghost"
-                onClick={logout}
-                title="Log out"
-                style={{ padding: '6px 8px', flexShrink: 0 }}
-              >
-                <LogOut size={16} />
+              </div>
+              <button className="btn btn-secondary w-full" onClick={logout} title="Log out">
+                <LogOut size={16} /> Log out
               </button>
             </div>
           )}
