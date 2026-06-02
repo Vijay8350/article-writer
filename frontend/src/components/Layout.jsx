@@ -5,7 +5,7 @@ import { getSettings } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
 const navItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/business-dna', icon: Dna, label: 'Business DNA' },
   { path: '/generate', icon: PenLine, label: 'Generate Article' },
   { path: '/campaigns', icon: Rocket, label: 'Campaigns' },
@@ -64,7 +64,7 @@ export default function Layout() {
             <NavLink
               key={item.path}
               to={item.path}
-              end={item.path === '/'}
+              end={item.path === '/dashboard'}
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             >
               <item.icon />

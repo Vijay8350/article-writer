@@ -1,21 +1,34 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { UserPlus, Loader2, MailCheck } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { UserPlus, Loader2, MailCheck, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import AuthCard from '../components/AuthCard';
+
+const PLAN_LABELS = { free: 'Free trial', starter: 'Starter', growth: 'Growth', agency: 'Agency' };
 
 export default function Signup() {
   const { register } = useAuth();
+  const [params] = useSearchParams();
+  const planParam = params.get('plan');
+  const planLabel = planParam && PLAN_LABELS[planParam];
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
+  const [terms, setTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email.trim() || !password) return toast.error('Enter your email and password');
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return toast.error('Enter a valid email');
     if (password.length < 8) return toast.error('Password must be at least 8 characters');
+    if (password !== confirm) return toast.error('Passwords do not match');
+    if (!terms) return toast.error('Please accept the Terms & Privacy to continue');
+
     setSubmitting(true);
     try {
       await register(email.trim(), password, name.trim() || undefined);
@@ -28,63 +41,106 @@ export default function Signup() {
 
   if (submitted) {
     return (
-      <div className="auth-wrap">
-        <div className="card auth-card" style={{ textAlign: 'center' }}>
-          <MailCheck size={48} style={{ color: 'var(--accent-success, #10b981)', margin: '0 auto 16px' }} />
-          <h2 style={{ marginBottom: 12 }}>Account created!</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 20 }}>
-            Your account is <strong>awaiting administrator approval</strong>. You'll be able to sign in once it's approved.
-          </p>
-          <Link to="/login" className="btn btn-primary w-full">Back to Sign In</Link>
-          <style>{`
-            .auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-            .auth-card { width: 100%; max-width: 400px; padding: 32px; }
-          `}</style>
+      <AuthCard
+        title="Account created"
+        subtitle="Your account is awaiting administrator approval. You'll be able to sign in once it's approved."
+        badge={planLabel ? `Signed up for: ${planLabel}` : null}
+        footer={<Link to="/login">Back to Sign In</Link>}
+      >
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <MailCheck size={48} style={{ color: 'var(--accent-success)' }} />
         </div>
-      </div>
+      </AuthCard>
     );
   }
 
   return (
-    <div className="auth-wrap">
-      <form className="card auth-card" onSubmit={handleSubmit}>
-        <div className="auth-logo">
-          <h1>✍️ Article Writer</h1>
-          <p>Create your account</p>
+    <AuthCard
+      title="Create your account"
+      subtitle="Connect your Shopify store and publish your first article in minutes"
+      badge={planLabel ? `You're signing up for: ${planLabel}` : null}
+      footer={<>Already have an account? <Link to="/login">Sign in</Link></>}
+    >
+      <form onSubmit={handleSubmit} noValidate>
+        <div className="form-group">
+          <label className="form-label" htmlFor="su-name">Name <span style={{ color: 'var(--text-muted)' }}>(optional)</span></label>
+          <input
+            id="su-name"
+            className="form-input"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Your name"
+            autoComplete="name"
+            autoFocus
+          />
         </div>
         <div className="form-group">
-          <label className="form-label">Name <span style={{ color: 'var(--text-secondary)' }}>(optional)</span></label>
-          <input className="form-input" value={name}
-            onChange={e => setName(e.target.value)} placeholder="Your name" autoFocus />
+          <label className="form-label" htmlFor="su-email">Email</label>
+          <input
+            id="su-email"
+            className="form-input"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="you@example.com"
+          />
         </div>
         <div className="form-group">
-          <label className="form-label">Email</label>
-          <input className="form-input" type="email" value={email}
-            onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
+          <label className="form-label" htmlFor="su-pwd">Password</label>
+          <div className="pwd-field">
+            <input
+              id="su-pwd"
+              className="form-input"
+              type={showPwd ? 'text' : 'password'}
+              autoComplete="new-password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+            />
+            <button
+              type="button"
+              className="pwd-toggle"
+              aria-label={showPwd ? 'Hide password' : 'Show password'}
+              onClick={() => setShowPwd(v => !v)}
+              tabIndex={-1}
+            >
+              {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
         </div>
         <div className="form-group">
-          <label className="form-label">Password</label>
-          <input className="form-input" type="password" value={password}
-            onChange={e => setPassword(e.target.value)} placeholder="At least 8 characters" />
-          <div className="form-helper">Minimum 8 characters.</div>
+          <label className="form-label" htmlFor="su-confirm">Confirm password</label>
+          <input
+            id="su-confirm"
+            className="form-input"
+            type={showPwd ? 'text' : 'password'}
+            autoComplete="new-password"
+            value={confirm}
+            onChange={e => setConfirm(e.target.value)}
+            placeholder="Re-enter password"
+          />
+          {confirm && confirm !== password && (
+            <div className="form-helper" style={{ color: 'var(--accent-danger)' }}>Passwords don't match</div>
+          )}
         </div>
+        <label className="checkbox-group" style={{ marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)' }}>
+          <input type="checkbox" checked={terms} onChange={e => setTerms(e.target.checked)} />
+          <span>I agree to the <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link></span>
+        </label>
         <button className="btn btn-primary w-full" type="submit" disabled={submitting}>
           {submitting ? <><Loader2 size={16} className="spinning" /> Creating...</> : <><UserPlus size={16} /> Create Account</>}
         </button>
-        <p className="auth-switch">
-          Already have an account? <Link to="/login">Sign in</Link>
-        </p>
       </form>
       <style>{`
-        .auth-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-        .auth-card { width: 100%; max-width: 400px; padding: 32px; }
-        .auth-logo { text-align: center; margin-bottom: 28px; }
-        .auth-logo h1 { font-size: 24px; margin-bottom: 6px; }
-        .auth-logo p { color: var(--text-secondary); font-size: 14px; }
-        .auth-switch { text-align: center; margin-top: 20px; font-size: 14px; color: var(--text-secondary); }
-        .auth-switch a { color: var(--accent-primary, #8b5cf6); text-decoration: none; }
+        .pwd-field { position: relative; }
+        .pwd-field .form-input { padding-right: 38px; }
+        .pwd-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: 0; color: var(--text-muted); padding: 6px; border-radius: 6px; cursor: pointer; }
+        .pwd-toggle:hover { color: var(--text-primary); }
+        .checkbox-group { display: inline-flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+        .checkbox-group input { margin-top: 3px; }
         .spinning { animation: spin 1s linear infinite; }
       `}</style>
-    </div>
+    </AuthCard>
   );
 }
