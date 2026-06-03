@@ -20,10 +20,10 @@ async function getCreds(req, res) {
 
 router.post('/generate', async (req, res, next) => {
   try {
-    const { topic, wordCount, aiModel } = req.body || {};
+    const { topic, wordCount, aiModel, primaryKeyword, secondaryKeywords } = req.body || {};
     if (!topic) return res.status(400).json({ success: false, error: 'Topic is required' });
     const result = await articleService.generateArticleForWorkspace(
-      req.workspace.id, { topic, wordCount, aiModel }, req.user.id
+      req.workspace.id, { topic, wordCount, aiModel, primaryKeyword, secondaryKeywords }, req.user.id
     );
     res.json({ success: true, data: result });
   } catch (error) {
@@ -37,11 +37,11 @@ router.post('/generate', async (req, res, next) => {
 
 router.post('/generate-and-publish', async (req, res, next) => {
   try {
-    const { topic, wordCount, aiModel, blogId } = req.body || {};
+    const { topic, wordCount, aiModel, blogId, primaryKeyword, secondaryKeywords } = req.body || {};
     if (!topic) return res.status(400).json({ success: false, error: 'Topic is required' });
     if (!blogId) return res.status(400).json({ success: false, error: 'Blog ID is required' });
     const { generated, created } = await articleService.generateAndPublishForWorkspace(
-      req.workspace.id, { topic, wordCount, aiModel, blogId }, req.user.id
+      req.workspace.id, { topic, wordCount, aiModel, blogId, primaryKeyword, secondaryKeywords }, req.user.id
     );
     res.json({ success: true, data: { article: generated, published: created }, message: 'Generated & published!' });
   } catch (error) {

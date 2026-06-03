@@ -91,13 +91,22 @@ function buildPrompt(userPrompt, ctx) {
   const collections = ctx.collections?.slice(0, 15).map(c => `- "${c.title}" → /collections/${c.handle}`).join('\n') || 'None';
   const articles = ctx.existingArticles?.slice(0, 20).map(a => `- "${a.title}" → /blogs/${a.blogHandle || 'news'}/${a.handle}`).join('\n') || 'None';
 
-  const imgs = ctx.selectedImages || [];
+  const imgs = ctx.inlineImages || ctx.selectedImages || [];
+  const featured = ctx.featuredImage || null;
+  const featuredBlock = featured
+    ? `FEATURED IMAGE (hero — set as the Shopify article image; DO NOT embed inline):\n- URL: ${featured.src}\n- PRODUCT: "${featured.productTitle}" → /products/${featured.productHandle}\n- Never reuse this URL in the body.`
+    : `FEATURED IMAGE: none available.`;
   const imageBlock = imgs.length
-    ? `IMAGES — embed EACH real product image below using EXACTLY:
-<figure><img src="IMG_URL" alt="ALT" loading="lazy" /><figcaption><a href="/products/HANDLE">TITLE</a></figcaption></figure>
-Use the exact IMG_URL (never invent URLs). Place near relevant text.
-${imgs.map(i => `- IMG_URL: ${i.imageUrl} | PRODUCT: "${i.title}" → /products/${i.handle} | ALT: ${i.alt}`).join('\n')}`
-    : `IMAGES — no product images available; add 3-5 placeholders: <div class="article-image-placeholder" data-prompt="DETAIL"><p>[Image: CAPTION]</p></div>`;
+    ? `INLINE IMAGES — embed EACH below using EXACTLY:
+<figure><img src="IMG_URL" alt="ALT" loading="lazy" width="800" height="800"><figcaption><a href="/products/HANDLE">TITLE</a></figcaption></figure>
+Use the exact IMG_URL (never invent URLs). Always non-empty alt. Place at natural section breaks (not in the intro, never two in a row).
+${imgs.map(i => `- IMG_URL: ${i.src || i.imageUrl} | PRODUCT: "${i.title}" → /products/${i.handle} | ALT: ${i.alt}`).join('\n')}`
+    : `INLINE IMAGES — none available; add 2-3 placeholders: <div class="article-image-placeholder" data-prompt="DETAIL"><p>[Image: CAPTION]</p></div>`;
+
+  const primaryKeyword = ctx.primaryKeyword || userPrompt;
+  const secondary = Array.isArray(ctx.secondaryKeywords) && ctx.secondaryKeywords.length
+    ? ctx.secondaryKeywords.join(', ')
+    : '(pick 4-6 related terms)';
 
   return `████████████████████████████████████████
 ██  WRITE EXACTLY ${wordCount} WORDS.         ██
@@ -118,15 +127,22 @@ EXISTING ARTICLES (link to 1-3):
 ${articles}
 
 TOPIC: ${userPrompt}
+PRIMARY KEYWORD: "${primaryKeyword}" — must appear in: the title, the first 100 words, ONE H2, and the meta description. ~0.5-1.5% density.
+SECONDARY KEYWORDS: ${secondary} — sprinkle naturally.
 
-STRUCTURE REQUIRED:
-- 5-8 <h2> sections (each 200-400 words, with keyword in heading)
-- 2-4 <h3> sub-sections
-- <strong>Bold</strong> 8-15 key phrases throughout
-- 3-5 <ul> or <ol> lists
+STRUCTURE REQUIRED (in this exact order, no H1 in body):
+1) INTRO: 2-3 sentences. BLUF. Primary keyword in the first 100 words.
+${wordCount >= 1200 ? `2) "In this article" TOC with anchor links to each H2 (slug ids on the H2s).
+3) 4-7 <h2> sections (150-300 words each), <h3> sub-points where useful. At least one <ul>/<ol>. Where relevant, ONE comparison <table>. Bold 8-15 key phrases.
+4) Final <h2>Frequently Asked Questions</h2> with 3-5 <h3>question / <p>answer pairs.
+5) Conclusion + soft CTA mentioning ${ctx.storeName || 'the store'} (link to a product or collection).
+` : `2) 4-7 <h2> sections (150-300 words each), <h3> sub-points where useful. At least one <ul>/<ol>. Bold 8-15 key phrases.
+3) Final <h2>Frequently Asked Questions</h2> with 3-5 <h3>question / <p>answer pairs.
+4) Conclusion + soft CTA mentioning ${ctx.storeName || 'the store'} (link to a product or collection).`}
+
+${featuredBlock}
+
 ${imageBlock}
-- Opening paragraph: hook + primary keyword (no H1 in body)
-- Closing section: soft CTA mentioning ${ctx.storeName || 'the store'}
 
 WRITING STYLE:
 - Contractions: you'll, it's, don't, we've, that's
@@ -136,7 +152,7 @@ WRITING STYLE:
 - Transitions: "That said,", "Look,", "The reality is,", "Here's why:"
 
 Return ONLY valid JSON (no markdown fences):
-{"title":"Compelling SEO Title (50-70 chars)","handle":"url-slug","bodyHtml":"<h2>...</h2><p>${wordCount}+ WORDS of rich, detailed content with links and bold...</p>","summary":"2-3 sentence hook","tags":"keyword1, keyword2, keyword3, keyword4, keyword5, keyword6, keyword7","seoTitle":"Primary Keyword - Benefit | ${ctx.storeName || 'Store'} (50-60 chars)","seoDescription":"Compelling 150-160 char description with keyword and CTA","imagePrompts":["prompt1","prompt2","prompt3"]}`;
+{"title":"SEO title 50-70 chars, primary keyword near the front","handle":"keyword-slug","primaryKeyword":"${primaryKeyword}","bodyHtml":"<p>BLUF intro with primary keyword in first 100 words ...</p>...${wordCount}+ words total","summary":"1-2 sentence excerpt including the primary keyword","tags":"primary kw, secondary 1, secondary 2, secondary 3, niche tag, brand tag","seoTitle":"Primary Keyword - Benefit | ${ctx.storeName || 'Store'} (50-60 chars)","seoDescription":"150-160 char meta description with primary keyword + CTA","imagePrompts":["fallback 1","fallback 2"]}`;
 }
 
 function parseResponse(raw) {
@@ -159,7 +175,8 @@ function parseResponse(raw) {
       tags: p.tags || '',
       seoTitle: p.seoTitle || p.title || '',
       seoDescription: p.seoDescription || '',
-      imagePrompts: p.imagePrompts || []
+      imagePrompts: p.imagePrompts || [],
+      primaryKeyword: p.primaryKeyword || ''
     };
   } catch (e) {
     console.error('Failed to parse DeepSeek response:', e.message);
@@ -177,7 +194,8 @@ function parseResponse(raw) {
           tags: p.tags || '',
           seoTitle: p.seoTitle || '',
           seoDescription: p.seoDescription || '',
-          imagePrompts: p.imagePrompts || []
+          imagePrompts: p.imagePrompts || [],
+          primaryKeyword: p.primaryKeyword || ''
         };
       }
     } catch { /* fallback below */ }

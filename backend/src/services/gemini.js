@@ -89,10 +89,15 @@ function buildArticlePrompt(userPrompt, ctx) {
   const collectionsSection = ctx.collections?.slice(0, 15).map(c => `- "${c.title}" → /collections/${c.handle}`).join('\n') || 'No collections available';
   const articlesSection = ctx.existingArticles?.slice(0, 20).map(a => `- "${a.title}" → /blogs/${a.blogHandle || 'news'}/${a.handle}`).join('\n') || 'No existing articles';
 
-  const images = ctx.selectedImages || [];
-  const imageSection = images.length
-    ? images.map(img => `- IMG_URL: ${img.imageUrl}\n  PRODUCT: "${img.title}" → /products/${img.handle}\n  ALT: ${img.alt}`).join('\n')
+  const inlineImages = ctx.inlineImages || ctx.selectedImages || [];
+  const featured = ctx.featuredImage || null;
+  const inlineSection = inlineImages.length
+    ? inlineImages.map(img => `- IMG_URL: ${img.src || img.imageUrl}\n  PRODUCT: "${img.title}" → /products/${img.handle}\n  ALT: ${img.alt}`).join('\n')
     : '';
+
+  const primaryKeyword = ctx.primaryKeyword || userPrompt;
+  const secondaryKeywords = Array.isArray(ctx.secondaryKeywords) ? ctx.secondaryKeywords : [];
+  const secondaryList = secondaryKeywords.length ? secondaryKeywords.join(', ') : '(none specified — pick 4-6 natural related terms)';
 
   return `You are a senior content strategist and professional blog writer who has written for major publications. You write like a real human — opinionated, thoughtful, and with genuine expertise. You NEVER sound like AI.
 
@@ -137,45 +142,47 @@ HUMAN TONE (CRITICAL — readers must NOT detect AI):
 - Write as if you've personally used or experienced what you're discussing
 - Include 1-2 slightly opinionated takes that a real expert would have
 
-SEO STRUCTURE (follow exactly):
-- Title: compelling, keyword-rich, 50-70 characters (DO NOT include H1 in the body)
-- 5-8 H2 subheadings that naturally incorporate keywords
-- 2-4 H3 sub-sections under relevant H2s
-- Paragraphs: 2-4 sentences each (NEVER walls of text)
-- Use <ul> or <ol> lists where they genuinely help (at least 3-4 lists in the article)
-- <strong>Bold</strong> key phrases and important takeaways (8-15 bolded phrases throughout)
-- First paragraph must hook the reader AND include the primary keyword
-- Sprinkle the main keyword naturally 5-8 times across the article (no stuffing)
-- Use related/LSI keywords throughout (synonyms, related terms)
-- Write a compelling conclusion section with a soft CTA mentioning the store
+KEYWORDS (target these):
+- PRIMARY keyword: "${primaryKeyword}" — use in: the title, first 100 words of the intro, exactly one H2, and the meta description. Density ~0.5–1.5% (no stuffing).
+- SECONDARY/related keywords: ${secondaryList}. Sprinkle naturally across H2/H3 headings and body.
 
-INTERNAL LINKING (MANDATORY — this is critical for SEO):
-- Link to 3-6 products using: <a href="/products/HANDLE">descriptive keyword-rich anchor text</a>
-- Link to 2-4 collections using: <a href="/collections/HANDLE">descriptive anchor text</a>
-- Link to 1-3 existing articles using: <a href="/blogs/BLOG_HANDLE/ARTICLE_HANDLE">anchor text</a>
-- Anchor text must be descriptive keywords, NEVER "click here" or "learn more"
-- Links should feel naturally woven into sentences, not forced
+ARTICLE STRUCTURE (CRITICAL — follow this order exactly, no H1 in body):
+1. INTRO: 2-3 sentences. State the value up front (BLUF). Include the primary keyword naturally in the FIRST 100 words.
+${wordCount >= 1200 ? `2. TOC: a short "In this article" block with anchor links to each H2 section (use slug-style #anchor ids), e.g. <p><strong>In this article:</strong> <a href="#section-one">Title</a> · <a href="#section-two">Title</a> ...</p>. Add matching id="..." attributes on the H2s.
+` : ''}${wordCount >= 1200 ? '3' : '2'}. 4-7 <h2> sections (150-300 words each), with <h3> sub-points where useful. At least one <ul>/<ol> list. Where genuinely useful (comparison/options/specs), include ONE <table> with <thead><tbody>. Bold 8-15 key phrases with <strong>.
+${wordCount >= 1200 ? '4' : '3'}. FAQ section: a final <h2>Frequently Asked Questions</h2> with 3-5 <h3> question/answer pairs. Each Q is an <h3>; the answer follows as 1-2 <p> tags. (We extract these for FAQPage schema — match the structure exactly.)
+${wordCount >= 1200 ? '5' : '4'}. CONCLUSION + CTA: a short closing paragraph that includes the primary keyword and a soft CTA linking to a relevant product or collection.
 
-IMAGES (CRITICAL — use the REAL product images below):
-${imageSection
-    ? `You have been given REAL product images from this store. Embed EACH of them in the body at a relevant point using EXACTLY this pattern (use the exact IMG_URL — do not invent URLs):
+INTERNAL LINKING (MANDATORY):
+- 3-6 product links: <a href="/products/HANDLE">descriptive keyword-rich anchor</a>
+- 2-4 collection links: <a href="/collections/HANDLE">descriptive anchor</a>
+- 1-3 existing-article links: <a href="/blogs/BLOG_HANDLE/ARTICLE_HANDLE">anchor</a>
+- Anchor text = real keywords, NEVER "click here"/"learn more".
+
+${featured ? `FEATURED IMAGE (the article's hero/thumbnail — DO NOT embed inline; we set it separately):
+- URL: ${featured.src}
+- PRODUCT: "${featured.productTitle}" → /products/${featured.productHandle}
+- This is the Shopify article's main image. NEVER repeat this same URL in the body.
+` : `FEATURED IMAGE: none available — we'll publish without a main image.
+`}
+INLINE IMAGES (place each in the body at natural breaks, NEVER two in a row, NEVER in the intro):
+${inlineSection
+    ? `Embed EACH of these images ONCE in the body using EXACTLY this pattern (use the exact IMG_URL — never invent URLs). Place near text where the product is genuinely relevant.
 <figure>
-  <img src="IMG_URL" alt="ALT" loading="lazy" />
+  <img src="IMG_URL" alt="ALT" loading="lazy" width="800" height="800">
   <figcaption><a href="/products/HANDLE">PRODUCT TITLE</a></figcaption>
 </figure>
-Place each image near text where its product is genuinely relevant, and put a contextual link to that product near the image.
+Always include the contextual product link in the figcaption. Always include non-empty alt text.
 
-AVAILABLE PRODUCT IMAGES:
-${imageSection}`
-    : `No matching product images are available. Insert 3-5 placeholders between sections instead:
-<div class="article-image-placeholder" data-prompt="DETAILED_IMAGE_DESCRIPTION_FOR_GENERATION">
-  <p>[Image: SHORT_CAPTION]</p>
-</div>`}
+AVAILABLE INLINE IMAGES:
+${inlineSection}`
+    : `No matching product images available. Insert 2-3 placeholders between sections instead:
+<div class="article-image-placeholder" data-prompt="DETAILED_IMAGE_DESCRIPTION"><p>[Image: SHORT_CAPTION]</p></div>`}
 
 === OUTPUT FORMAT ===
-Return ONLY valid JSON. No markdown code fences. No explanation before or after. Just the raw JSON object:
+Return ONLY valid JSON (no markdown fences, no preamble):
 
-{"title":"Your Compelling SEO Title Here (50-70 chars)","handle":"url-friendly-slug-here","bodyHtml":"<h2>First Section</h2><p>Your detailed content here with <strong>bolded phrases</strong> and <a href=\\"/products/handle\\">product links</a>...</p><h2>Second Section</h2><p>More detailed content...</p>...THE BODY MUST BE ${wordCount}+ WORDS","summary":"A compelling 2-3 sentence summary for the blog listing page that hooks readers.","tags":"primary keyword, secondary keyword, related term 1, related term 2, related term 3, brand-related tag, niche tag","seoTitle":"Primary Keyword - Compelling Benefit | ${ctx.storeName || 'Store'} (50-60 chars)","seoDescription":"A compelling 150-160 character meta description that includes the primary keyword and a clear call-to-action encouraging clicks.","imagePrompts":["detailed prompt 1","detailed prompt 2","detailed prompt 3"]}
+{"title":"SEO title 50-70 chars with primary keyword near the front","handle":"keyword-slug-short","primaryKeyword":"${primaryKeyword}","bodyHtml":"<p>BLUF intro (2-3 sentences) with primary keyword in the first 100 words ...</p>...${wordCount}+ words total","summary":"1-2 sentence excerpt that hooks readers and includes the primary keyword.","tags":"primary keyword, secondary 1, secondary 2, secondary 3, niche tag, brand tag","seoTitle":"Primary Keyword - Benefit | ${ctx.storeName || 'Store'} (50-60 chars)","seoDescription":"Compelling 150-160 char meta description including the primary keyword and a clear CTA.","imagePrompts":["fallback prompt 1","fallback prompt 2"]}
 
 REMEMBER: The bodyHtml field MUST contain ${wordCount}+ words of rich, detailed, expert-level content. Count your words. Each section must be substantial — 200-400 words minimum per H2 section.`;
 }
@@ -240,6 +247,7 @@ function parseArticleResponse(rawText) {
       seoTitle: parsed.seoTitle || parsed.title || '',
       seoDescription: parsed.seoDescription || '',
       imagePrompts: parsed.imagePrompts || [],
+      primaryKeyword: parsed.primaryKeyword || '',
     };
   } catch (e) {
     console.error('Failed to parse Gemini response:', e.message);
@@ -259,6 +267,7 @@ function parseArticleResponse(rawText) {
           seoTitle: parsed.seoTitle || '',
           seoDescription: parsed.seoDescription || '',
           imagePrompts: parsed.imagePrompts || [],
+          primaryKeyword: parsed.primaryKeyword || '',
         };
       }
     } catch (e2) { /* fallback below */ }

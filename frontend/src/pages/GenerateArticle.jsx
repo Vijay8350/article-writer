@@ -7,6 +7,8 @@ import SeoScoreCard from '../components/SeoScoreCard';
 export default function GenerateArticle() {
   const [dna, setDna] = useState(null);
   const [topic, setTopic] = useState('');
+  const [primaryKeyword, setPrimaryKeyword] = useState('');
+  const [secondaryKeywords, setSecondaryKeywords] = useState('');
   const [wordCount, setWordCount] = useState(1500);
   const [aiModel, setAiModel] = useState('gemini');
   const [selectedBlog, setSelectedBlog] = useState('');
@@ -40,10 +42,15 @@ export default function GenerateArticle() {
     setGenerating(true);
     setArticle(null);
     try {
-      const res = await generateArticle({ topic, wordCount, aiModel, blogId: selectedBlog });
+      const res = await generateArticle({
+        topic, wordCount, aiModel, blogId: selectedBlog,
+        primaryKeyword: primaryKeyword.trim() || undefined,
+        secondaryKeywords: secondaryKeywords ? secondaryKeywords.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+      });
       setArticle(res.data);
       setEditedArticle({ ...res.data });
-      toast.success('Article generated successfully!');
+      if (res.data?.publishWarning) toast(res.data.publishWarning, { icon: '⚠️' });
+      else toast.success('Article generated successfully!');
       refreshUsage();
     } catch (err) {
       if (err.response?.data?.code === 'LIMIT_REACHED') {
@@ -79,7 +86,11 @@ export default function GenerateArticle() {
     setInstantPublishing(true);
     setArticle(null);
     try {
-      const res = await generateAndPublish({ topic, wordCount, aiModel, blogId: selectedBlog });
+      const res = await generateAndPublish({
+        topic, wordCount, aiModel, blogId: selectedBlog,
+        primaryKeyword: primaryKeyword.trim() || undefined,
+        secondaryKeywords: secondaryKeywords ? secondaryKeywords.split(',').map(s => s.trim()).filter(Boolean) : undefined,
+      });
       setArticle(res.data.article);
       setEditedArticle({ ...res.data.article });
       toast.success('Generated & published to Shopify!');
@@ -150,7 +161,29 @@ export default function GenerateArticle() {
                   placeholder="e.g., '10 Best Ways to Style Our Winter Collection' or 'How to Choose the Perfect Gift for Your Loved Ones'"
                   rows={3}
                 />
-                <div className="form-helper">Be specific about what you want the article to cover. The AI will use your store's products and collections for context.</div>
+                <div className="form-helper">Be specific about what you want the article to cover.</div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div className="form-group">
+                  <label className="form-label">Primary keyword <span style={{ color: 'var(--text-muted)' }}>(optional)</span></label>
+                  <input
+                    className="form-input"
+                    value={primaryKeyword}
+                    onChange={e => setPrimaryKeyword(e.target.value)}
+                    placeholder="e.g., winter coat styling"
+                  />
+                  <div className="form-helper">Defaults to the topic. Targeted in title, intro, an H2, and meta.</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Secondary keywords <span style={{ color: 'var(--text-muted)' }}>(comma-separated)</span></label>
+                  <input
+                    className="form-input"
+                    value={secondaryKeywords}
+                    onChange={e => setSecondaryKeywords(e.target.value)}
+                    placeholder="e.g., layering tips, capsule wardrobe, outerwear"
+                  />
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20 }}>
@@ -290,6 +323,37 @@ export default function GenerateArticle() {
 
               {/* Sidebar: SEO + Publish */}
               <div>
+                {/* Featured image — the article's hero */}
+                {article?.featuredImage && (
+                  <div className="card mb-24">
+                    <div className="card-header"><h3>🌟 Featured image</h3></div>
+                    <div className="card-body">
+                      <img
+                        src={article.featuredImage.src}
+                        alt={article.featuredImage.alt}
+                        loading="lazy"
+                        style={{ width: '100%', borderRadius: 'var(--radius-md)', border: '1px solid rgba(139,92,246,0.2)', display: 'block' }}
+                      />
+                      <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text-secondary)' }}>
+                        From <strong>{article.featuredImage.productTitle}</strong>
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                        Will be set as the Shopify article's main image.
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {article && !article.featuredImage && (
+                  <div className="card mb-24" style={{ borderColor: 'rgba(245,158,11,0.4)' }}>
+                    <div className="card-body">
+                      <strong>⚠️ No featured image</strong>
+                      <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 6 }}>
+                        No product in your store matched this topic. The article will publish without a hero image. Try a topic more aligned to your catalog, or pick a featured image manually in Shopify.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* SEO Score */}
                 <SeoScoreCard seoScore={currentArticle.seoScore} />
 
