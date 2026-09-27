@@ -7,6 +7,8 @@ import GenerateArticle from './pages/GenerateArticle';
 import ExistingArticles from './pages/ExistingArticles';
 import ScheduledPosts from './pages/ScheduledPosts';
 import Campaigns from './pages/Campaigns';
+import InstagramAccounts from './pages/InstagramAccounts';
+import InstagramScheduler from './pages/InstagramScheduler';
 import PlanUsage from './pages/PlanUsage';
 import Admin from './pages/Admin';
 import Settings from './pages/Settings';
@@ -72,6 +74,8 @@ export default function App() {
         <Route path="/articles" element={<ExistingArticles />} />
         <Route path="/scheduled" element={<ScheduledPosts />} />
         <Route path="/campaigns" element={<Campaigns />} />
+        <Route path="/instagram" element={<InstagramAccounts />} />
+        <Route path="/instagram-scheduler" element={<InstagramScheduler />} />
         <Route path="/plan" element={<PlanUsage />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/settings" element={<Settings />} />

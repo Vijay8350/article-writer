@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Trash2, Sparkles, Eye, Loader2, RefreshCw } from 'lucide-react';
-import { getBusinessDna, getExistingArticles, deleteArticle, enhanceArticle } from '../lib/api';
+import { getBusinessDna, getExistingArticles, deleteArticle, enhanceArticle, getSettings } from '../lib/api';
 import toast from 'react-hot-toast';
 import SeoScoreCard from '../components/SeoScoreCard';
 
@@ -23,6 +23,10 @@ export default function ExistingArticles() {
           setSelectedBlog(String(res.data.blogs[0].id));
         }
       }
+    }).catch(() => {});
+    getSettings().then(res => {
+      const preferred = res.data?.ai?.providers?.enhance;
+      if (preferred) setAiModel(preferred);
     }).catch(() => {});
   }, []);
 

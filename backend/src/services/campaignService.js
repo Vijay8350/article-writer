@@ -1,5 +1,6 @@
 import * as campaigns from '../repositories/campaigns.js';
 import { getKeywordIdeas, isDuplicate } from './keywordIdeas.js';
+import { resolveAi } from './ai.js';
 import { loadWorkspaceContext, generateArticleForWorkspace, publishArticleForWorkspace } from './articleService.js';
 
 function relevantProductTitles(dna, collectionTitle) {
@@ -32,7 +33,7 @@ export async function runOneArticleForCampaign(campaign) {
       return { stopRun: true };
     }
 
-    const { dna, keys } = await loadWorkspaceContext(workspaceId);
+    const { dna } = await loadWorkspaceContext(workspaceId);
     if (!dna) {
       await campaigns.logArticle(campaign.id, workspaceId, { status: 'failed', error: 'Business DNA not fetched' });
       return { stopRun: true };
@@ -43,16 +44,13 @@ export async function runOneArticleForCampaign(campaign) {
       ...(await campaigns.coveredTitles(workspaceId)),
     ];
     const productTitles = relevantProductTitles(dna, campaign.collection_title);
-    const apiKey = (campaign.ai_model === 'deepseek' ? keys.deepseekKey : keys.geminiKey) || undefined;
-
     const ideas = await getKeywordIdeas({
       collectionTitle: campaign.collection_title,
       niche: dna.analysis?.niche,
       productTitles,
       excludeTitles: covered,
       count: 8,
-      aiModel: campaign.ai_model,
-      apiKey,
+      ai: await resolveAi(workspaceId, 'article', campaign.ai_model),
     });
 
     const fresh = ideas.find((i) => !isDuplicate(i.title, covered));

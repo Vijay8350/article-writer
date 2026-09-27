@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireWorkspace, requireWorkspaceRole } from '../middleware/workspace.js';
 import * as stores from '../repositories/stores.js';
 import * as dnaRepo from '../repositories/dna.js';
+import { buildSocialDna } from '../services/socialDna.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
@@ -61,6 +62,7 @@ router.post('/fetch', requireWorkspaceRole('owner', 'admin', 'member'), async (r
     const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 20).map(([tag]) => tag);
 
     const dna = {
+      source: 'shopify',
       fetchedAt: new Date().toISOString(),
       warnings,
       shop: {
@@ -88,6 +90,18 @@ router.post('/fetch', requireWorkspaceRole('owner', 'admin', 'member'), async (r
     await dnaRepo.saveDna(req.workspace.id, creds.id, dna);
     res.json({ success: true, data: dna });
   } catch (error) { next(error); }
+});
+
+// Alternative source: build the DNA from a connected Instagram account and/or the public website.
+router.post('/fetch-social', requireWorkspaceRole('owner', 'admin', 'member'), async (req, res, next) => {
+  try {
+    const { websiteUrl, instagramAccountId } = req.body || {};
+    const dna = await buildSocialDna(req.workspace.id, { websiteUrl, instagramAccountId });
+    res.json({ success: true, data: dna });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ success: false, error: error.message });
+    next(error);
+  }
 });
 
 router.delete('/', requireWorkspaceRole('owner', 'admin'), async (req, res, next) => {

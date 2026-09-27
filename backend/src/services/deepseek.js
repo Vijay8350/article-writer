@@ -3,11 +3,17 @@ import config from '../config/env.js';
 
 const DEEPSEEK_URL = config.deepseek.baseUrl;
 
-async function callDeepSeek(messages, temperature = 0.7, maxTokens = 16000, apiKey) {
+// Used when a workspace hasn't picked a model in Settings → AI Preferences.
+export const DEFAULT_MODEL = 'deepseek-chat';
+
+async function callDeepSeek(messages, temperature = 0.7, maxTokens = 16000, apiKey, model = DEFAULT_MODEL) {
   const key = apiKey || config.deepseek.apiKey;
+  // Reasoner models spend max_tokens on their chain of thought as well as the
+  // answer, so a small budget would end mid-thought with no JSON at all.
+  const budget = /reasoner/i.test(model) ? Math.max(maxTokens, 32000) : maxTokens;
   const response = await axios.post(
     `${DEEPSEEK_URL}/chat/completions`,
-    { model: 'deepseek-chat', messages, temperature, max_tokens: maxTokens },
+    { model, messages, temperature, max_tokens: budget },
     {
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       timeout: 300000, // 5 minutes for long articles
@@ -17,11 +23,25 @@ async function callDeepSeek(messages, temperature = 0.7, maxTokens = 16000, apiK
 }
 
 // Generic single-shot completion (used by keyword ideation, etc.)
-export async function complete(prompt, apiKey, { temperature = 0.7, maxTokens = 2000 } = {}) {
-  return callDeepSeek([{ role: 'user', content: prompt }], temperature, maxTokens, apiKey);
+export async function complete(prompt, apiKey, { temperature = 0.7, maxTokens = 2000, model } = {}) {
+  return callDeepSeek([{ role: 'user', content: prompt }], temperature, maxTokens, apiKey, model);
 }
 
-export async function generateArticle(prompt, ctx, apiKey) {
+// Cheap live check that a key is accepted (falls back to the platform key); no tokens spent.
+// Resolves to the model ids the key can use.
+export async function verifyKey(apiKey) {
+  try {
+    const { data } = await axios.get(`${DEEPSEEK_URL}/models`, {
+      headers: { Authorization: `Bearer ${apiKey || config.deepseek.apiKey}` },
+      timeout: 30000,
+    });
+    return (data?.data || []).map((m) => m.id).filter(Boolean);
+  } catch (error) {
+    throw new Error(`DeepSeek rejected the key: ${error.response?.data?.error?.message || error.message}`);
+  }
+}
+
+export async function generateArticle(prompt, ctx, apiKey, model) {
   const wordCount = ctx.wordCount || 1500;
   const minWords = Math.round(wordCount * 0.9);
 
@@ -40,11 +60,11 @@ You return ONLY valid JSON. Never markdown code blocks. Never explanations.`;
   const result = await callDeepSeek([
     { role: 'system', content: sys },
     { role: 'user', content: userPrompt }
-  ], 0.9, 16000, apiKey);
+  ], 0.9, 16000, apiKey, model);
   return parseResponse(result);
 }
 
-export async function enhanceArticle(article, instructions, ctx, apiKey) {
+export async function enhanceArticle(article, instructions, ctx, apiKey, model) {
   const sys = `You are an expert blog editor. Enhance articles to be more human-sounding, better SEO-optimized, and longer. Keep content AT LEAST as long as the original. Remove AI phrases. Add internal links. Return ONLY valid JSON.`;
 
   const prompt = `Enhance this article:
@@ -73,7 +93,7 @@ Return ONLY JSON: {"title":"","handle":"","bodyHtml":"KEEP IT LONG","summary":""
   const result = await callDeepSeek([
     { role: 'system', content: sys },
     { role: 'user', content: prompt }
-  ], 0.7, 16000, apiKey);
+  ], 0.7, 16000, apiKey, model);
   return parseResponse(result);
 }
 
@@ -83,6 +103,15 @@ export async function generateSeoMeta(article) {
   try {
     return JSON.parse(result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
   } catch { return { seoTitle: article.title?.substring(0, 60) || '', seoDescription: '' }; }
+}
+
+// Brand profile from an Instagram + website Business DNA (empty for Shopify-only DNA).
+function brandLines(ctx) {
+  return [
+    ctx.brandSummary && `About the brand: ${ctx.brandSummary}`,
+    ctx.brandVoice && `Brand voice (write in this tone): ${ctx.brandVoice}`,
+    ctx.brandKeywords?.length && `Brand keywords: ${ctx.brandKeywords.join(', ')}`,
+  ].filter(Boolean).join('\n');
 }
 
 function buildPrompt(userPrompt, ctx) {
@@ -116,7 +145,7 @@ ${imgs.map(i => `- IMG_URL: ${i.src || i.imageUrl} | PRODUCT: "${i.title}" → /
 
 Store: ${ctx.storeName || 'N/A'} (${ctx.niche || 'e-commerce'}) — ${ctx.storeDomain || ''}
 Audience: ${ctx.targetAudience || 'General shoppers'}
-
+${brandLines(ctx)}
 PRODUCTS (link to 3-6 in article):
 ${products}
 

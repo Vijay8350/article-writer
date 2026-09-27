@@ -1,21 +1,18 @@
-import * as geminiService from './gemini.js';
-import * as deepseekService from './deepseek.js';
 import * as shopifyService from './shopify.js';
+import { resolveAi } from './ai.js';
 import { selectRelevantImages, pickFeaturedImage } from './imageMatcher.js';
 import * as stores from '../repositories/stores.js';
-import * as aiKeysRepo from '../repositories/aiKeys.js';
 import * as dnaRepo from '../repositories/dna.js';
 import * as usage from './usage.js';
 import * as activity from '../repositories/activity.js';
 import { calculateSeoScore, countWords } from '../lib/seo.js';
 
 export async function loadWorkspaceContext(workspaceId) {
-  const [creds, keys, dna] = await Promise.all([
+  const [creds, dna] = await Promise.all([
     stores.getDefaultStore(workspaceId),
-    aiKeysRepo.getKeys(workspaceId),
     dnaRepo.getDna(workspaceId),
   ]);
-  return { creds, keys, dna };
+  return { creds, dna };
 }
 
 // ─── FAQ extraction + JSON-LD ───────────────────────────────────────────────
@@ -80,7 +77,7 @@ function buildFAQPageLd(faqs) {
 export async function generateArticleForWorkspace(workspaceId, { topic, wordCount, aiModel, primaryKeyword, secondaryKeywords }, actor) {
   await usage.assertCanGenerate(workspaceId);
 
-  const { keys, dna } = await loadWorkspaceContext(workspaceId);
+  const { dna } = await loadWorkspaceContext(workspaceId);
   if (!dna) {
     const e = new Error('Business DNA not fetched yet. Fetch it first from the Business DNA page.');
     e.status = 400;
@@ -108,13 +105,13 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
     selectedImages: inlineImages, // back-compat with older prompt code paths
     primaryKeyword: primaryKeyword || topic,
     secondaryKeywords: Array.isArray(secondaryKeywords) ? secondaryKeywords : [],
+    brandSummary: dna.brand?.summary,
+    brandVoice: dna.brand?.voice,
+    brandKeywords: dna.brand?.keywords,
   };
 
-  const useDeepseek = aiModel === 'deepseek';
-  const service = useDeepseek ? deepseekService : geminiService;
-  const apiKey = (useDeepseek ? keys.deepseekKey : keys.geminiKey) || undefined;
-
-  const article = await service.generateArticle(topic, businessContext, apiKey);
+  const ai = await resolveAi(workspaceId, 'article', aiModel);
+  const article = await ai.service.generateArticle(topic, businessContext, ai.apiKey, ai.model);
 
   await usage.incrementUsage(workspaceId);
   if (actor) activity.log(actor, 'generate', article.title);
@@ -142,29 +139,27 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
     jsonLd,
     faqExtracted: faqs.length,
     seoScore,
-    aiModel: aiModel || 'gemini',
+    aiModel: ai.provider,
     wordCount: countWords(article.bodyHtml),
     publishWarning: !featuredImage ? 'No matching product image for the featured/hero slot — article will publish without a main image.' : undefined,
   };
 }
 
 export async function enhanceArticleForWorkspace(workspaceId, { article, instructions, aiModel }) {
-  const { keys, dna } = await loadWorkspaceContext(workspaceId);
+  const { dna } = await loadWorkspaceContext(workspaceId);
   const ctx = dna ? {
     storeName: dna.shop.name,
     products: dna.products,
     collections: dna.collections,
   } : {};
 
-  const useDeepseek = aiModel === 'deepseek';
-  const service = useDeepseek ? deepseekService : geminiService;
-  const apiKey = (useDeepseek ? keys.deepseekKey : keys.geminiKey) || undefined;
-
-  const enhanced = await service.enhanceArticle(
+  const ai = await resolveAi(workspaceId, 'enhance', aiModel);
+  const enhanced = await ai.service.enhanceArticle(
     article,
     instructions || 'Improve SEO, add internal links, make more engaging',
     ctx,
-    apiKey
+    ai.apiKey,
+    ai.model
   );
   return { ...enhanced, seoScore: calculateSeoScore(enhanced), wordCount: countWords(enhanced.bodyHtml) };
 }

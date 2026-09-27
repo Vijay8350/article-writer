@@ -44,6 +44,24 @@ export async function complete(prompt, apiKey, { temperature = 0.8, maxTokens = 
   return callGemini(prompt, temperature, maxTokens, apiKey);
 }
 
+// Cheap live check that a key can call generateContent on the configured model
+// (falls back to the platform key). Throws a user-facing message if Google refuses.
+export async function verifyKey(apiKey) {
+  try {
+    await axios.post(
+      geminiUrl(apiKey),
+      { contents: [{ parts: [{ text: 'ping' }] }], generationConfig: { maxOutputTokens: 8 } },
+      { headers: { 'Content-Type': 'application/json' }, timeout: 30000 }
+    );
+  } catch (error) {
+    const err = error.response?.data?.error;
+    if (err?.details?.some(d => d.reason === 'API_KEY_SERVICE_BLOCKED')) {
+      throw new Error('Gemini key is not allowed to use the Gemini API — add "Generative Language API" to the key\'s API restrictions in Google Cloud');
+    }
+    throw new Error(`Gemini rejected the key: ${err?.message || error.message}`);
+  }
+}
+
 export async function generateArticle(prompt, businessContext, apiKey) {
   const fullPrompt = buildArticlePrompt(prompt, businessContext);
   const result = await callGemini(fullPrompt, 0.9, 65000, apiKey);
@@ -116,6 +134,11 @@ If I ask for ${wordCount} words and you write only 500-800 words, that is a FAIL
 Store: ${ctx.storeName || 'N/A'} (${ctx.storeDomain || ''})
 Industry/Niche: ${ctx.niche || 'E-commerce'}
 Audience: ${ctx.targetAudience || 'General online shoppers'}
+${[
+    ctx.brandSummary && `About the brand: ${ctx.brandSummary}`,
+    ctx.brandVoice && `Brand voice (write in this tone): ${ctx.brandVoice}`,
+    ctx.brandKeywords?.length && `Brand keywords: ${ctx.brandKeywords.join(', ')}`,
+  ].filter(Boolean).join('\n')}
 
 === PRODUCTS TO LINK (use 3-6 naturally in the article) ===
 ${productsSection}

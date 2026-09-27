@@ -3,7 +3,7 @@ import { Rocket, Plus, Play, Pause, Trash2, RefreshCw, Loader2, ChevronDown, Che
 import toast from 'react-hot-toast';
 import {
   getCampaigns, createCampaign, setCampaignStatus, deleteCampaign, runCampaignNow,
-  getCampaignArticles, getBusinessDna,
+  getCampaignArticles, getBusinessDna, getSettings,
 } from '../lib/api';
 
 const ARTICLE_BADGE = {
@@ -49,6 +49,10 @@ export default function Campaigns() {
         setBlogs(res.data.blogs);
         setBlogId(res.data.blogs[0].id);
       }
+    }).catch(() => {});
+    getSettings().then(res => {
+      const preferred = res.data?.ai?.providers?.article;
+      if (preferred) setAiModel(preferred);
     }).catch(() => {});
   }, []);
 

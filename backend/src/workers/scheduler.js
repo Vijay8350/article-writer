@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import * as scheduled from '../repositories/scheduledPosts.js';
 import { generateAndPublishForWorkspace } from '../services/articleService.js';
 import { runDueCampaignArticle } from '../services/campaignService.js';
+import { runDueInstagramPost, refreshDueInstagramToken } from '../services/instagramAutopost.js';
 
 // Runs inside the SINGLE PM2 fork process. This is the ONLY reason it's safe
 // from double-firing — do NOT enable PM2 cluster mode / instances>1 without
@@ -39,8 +40,14 @@ async function tick() {
       return; // one generation per tick max
     }
 
+    // Then one Instagram autopost (light: one short DeepSeek call + Graph API).
+    if (await runDueInstagramPost()) return;
+
     // No scheduled post due → try one campaign article (still ≤1 generation/tick).
-    await runDueCampaignArticle();
+    if (await runDueCampaignArticle()) return;
+
+    // Idle tick → keep one Instagram Login token alive (they expire after 60 days).
+    await refreshDueInstagramToken();
   } catch (err) {
     console.error('Scheduler tick error:', err.message);
   } finally {

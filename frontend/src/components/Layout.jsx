@@ -1,20 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, Link } from 'react-router-dom';
-import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2 } from 'lucide-react';
+import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2, Instagram, AlarmClock, MessageCircle } from 'lucide-react';
 import { getSettings } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
-const navItems = [
-  { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/business-dna', icon: Dna, label: 'Business DNA' },
-  { path: '/generate', icon: PenLine, label: 'Generate Article' },
-  { path: '/campaigns', icon: Rocket, label: 'Campaigns' },
-  { path: '/articles', icon: FileText, label: 'Existing Articles' },
-  { path: '/scheduled', icon: CalendarClock, label: 'Scheduled Posts' },
-  { path: '/plan', icon: Gauge, label: 'Plan & Usage' },
-  { path: '/members', icon: Users, label: 'Members' },
-  { path: '/workspaces', icon: Building2, label: 'Workspaces' },
-  { path: '/settings', icon: Settings, label: 'Settings' },
+// Items without a `path` are planned features, shown greyed out with a "Soon" tag.
+const navSections = [
+  {
+    items: [
+      { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      { path: '/business-dna', icon: Dna, label: 'Business DNA' },
+    ],
+  },
+  {
+    title: 'Blog',
+    items: [
+      { path: '/generate', icon: PenLine, label: 'Generate Article' },
+      { path: '/campaigns', icon: Rocket, label: 'Campaigns' },
+      { path: '/articles', icon: FileText, label: 'Existing Articles' },
+      { path: '/scheduled', icon: CalendarClock, label: 'Scheduled Posts' },
+    ],
+  },
+  {
+    title: 'Instagram',
+    items: [
+      { path: '/instagram', icon: Instagram, label: 'Accounts' },
+      { path: '/instagram-scheduler', icon: AlarmClock, label: 'Scheduler' },
+      { icon: MessageCircle, label: 'Comments', hint: 'Coming soon: auto-reply to comments and flag abusive ones for review' },
+    ],
+  },
+  {
+    title: 'Workspace',
+    items: [
+      { path: '/plan', icon: Gauge, label: 'Plan & Usage' },
+      { path: '/members', icon: Users, label: 'Members' },
+      { path: '/workspaces', icon: Building2, label: 'Workspaces' },
+      { path: '/settings', icon: Settings, label: 'Settings' },
+    ],
+  },
 ];
 
 export default function Layout() {
@@ -63,16 +86,27 @@ export default function Layout() {
         )}
 
         <nav className="sidebar-nav">
-          {navItems.map(item => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/dashboard'}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-            >
-              <item.icon />
-              {item.label}
-            </NavLink>
+          {navSections.map((section, i) => (
+            <React.Fragment key={section.title || i}>
+              {section.title && <div className="nav-section-title">{section.title}</div>}
+              {section.items.map(item => (item.path ? (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.path === '/dashboard'}
+                  className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                >
+                  <item.icon />
+                  {item.label}
+                </NavLink>
+              ) : (
+                <div key={item.label} className="nav-item nav-item-soon" title={item.hint}>
+                  <item.icon />
+                  {item.label}
+                  <span className="nav-soon">Soon</span>
+                </div>
+              )))}
+            </React.Fragment>
           ))}
           {user?.role === 'admin' && (
             <NavLink to="/admin" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>

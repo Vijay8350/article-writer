@@ -69,11 +69,15 @@ export const connectShopify = (storeUrl, accessToken) =>
   api.post('/settings/connect', { storeUrl, accessToken }).then(r => r.data);
 export const disconnectShopify = () => api.post('/settings/disconnect').then(r => r.data);
 export const saveAiKeys = (keys) => api.post('/settings/ai-keys', keys).then(r => r.data);
+export const removeAiKey = (provider) => api.delete(`/settings/ai-keys/${provider}`).then(r => r.data);
+export const saveAiPreferences = (prefs) => api.put('/settings/ai-preferences', prefs).then(r => r.data);
+export const getDeepseekModels = () => api.get('/settings/deepseek-models').then(r => r.data);
 
 // ─── Business DNA ───────────────────────────────────────────
 export const getBusinessDna = () => api.get('/business-dna').then(r => r.data);
 export const fetchBusinessDna = () => api.post('/business-dna/fetch').then(r => r.data);
 export const clearBusinessDna = () => api.delete('/business-dna').then(r => r.data);
+export const fetchSocialBusinessDna = (data) => api.post('/business-dna/fetch-social', data).then(r => r.data);
 
 // ─── Articles ───────────────────────────────────────────────
 export const generateArticle = (data) => api.post('/articles/generate', data).then(r => r.data);
@@ -105,6 +109,21 @@ export const setCampaignStatus = (id, status) => api.patch(`/campaigns/${id}`, {
 export const deleteCampaign = (id) => api.delete(`/campaigns/${id}`).then(r => r.data);
 export const runCampaignNow = (id) => api.post(`/campaigns/${id}/run-now`).then(r => r.data);
 export const getCampaignArticles = (id) => api.get(`/campaigns/${id}/articles`).then(r => r.data);
+
+// ─── Instagram autopost ─────────────────────────────────────
+export const getInstagramAccounts = () => api.get('/instagram/accounts').then(r => r.data);
+export const connectInstagramAccount = (accessToken, igUserId) =>
+  api.post('/instagram/accounts', { accessToken, igUserId }).then(r => r.data);
+export const disconnectInstagramAccount = (id) => api.delete(`/instagram/accounts/${id}`).then(r => r.data);
+export const setDefaultInstagramAccount = (id) => api.post(`/instagram/accounts/${id}/default`).then(r => r.data);
+export const getInstagramAccountStatus = (id) => api.get(`/instagram/accounts/${id}/status`).then(r => r.data);
+export const getInstagramAutomations = () => api.get('/instagram/automations').then(r => r.data);
+export const createInstagramAutomation = (data) => api.post('/instagram/automations', data).then(r => r.data);
+export const updateInstagramAutomation = (id, data) => api.patch(`/instagram/automations/${id}`, data).then(r => r.data);
+export const deleteInstagramAutomation = (id) => api.delete(`/instagram/automations/${id}`).then(r => r.data);
+export const previewInstagramPost = (id) => api.post(`/instagram/automations/${id}/preview`).then(r => r.data);
+export const postInstagramNow = (id) => api.post(`/instagram/automations/${id}/post-now`).then(r => r.data);
+export const getInstagramPosts = (id) => api.get(`/instagram/automations/${id}/posts`).then(r => r.data);
 
 // ─── Plan & Usage ───────────────────────────────────────────
 export const getUsage = () => api.get('/settings/usage').then(r => r.data);

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CalendarClock, Plus, Trash2, Loader2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getScheduledPosts, createScheduledPost, cancelScheduledPost, getBusinessDna } from '../lib/api';
+import { getScheduledPosts, createScheduledPost, cancelScheduledPost, getBusinessDna, getSettings } from '../lib/api';
 
 const STATUS_BADGE = {
   pending: 'badge-purple',
@@ -36,6 +36,10 @@ export default function ScheduledPosts() {
         setBlogs(res.data.blogs);
         setBlogId(res.data.blogs[0].id);
       }
+    }).catch(() => {});
+    getSettings().then(res => {
+      const preferred = res.data?.ai?.providers?.article;
+      if (preferred) setAiModel(preferred);
     }).catch(() => {});
   }, []);
 

@@ -40,3 +40,22 @@ export async function saveKeys(workspaceId, { geminiKey, deepseekKey }) {
     [workspaceId, gemEnc, deepEnc]
   );
 }
+
+export async function clearKey(workspaceId, provider) {
+  const col = provider === 'deepseek' ? 'deepseek_key_encrypted' : 'gemini_key_encrypted';
+  await query(`UPDATE ai_credentials SET ${col} = NULL, updated_at = now() WHERE workspace_id = $1`, [workspaceId]);
+}
+
+// Raw saved AI preferences ({} when never set) — merge with defaults via services/ai.js.
+export async function getSettings(workspaceId) {
+  const { rows } = await query('SELECT settings FROM ai_credentials WHERE workspace_id = $1', [workspaceId]);
+  return rows[0]?.settings || {};
+}
+
+export async function saveSettings(workspaceId, settings) {
+  await query(
+    `INSERT INTO ai_credentials (workspace_id, settings) VALUES ($1, $2)
+     ON CONFLICT (workspace_id) DO UPDATE SET settings = $2, updated_at = now()`,
+    [workspaceId, settings]
+  );
+}

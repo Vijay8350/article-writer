@@ -37,10 +37,16 @@ const config = {
     baseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1',
   },
 
+  instagram: {
+    // Graph API v25.0 is supported until 2028-07-29.
+    apiVersion: process.env.INSTAGRAM_API_VERSION || 'v25.0',
+  },
+
   gemini: {
     apiKey: process.env.PLATFORM_GEMINI_API_KEY || process.env.GEMINI_API_KEY || '',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
-    model: 'gemini-2.0-flash',
+    // gemini-2.0-flash was shut down 2026-06-01. Override via GEMINI_MODEL when Google retires this one.
+    model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
   },
 };
 

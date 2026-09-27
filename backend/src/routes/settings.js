@@ -5,6 +5,10 @@ import { requireWorkspace, requireWorkspaceRole } from '../middleware/workspace.
 import * as stores from '../repositories/stores.js';
 import * as aiKeys from '../repositories/aiKeys.js';
 import { getCurrentUsage } from '../services/usage.js';
+import * as gemini from '../services/gemini.js';
+import * as deepseek from '../services/deepseek.js';
+import * as ai from '../services/ai.js';
+import config from '../config/env.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
@@ -18,8 +22,11 @@ router.get('/usage', async (req, res, next) => {
 
 router.get('/', async (req, res, next) => {
   try {
-    const meta = await stores.getStoreMeta(req.workspace.id);
-    const keys = await aiKeys.getKeyPresence(req.workspace.id);
+    const [meta, keys, aiSettings] = await Promise.all([
+      stores.getStoreMeta(req.workspace.id),
+      aiKeys.getKeyPresence(req.workspace.id),
+      aiKeys.getSettings(req.workspace.id),
+    ]);
     res.json({
       success: true,
       data: {
@@ -28,6 +35,9 @@ router.get('/', async (req, res, next) => {
         connected: !!meta,
         hasAccessToken: !!meta,
         aiKeys: keys,
+        ai: ai.withDefaults(aiSettings),
+        // Whether a shared platform key exists to fall back on (never the key itself).
+        platformKeys: { gemini: !!config.gemini.apiKey, deepseek: !!config.deepseek.apiKey },
       },
     });
   } catch (error) { next(error); }
@@ -68,13 +78,57 @@ router.post('/disconnect', requireWorkspaceRole('owner', 'admin'), async (req, r
 
 router.post('/ai-keys', requireWorkspaceRole('owner', 'admin'), async (req, res, next) => {
   try {
-    const { geminiKey, deepseekKey } = req.body || {};
-    await aiKeys.saveKeys(req.workspace.id, {
-      geminiKey: geminiKey ? geminiKey.trim() : undefined,
-      deepseekKey: deepseekKey ? deepseekKey.trim() : undefined,
-    });
+    const geminiKey = req.body?.geminiKey?.trim() || undefined;
+    const deepseekKey = req.body?.deepseekKey?.trim() || undefined;
+    // Reject keys the provider refuses, so a bad key fails here instead of at generation time.
+    try {
+      if (geminiKey) await gemini.verifyKey(geminiKey);
+      if (deepseekKey) await deepseek.verifyKey(deepseekKey);
+    } catch (error) {
+      return res.status(400).json({ success: false, error: error.message });
+    }
+    await aiKeys.saveKeys(req.workspace.id, { geminiKey, deepseekKey });
     const presence = await aiKeys.getKeyPresence(req.workspace.id);
     res.json({ success: true, message: 'AI keys saved', data: presence });
+  } catch (error) { next(error); }
+});
+
+// Remove the workspace's own key → that provider falls back to the platform key.
+router.delete('/ai-keys/:provider', requireWorkspaceRole('owner', 'admin'), async (req, res, next) => {
+  try {
+    if (!ai.PROVIDERS.includes(req.params.provider)) {
+      return res.status(400).json({ success: false, error: 'Unknown AI provider' });
+    }
+    await aiKeys.clearKey(req.workspace.id, req.params.provider);
+    res.json({ success: true, message: 'Key removed', data: await aiKeys.getKeyPresence(req.workspace.id) });
+  } catch (error) { next(error); }
+});
+
+// Which provider each task uses + the DeepSeek model.
+router.put('/ai-preferences', requireWorkspaceRole('owner', 'admin'), async (req, res, next) => {
+  try {
+    const settings = ai.normalizeSettings(req.body || {});
+    await aiKeys.saveSettings(req.workspace.id, settings);
+    res.json({ success: true, message: 'AI preferences saved', data: ai.withDefaults(settings) });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ success: false, error: error.message });
+    next(error);
+  }
+});
+
+// Live check of the DeepSeek key this workspace would use, returning the models it can call.
+router.get('/deepseek-models', async (req, res, next) => {
+  try {
+    const { deepseekKey } = await aiKeys.getKeys(req.workspace.id);
+    if (!deepseekKey && !config.deepseek.apiKey) {
+      return res.status(400).json({ success: false, error: 'No DeepSeek API key yet — add one above first.' });
+    }
+    try {
+      const models = await deepseek.verifyKey(deepseekKey || undefined);
+      res.json({ success: true, data: { models, keySource: deepseekKey ? 'workspace' : 'platform' } });
+    } catch (error) {
+      res.status(400).json({ success: false, error: error.message });
+    }
   } catch (error) { next(error); }
 });
 

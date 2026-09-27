@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PenLine, Sparkles, Send, Copy, Eye, ChevronDown, Loader2, Check, Zap } from 'lucide-react';
-import { generateArticle, publishArticle, generateAndPublish, getBusinessDna, getUsage } from '../lib/api';
+import { generateArticle, publishArticle, generateAndPublish, getBusinessDna, getUsage, getSettings } from '../lib/api';
 import toast from 'react-hot-toast';
 import SeoScoreCard from '../components/SeoScoreCard';
 
@@ -29,6 +29,10 @@ export default function GenerateArticle() {
         setDna(res.data);
         if (res.data.blogs?.length > 0) setSelectedBlog(res.data.blogs[0].id);
       }
+    }).catch(() => {});
+    getSettings().then(res => {
+      const preferred = res.data?.ai?.providers?.article;
+      if (preferred) setAiModel(preferred);
     }).catch(() => {});
     refreshUsage();
   }, []);
@@ -228,7 +232,9 @@ export default function GenerateArticle() {
                         placeholder="Enter Blog ID (e.g., 12345678)"
                       />
                       <div className="form-helper" style={{ color: 'var(--accent-warning)' }}>
-                        ⚠️ Blog list unavailable — your token needs <strong>read_content</strong> scope. Enter the Blog ID manually from Shopify Admin.
+                        {dna.source === 'social'
+                          ? <>⚠️ Blog list unavailable. Connect your Shopify store in Settings and rebuild Business DNA, or enter the Blog ID manually.</>
+                          : <>⚠️ Blog list unavailable — your token needs <strong>read_content</strong> scope. Enter the Blog ID manually from Shopify Admin.</>}
                       </div>
                     </>
                   )}

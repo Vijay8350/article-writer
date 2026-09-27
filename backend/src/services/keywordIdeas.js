@@ -1,6 +1,3 @@
-import * as gemini from './gemini.js';
-import * as deepseek from './deepseek.js';
-
 // Normalizes a title to a comparable token set for duplicate detection.
 const STOP = new Set(['the', 'a', 'an', 'and', 'or', 'for', 'to', 'of', 'in', 'on', 'with', 'your', 'you', 'how', 'best', 'guide', 'tips', 'ways']);
 function tokens(s) {
@@ -60,11 +57,10 @@ function parseIdeas(raw) {
   }
 }
 
-// Returns [{ keyword, title }] candidate ideas for a category.
-export async function getKeywordIdeas({ collectionTitle, niche, productTitles, excludeTitles, count = 8, aiModel, apiKey }) {
-  const svc = aiModel === 'deepseek' ? deepseek : gemini;
+// Returns [{ keyword, title }] candidate ideas for a category. `ai` comes from resolveAi().
+export async function getKeywordIdeas({ collectionTitle, niche, productTitles, excludeTitles, count = 8, ai }) {
   const prompt = buildPrompt({ collectionTitle, niche, productTitles, excludeTitles, count });
-  const raw = await svc.complete(prompt, apiKey, { temperature: 0.9, maxTokens: 1500 });
+  const raw = await ai.service.complete(prompt, ai.apiKey, { temperature: 0.9, maxTokens: 1500, model: ai.model });
   return parseIdeas(raw);
 }
 

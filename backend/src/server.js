@@ -15,7 +15,10 @@ import workspacesRouter from './routes/workspaces.js';
 import membersRouter from './routes/members.js';
 import invitationsRouter from './routes/invitations.js';
 import adminRouter from './routes/admin.js';
+import instagramRouter from './routes/instagram.js';
 import { startScheduler } from './workers/scheduler.js';
+import * as gemini from './services/gemini.js';
+import * as deepseek from './services/deepseek.js';
 
 const app = express();
 
@@ -42,6 +45,7 @@ app.use('/api/workspaces', workspacesRouter);
 app.use('/api/members', membersRouter);
 app.use('/api/invitations', invitationsRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/instagram', instagramRouter);
 
 // Global error handler
 app.use((err, req, res, next) => {
@@ -67,6 +71,11 @@ app.listen(config.port, () => {
   console.log(`📝 Environment: ${config.nodeEnv}`);
   console.log(`🔗 Frontend: ${config.frontendUrl}\n`);
   startScheduler();
+
+  // Surface a dead platform AI key at boot instead of on the first generation.
+  for (const [name, svc, key] of [['Gemini', gemini, config.gemini.apiKey], ['DeepSeek', deepseek, config.deepseek.apiKey]]) {
+    if (key) svc.verifyKey().then(() => console.log(`✅ Platform ${name} key OK`), err => console.warn(`⚠️  Platform ${name} key: ${err.message}`));
+  }
 });
 
 export default app;
