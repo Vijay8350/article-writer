@@ -9,6 +9,10 @@ import ScheduledPosts from './pages/ScheduledPosts';
 import Campaigns from './pages/Campaigns';
 import InstagramAccounts from './pages/InstagramAccounts';
 import InstagramScheduler from './pages/InstagramScheduler';
+import InstagramStudio from './pages/InstagramStudio';
+import InstagramCampaigns from './pages/InstagramCampaigns';
+import InstagramComments from './pages/InstagramComments';
+import DataDeletion from './pages/DataDeletion';
 import PlanUsage from './pages/PlanUsage';
 import Admin from './pages/Admin';
 import Settings from './pages/Settings';
@@ -64,6 +68,7 @@ export default function App() {
       <Route path="/signup" element={<PublicOnly><Signup /></PublicOnly>} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/privacy" element={<Privacy />} />
+      <Route path="/data-deletion" element={<DataDeletion />} />
       <Route path="/accept-invite/:token" element={<AcceptInvite />} />
 
       {/* Authenticated app — everything inside the sidebar Layout */}
@@ -76,6 +81,11 @@ export default function App() {
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/instagram" element={<InstagramAccounts />} />
         <Route path="/instagram-scheduler" element={<InstagramScheduler />} />
+        <Route path="/instagram-studio" element={<InstagramStudio />} />
+        <Route path="/instagram-studio/:accountId" element={<InstagramStudio />} />
+        <Route path="/instagram-studio/:accountId/:tab" element={<InstagramStudio />} />
+        <Route path="/instagram-campaigns" element={<InstagramCampaigns />} />
+        <Route path="/instagram-comments" element={<InstagramComments />} />
         <Route path="/plan" element={<PlanUsage />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/settings" element={<Settings />} />

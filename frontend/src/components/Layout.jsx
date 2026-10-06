@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, Link } from 'react-router-dom';
-import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2, Instagram, AlarmClock, MessageCircle } from 'lucide-react';
+import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2, Instagram, AlarmClock, MessageCircle, Sparkles, Megaphone } from 'lucide-react';
 import { getSettings } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -25,8 +25,10 @@ const navSections = [
     title: 'Instagram',
     items: [
       { path: '/instagram', icon: Instagram, label: 'Accounts' },
-      { path: '/instagram-scheduler', icon: AlarmClock, label: 'Scheduler' },
-      { icon: MessageCircle, label: 'Comments', hint: 'Coming soon: auto-reply to comments and flag abusive ones for review' },
+      { path: '/instagram-studio', icon: Sparkles, label: 'Studio' },
+      { path: '/instagram-campaigns', icon: Megaphone, label: 'Campaigns' },
+      { path: '/instagram-comments', icon: MessageCircle, label: 'Comments' },
+      { path: '/instagram-scheduler', icon: AlarmClock, label: 'Product Scheduler' },
     ],
   },
   {

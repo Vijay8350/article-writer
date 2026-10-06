@@ -12,7 +12,7 @@ const NEXT_RUN = nextRunSql('timezone', 'post_time');
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
 
-const ACCOUNT_COLS = 'id, ig_user_id, username, token_type, token_expires_at, token_error, is_default, last_checked_at, created_at';
+const ACCOUNT_COLS = 'id, ig_user_id, username, token_type, token_expires_at, token_error, is_default, last_checked_at, connected_via, created_at';
 
 function withToken(row) {
   if (!row) return null;
@@ -79,21 +79,26 @@ export async function getAccountWithToken(id) {
 }
 
 // Re-connecting the same Instagram account replaces its token.
-export async function upsertAccount(workspaceId, createdBy, { igUserId, username, tokenType, accessToken, tokenExpiresAt }) {
+export async function upsertAccount(workspaceId, createdBy, {
+  igUserId, username, tokenType, accessToken, tokenExpiresAt, pageId = null, connectedVia = 'token',
+}) {
   const { rows } = await query(
     `INSERT INTO instagram_accounts
        (workspace_id, ig_user_id, username, token_type, access_token_encrypted, token_expires_at,
-        token_next_refresh_at, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'instagram' THEN now() + interval '1 day' END, $7)
+        token_next_refresh_at, created_by, page_id, connected_via)
+     VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'instagram' THEN now() + interval '1 day' END, $7, $8, $9)
      ON CONFLICT (workspace_id, ig_user_id) DO UPDATE SET
        username = EXCLUDED.username,
        token_type = EXCLUDED.token_type,
        access_token_encrypted = EXCLUDED.access_token_encrypted,
        token_expires_at = EXCLUDED.token_expires_at,
        token_next_refresh_at = EXCLUDED.token_next_refresh_at,
+       page_id = COALESCE(EXCLUDED.page_id, instagram_accounts.page_id),
+       connected_via = EXCLUDED.connected_via,
        token_error = NULL
      RETURNING id`,
-    [workspaceId, igUserId, username || null, tokenType, encrypt(accessToken), tokenExpiresAt || null, createdBy || null]
+    [workspaceId, igUserId, username || null, tokenType, encrypt(accessToken), tokenExpiresAt || null, createdBy || null,
+      pageId, connectedVia]
   );
   await ensureDefault(workspaceId); // the first account connected becomes the default
   return getAccountMeta(workspaceId, rows[0].id);

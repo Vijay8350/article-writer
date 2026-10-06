@@ -62,9 +62,21 @@ GEMINI_API_KEY=...
 PORT=5001
 NODE_ENV=production
 FRONTEND_URL=http://YOUR_EC2_PUBLIC_IP
+
+# Instagram Studio
+PUBLIC_BASE_URL=https://your-domain.com   # Instagram downloads generated images from here (must be public https)
+FACEBOOK_APP_ID=...                       # "Connect with Facebook" + Meta data-deletion callback
+FACEBOOK_APP_SECRET=...
+# Optional: GEMINI_IMAGE_MODEL (default gemini-3.1-flash-lite-image), GEMINI_VISION_MODEL,
+# MAX_REGEN_ATTEMPTS (default 3), FACEBOOK_SCOPES (comma-separated override)
 ```
 
 > **Important:** set `FRONTEND_URL` to `http://YOUR_EC2_PUBLIC_IP` so CORS works.
+
+> **Instagram Studio / Meta app settings:** in the Meta app (Facebook Login → Settings) add
+> `https://your-domain.com/api/meta/oauth/callback` as a Valid OAuth Redirect URI, and set the
+> Data Deletion Callback URL to `https://your-domain.com/api/meta/data-deletion`. Generated images
+> live in `backend/media/ig/` (gitignored, survives deploys) and are served at `/api/media/ig/…`.
 
 ### 5. First-time install + build + start
 

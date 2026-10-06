@@ -607,3 +607,23 @@ a:hover { color: var(--accent-primary-hover); }
 .mb-24 { margin-bottom: 24px; }
 .text-center { text-align: center; }
 .w-full { width: 100%; }
+
+/* ─── Instagram Studio ─── */
+.tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--border-secondary); margin-bottom: 24px; }
+.tab { padding: 10px 14px; font-size: 14px; font-weight: 500; color: var(--text-secondary); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.tab:hover { color: var(--text-primary); }
+.tab.active { color: var(--text-accent); border-bottom-color: var(--accent-primary); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 500; border: 1px solid var(--border-secondary); background: var(--bg-input); color: var(--text-secondary); cursor: pointer; }
+.chip:hover { border-color: var(--border-glow); color: var(--text-primary); }
+.chip.active { border-color: var(--accent-primary); background: rgba(139, 92, 246, 0.12); color: var(--text-accent); }
+.ig-post-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; }
+.ig-post { border: 1px solid var(--border-secondary); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-glass); display: flex; flex-direction: column; }
+.ig-post-img { aspect-ratio: 1 / 1; width: 100%; object-fit: cover; display: block; background: var(--bg-tertiary); }
+.ig-post-placeholder { aspect-ratio: 1 / 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px; text-align: center; background: var(--bg-tertiary); color: var(--text-muted); font-size: 13px; }
+.ig-post-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.ig-check { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border-secondary); font-size: 13px; }
+.ig-check:first-child { border-top: none; }
+.ig-two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+.ig-list-row { padding: 12px 0; border-top: 1px solid var(--border-secondary); }
+.ig-list-row:first-child { border-top: none; }

@@ -16,6 +16,9 @@ import membersRouter from './routes/members.js';
 import invitationsRouter from './routes/invitations.js';
 import adminRouter from './routes/admin.js';
 import instagramRouter from './routes/instagram.js';
+import igStudioRouter from './routes/igStudio.js';
+import metaRouter from './routes/meta.js';
+import { MEDIA_DIR } from './services/igMedia.js';
 import { startScheduler } from './workers/scheduler.js';
 import * as gemini from './services/gemini.js';
 import * as deepseek from './services/deepseek.js';
@@ -33,7 +36,13 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Generated Instagram images. Public on purpose — Instagram downloads them to
+// publish — but only unguessable file names live here, and there's no listing.
+app.use('/api/media/ig', express.static(MEDIA_DIR, { index: false, dotfiles: 'deny', maxAge: '7d', fallthrough: false }));
+
 // Routes
+app.use('/api/meta', metaRouter); // public OAuth / data-deletion callbacks — before any authed router
+app.use('/api/ig', igStudioRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/business-dna', businessDnaRouter);

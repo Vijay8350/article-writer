@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Instagram, Trash2, Loader2, ChevronDown, ChevronRight, Link2, AlarmClock, Star, RefreshCw, Eye } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Instagram, Trash2, Loader2, ChevronDown, ChevronRight, Link2, AlarmClock, Star, RefreshCw, Eye, Facebook, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   getInstagramAccounts, connectInstagramAccount, disconnectInstagramAccount,
-  setDefaultInstagramAccount, getInstagramAccountStatus,
+  setDefaultInstagramAccount, getInstagramAccountStatus, startFacebookLogin,
 } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -160,6 +160,7 @@ function AccountDetails({ account, status, checking, onRecheck }) {
 export default function InstagramAccounts() {
   const { activeRole } = useAuth();
   const canManage = activeRole === 'owner' || activeRole === 'admin';
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -224,6 +225,28 @@ export default function InstagramAccounts() {
     setBusy(null);
   };
 
+  // Facebook Login: the API returns the Facebook dialog URL; Facebook redirects back to
+  // /instagram?ig_connected=… or ?ig_error=… (handled below).
+  const handleFacebookLogin = async () => {
+    setBusy('facebook');
+    try {
+      const res = await startFacebookLogin();
+      window.location.href = res.data.url;
+    } catch (err) {
+      toast.error(errMsg(err, 'Facebook Login is not available'), { duration: 8000 });
+      setBusy(null);
+    }
+  };
+
+  useEffect(() => {
+    const connected = searchParams.get('ig_connected');
+    const error = searchParams.get('ig_error');
+    if (!connected && !error) return;
+    if (connected) toast.success(`Connected ${connected}`, { duration: 6000 });
+    if (error) toast.error(error, { duration: 10000 });
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const handleSetDefault = async (acc) => {
     setBusy(acc.id);
     try {
@@ -238,7 +261,7 @@ export default function InstagramAccounts() {
   };
 
   const handleDisconnect = async (acc) => {
-    if (!window.confirm(`Disconnect @${acc.username}? Its scheduler jobs and post history will be deleted too.`)) return;
+    if (!window.confirm(`Disconnect @${acc.username}? Its scheduler jobs, Studio posts and images, DNA, campaigns and comment history will be deleted too.`)) return;
     setBusy(acc.id);
     try {
       await disconnectInstagramAccount(acc.id);
@@ -261,6 +284,15 @@ export default function InstagramAccounts() {
         </button>
       </div>
       <div className="card-body">
+        <div className="mb-16">
+          <button className="btn btn-primary" onClick={handleFacebookLogin} disabled={busy === 'facebook' || !canManage}>
+            {busy === 'facebook' ? <Loader2 size={16} className="spinning" /> : <Facebook size={16} />} Connect with Facebook
+          </button>
+          <div className="form-helper">
+            Connects every Instagram Business or Creator account linked to the Facebook Pages you choose — no token to copy.
+            Or paste a token below.
+          </div>
+        </div>
         {showHelp && <SetupHelp />}
         <form onSubmit={handleConnect}>
           <div className="form-group">
@@ -308,11 +340,14 @@ export default function InstagramAccounts() {
           <div className="card mb-24" style={{ maxWidth: 900 }}>
             <div className="card-header">
               <h2>✅ Connected accounts</h2>
-              <Link to="/instagram-scheduler" className="btn btn-secondary btn-sm"><AlarmClock size={14} /> Open Scheduler</Link>
+              <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
+                <Link to="/instagram-studio" className="btn btn-secondary btn-sm"><Sparkles size={14} /> Open Studio</Link>
+                <Link to="/instagram-scheduler" className="btn btn-secondary btn-sm"><AlarmClock size={14} /> Product Scheduler</Link>
+              </div>
             </div>
             <div className="card-body">
               <div className="form-helper mb-16">
-                The <strong>default</strong> account is preselected in the Instagram Scheduler and Business DNA, and is the one comment auto-reply will watch.
+                The <strong>default</strong> account is preselected in the Studio, the Product Scheduler and Business DNA.
               </div>
               {accounts.map((acc, i) => {
                 const health = tokenStatus(acc);
@@ -331,7 +366,7 @@ export default function InstagramAccounts() {
                       <div style={muted}>
                         {acc.token_type === 'instagram'
                           ? `Token auto-renews · valid until ${fmt(acc.token_expires_at)}`
-                          : 'Page / System User token'}
+                          : acc.connected_via === 'facebook_login' ? 'Connected with Facebook Login · Page token (no expiry)' : 'Page / System User token'}
                         {acc.last_checked_at && ` · checked ${fmt(acc.last_checked_at)}`}
                       </div>
                       {acc.token_error && <div style={danger}>{acc.token_error}</div>}

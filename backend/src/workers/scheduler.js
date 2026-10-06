@@ -3,6 +3,11 @@ import * as scheduled from '../repositories/scheduledPosts.js';
 import { generateAndPublishForWorkspace } from '../services/articleService.js';
 import { runDueCampaignArticle } from '../services/campaignService.js';
 import { runDueInstagramPost, refreshDueInstagramToken } from '../services/instagramAutopost.js';
+import { runDueAutopilot } from '../services/igStudio.js';
+import { runDueResearch } from '../services/igResearch.js';
+import { runDueCommentSweep } from '../services/igComments.js';
+import { runDueAnalytics } from '../services/igAnalytics.js';
+import { releaseStalePosts } from '../repositories/igStudio.js';
 
 // Runs inside the SINGLE PM2 fork process. This is the ONLY reason it's safe
 // from double-firing — do NOT enable PM2 cluster mode / instances>1 without
@@ -40,13 +45,24 @@ async function tick() {
       return; // one generation per tick max
     }
 
-    // Then one Instagram autopost (light: one short DeepSeek call + Graph API).
+    // Then one Instagram product autopost (light: one short DeepSeek call + Graph API).
     if (await runDueInstagramPost()) return;
+
+    // Then one Instagram Studio autopilot slot (text → image + quality gate → publish).
+    if (await runDueAutopilot()) return;
 
     // No scheduled post due → try one campaign article (still ≤1 generation/tick).
     if (await runDueCampaignArticle()) return;
 
-    // Idle tick → keep one Instagram Login token alive (they expire after 60 days).
+    // Background Instagram work, one piece per tick: Business DNA research (1–3 min),
+    // a comment sweep for one account, then a batch of post metrics.
+    if (await runDueResearch()) return;
+    if (await runDueCommentSweep()) return;
+    if (await runDueAnalytics()) return;
+
+    // Idle tick → housekeeping: un-stick interrupted Studio posts, and keep one
+    // Instagram Login token alive (they expire after 60 days).
+    await releaseStalePosts();
     await refreshDueInstagramToken();
   } catch (err) {
     console.error('Scheduler tick error:', err.message);

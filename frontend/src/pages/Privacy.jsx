@@ -25,7 +25,10 @@ export default function Privacy() {
         <p>Data is stored in our managed databases. Shopify credentials and AI keys are encrypted with AES-256-GCM before being written to disk. We do not log secrets.</p>
 
         <h2>Third parties</h2>
-        <p>We call Shopify's Admin API on your behalf using the token you provide, and AI providers (Google Gemini, DeepSeek) for content generation. Their respective terms apply when we send prompts to them.</p>
+        <p>We call Shopify's Admin API on your behalf using the token you provide, Meta's Instagram Graph API for the Instagram accounts you connect, and AI providers (Google Gemini, DeepSeek) for content generation. Their respective terms apply when we send prompts to them.</p>
+
+        <h2>Instagram</h2>
+        <p>When you connect an Instagram account we store its id, username and an encrypted access token, the posts we generate and publish for it (including the images), their engagement metrics, comments on its posts that we review for auto-reply, and a Business DNA built from its public profile. We use the official Instagram Graph API only. Disconnecting the account deletes all of it — see <Link to="/data-deletion">Data Deletion</Link>.</p>
 
         <h2>Cookies / tokens</h2>
         <p>We use your browser's localStorage to keep you signed in. No third-party tracking cookies on the app itself.</p>

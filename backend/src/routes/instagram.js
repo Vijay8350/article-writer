@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { requireWorkspace, requireWorkspaceRole } from '../middleware/workspace.js';
 import * as repo from '../repositories/instagram.js';
+import * as igStudio from '../repositories/igStudio.js';
+import { deleteImage } from '../services/igMedia.js';
 import * as storefront from '../services/storefront.js';
 import { identifyAccount, checkAccountStatus } from '../services/instagram.js';
 import { previewAutomation, runAutomation } from '../services/instagramAutopost.js';
@@ -47,7 +49,10 @@ router.post('/accounts', manage, async (req, res, next) => {
 router.delete('/accounts/:id', manage, async (req, res, next) => {
   try {
     if (!(await findAccount(req))) return bad(res, 'Account not found', 404);
+    // Studio rows cascade with the account; their image files don't, so remove those too.
+    const files = await igStudio.imageFilesForAccount(req.workspace.id, req.params.id);
     await repo.removeAccount(req.workspace.id, req.params.id);
+    await Promise.all(files.map(deleteImage));
     res.json({ success: true, message: 'Account disconnected' });
   } catch (error) { next(error); }
 });

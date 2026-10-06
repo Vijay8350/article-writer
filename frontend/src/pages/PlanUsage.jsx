@@ -40,12 +40,14 @@ export default function PlanUsage() {
 
   const pct = usage && usage.limit > 0 ? Math.min(100, Math.round((usage.used / usage.limit) * 100)) : 0;
   const barColor = pct >= 100 ? 'var(--accent-danger, #ef4444)' : pct >= 80 ? 'var(--accent-warning, #f59e0b)' : 'var(--accent-success, #10b981)';
+  const igPct = usage?.igLimit > 0 ? Math.min(100, Math.round((usage.igUsed / usage.igLimit) * 100)) : 0;
+  const igBarColor = igPct >= 100 ? 'var(--accent-danger, #ef4444)' : igPct >= 80 ? 'var(--accent-warning, #f59e0b)' : 'var(--accent-success, #10b981)';
 
   return (
     <div className="page-container fade-in">
       <div className="page-header">
         <h1>📊 Plan & Usage</h1>
-        <p>Your current plan and this month's article usage</p>
+        <p>Your current plan and this month's article and Instagram post usage</p>
       </div>
 
       <div style={{ maxWidth: 600 }}>
@@ -67,6 +69,24 @@ export default function PlanUsage() {
                 ? `${usage.remaining} article${usage.remaining === 1 ? '' : 's'} remaining this month.`
                 : 'You have reached your monthly limit. Contact us to upgrade your plan.'}
             </div>
+
+            {usage?.igLimit != null && (
+              <div className="mt-24">
+                <div className="flex items-center justify-between mb-16">
+                  <span style={{ color: 'var(--text-secondary)' }}>Instagram Studio posts</span>
+                  <strong>{usage.igUsed} / {usage.igLimit} posts</strong>
+                </div>
+                <div style={{ height: 12, background: 'rgba(255,255,255,0.08)', borderRadius: 999, overflow: 'hidden' }}
+                  role="meter" aria-valuemin={0} aria-valuemax={usage.igLimit} aria-valuenow={usage.igUsed} aria-label="Instagram posts used">
+                  <div style={{ width: `${igPct}%`, height: '100%', background: igBarColor, transition: 'width .3s' }} />
+                </div>
+                <div className="form-helper mt-16">
+                  {usage.igRemaining > 0
+                    ? `${usage.igRemaining} AI Instagram post${usage.igRemaining === 1 ? '' : 's'} remaining this month (regenerating an image doesn't count).`
+                    : 'You have reached your monthly Instagram post limit. Contact us to upgrade your plan.'}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

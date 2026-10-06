@@ -2,3 +2,9 @@ node_modules
 .env
 dist
 backend/src/data/businessDna.json
+
+# Private keys / Redis dumps — never commit
+*.pem
+*.rdb
+# Generated Instagram images (served at /api/media/ig)
+backend/media/

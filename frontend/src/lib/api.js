@@ -124,6 +124,40 @@ export const deleteInstagramAutomation = (id) => api.delete(`/instagram/automati
 export const previewInstagramPost = (id) => api.post(`/instagram/automations/${id}/preview`).then(r => r.data);
 export const postInstagramNow = (id) => api.post(`/instagram/automations/${id}/post-now`).then(r => r.data);
 export const getInstagramPosts = (id) => api.get(`/instagram/automations/${id}/posts`).then(r => r.data);
+export const startFacebookLogin = () => api.post('/meta/oauth/start').then(r => r.data);
+
+// ─── Instagram Studio (AI posts, DNA, prompts, campaigns, comments) ─
+const igAcc = (accountId) => `/ig/accounts/${accountId}`;
+export const getStudioStatus = (fresh) => api.get('/ig/status', { params: fresh ? { fresh: 1 } : {} }).then(r => r.data);
+export const getAccountDna = (accountId) => api.get(`${igAcc(accountId)}/dna`).then(r => r.data);
+export const saveAccountDna = (accountId, dna) => api.put(`${igAcc(accountId)}/dna`, dna).then(r => r.data);
+export const saveStudioSchedule = (accountId, data) => api.put(`${igAcc(accountId)}/schedule`, data).then(r => r.data);
+export const getStudioPrompts = (accountId) => api.get(`${igAcc(accountId)}/prompts`).then(r => r.data);
+export const addStudioPrompt = (accountId, data) => api.post(`${igAcc(accountId)}/prompts`, data).then(r => r.data);
+export const setStudioPromptActive = (id, active) => api.patch(`/ig/prompts/${id}`, { active }).then(r => r.data);
+export const deleteStudioPrompt = (id) => api.delete(`/ig/prompts/${id}`).then(r => r.data);
+export const getStudioPosts = (accountId) => api.get(`${igAcc(accountId)}/posts`).then(r => r.data);
+export const generateStudioPost = (accountId, data) => api.post(`${igAcc(accountId)}/posts`, data).then(r => r.data);
+export const generateStudioImage = (postId) => api.post(`/ig/posts/${postId}/image`).then(r => r.data);
+export const publishStudioPost = (postId) => api.post(`/ig/posts/${postId}/publish`).then(r => r.data);
+export const deleteStudioPost = (postId) => api.delete(`/ig/posts/${postId}`).then(r => r.data);
+export const getIgBusinessDna = (accountId) => api.get(`${igAcc(accountId)}/business-dna`).then(r => r.data);
+export const startIgResearch = (accountId, data) => api.post(`${igAcc(accountId)}/business-dna/research`, data).then(r => r.data);
+export const saveIgBusinessDna = (accountId, data) => api.put(`${igAcc(accountId)}/business-dna`, data).then(r => r.data);
+export const applyIgBusinessDna = (accountId) => api.post(`${igAcc(accountId)}/business-dna/apply`).then(r => r.data);
+export const getStudioAnalytics = (accountId) => api.get(`${igAcc(accountId)}/analytics`).then(r => r.data);
+export const getStudioLogs = (accountId) => api.get(`${igAcc(accountId)}/logs`).then(r => r.data);
+export const getIgCampaigns = () => api.get('/ig/campaigns').then(r => r.data);
+export const createIgCampaign = (data) => api.post('/ig/campaigns', data).then(r => r.data);
+export const setIgCampaignStatus = (id, status) => api.patch(`/ig/campaigns/${id}`, { status }).then(r => r.data);
+export const deleteIgCampaign = (id) => api.delete(`/ig/campaigns/${id}`).then(r => r.data);
+export const generateIgCampaignPost = (id) => api.post(`/ig/campaigns/${id}/generate`).then(r => r.data);
+export const getIgComments = (params) => api.get('/ig/comments', { params }).then(r => r.data);
+export const saveIgCommentSettings = (accountId, data) => api.put(`${igAcc(accountId)}/comment-settings`, data).then(r => r.data);
+export const checkIgCommentsNow = (accountId) => api.post(`${igAcc(accountId)}/comments/check`).then(r => r.data);
+export const replyIgComment = (id, text) => api.post(`/ig/comments/${id}/reply`, { text }).then(r => r.data);
+export const igCommentAction = (id, action) => api.post(`/ig/comments/${id}/${action}`).then(r => r.data);
+export const getDataDeletionStatus = (code) => api.get(`/meta/data-deletion/${code}`).then(r => r.data);
 
 // ─── Plan & Usage ───────────────────────────────────────────
 export const getUsage = () => api.get('/settings/usage').then(r => r.data);

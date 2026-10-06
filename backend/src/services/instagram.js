@@ -15,7 +15,7 @@ export function detectTokenType(accessToken) {
 async function graph(tokenType, accessToken, method, path, params = {}) {
   // POST params go form-encoded in the body — a 2,200-char caption is too long for a query string.
   const payload = { ...params, access_token: accessToken };
-  const isGet = method === 'get';
+  const isGet = method === 'get' || method === 'delete';
   try {
     const { data } = await axios({
       method,
@@ -191,6 +191,92 @@ export async function checkAccountStatus(account) {
   }
 
   return { profile, posts, checks, tokenError, checkedAt: new Date().toISOString() };
+}
+
+// ─── Reads + comments for Instagram Studio (research, analytics, auto-reply) ──
+
+// Instagram-Login tokens address the account as /me; Facebook-Login tokens by its id.
+const accountNode = (account) => (account.token_type === 'instagram' ? '/me' : `/${account.ig_user_id}`);
+const call = (account, method, path, params) => graph(account.token_type, account.accessToken, method, path, params);
+
+export async function fetchProfile(account) {
+  const p = await getWithFallback(account, accountNode(account), PROFILE_FIELDS[account.token_type]);
+  return {
+    username: p.username,
+    name: p.name || null,
+    biography: p.biography || null,
+    website: p.website || null,
+    followers: p.followers_count ?? null,
+    mediaCount: p.media_count ?? null,
+  };
+}
+
+// The account's most recent media, newest first.
+export async function fetchMedia(account, limit = 12) {
+  const media = await getWithFallback(account, `${accountNode(account)}/media`, MEDIA_FIELDS, { limit: Math.min(limit, 100) });
+  return (media.data || []).map((m) => ({
+    id: m.id,
+    caption: m.caption || null,
+    permalink: m.permalink || null,
+    timestamp: m.timestamp || null,
+    likes: m.like_count ?? null,
+    comments: m.comments_count ?? null,
+  }));
+}
+
+// Engagement for one published post. Best-effort: reach/saves need the insights permission.
+export async function fetchMediaInsights(account, mediaId) {
+  const out = { likes: null, comments: null, reach: null, saves: null };
+  try {
+    const d = await call(account, 'get', `/${mediaId}`, { fields: 'like_count,comments_count' });
+    out.likes = d.like_count ?? null;
+    out.comments = d.comments_count ?? null;
+  } catch { /* best-effort */ }
+  try {
+    const d = await call(account, 'get', `/${mediaId}/insights`, { metric: 'reach,saved' });
+    for (const m of d.data || []) {
+      const value = m.values?.[0]?.value ?? m.total_value?.value ?? null;
+      if (m.name === 'reach') out.reach = value;
+      if (m.name === 'saved') out.saves = value;
+    }
+  } catch { /* best-effort */ }
+  return out;
+}
+
+// Top-level comments left since `since` on the account's most recent posts (no reply threads).
+export async function fetchRecentComments(account, { since, mediaLimit = 10, perMedia = 50 }) {
+  const media = await fetchMedia(account, mediaLimit);
+  const withComments = media.filter((m) => (m.comments ?? 1) > 0);
+  const perPost = await Promise.all(withComments.map(async (m) => {
+    const res = await call(account, 'get', `/${m.id}/comments`, { fields: 'id,text,username,timestamp,hidden', limit: perMedia });
+    return (res.data || [])
+      .filter((c) => c.text && new Date(c.timestamp) >= since)
+      .map((c) => ({
+        id: c.id,
+        text: c.text,
+        author: c.username || null,
+        timestamp: c.timestamp,
+        hidden: Boolean(c.hidden),
+        mediaId: m.id,
+        permalink: m.permalink,
+        caption: m.caption,
+      }));
+  }));
+  return perPost.flat();
+}
+
+// Public reply under a comment; returns the reply's id.
+export async function replyToComment(account, commentId, message) {
+  return (await call(account, 'post', `/${commentId}/replies`, { message })).id;
+}
+
+// Hidden comments stay visible to their author only.
+export async function setCommentHidden(account, commentId, hide) {
+  await call(account, 'post', `/${commentId}`, { hide: String(hide) });
+}
+
+export async function deleteComment(account, commentId) {
+  await call(account, 'delete', `/${commentId}`);
 }
 
 // Instagram Login tokens only; extends to 60 days from now. Unversioned endpoint.
