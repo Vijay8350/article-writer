@@ -18,6 +18,8 @@ const TASKS = [
 const DEEPSEEK_MODEL_HINTS = {
   'deepseek-chat': 'DeepSeek\'s general chat model (the default).',
   'deepseek-reasoner': 'Thinks before answering. Slower and uses more tokens.',
+  'deepseek-v4-pro': 'The strongest model on your key, and the best choice for article quality. Slower and costs more per article.',
+  'deepseek-flash': 'Fast and low cost. Good for captions and quick jobs.',
 };
 
 export default function Settings() {

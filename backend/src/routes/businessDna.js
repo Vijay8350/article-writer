@@ -78,10 +78,18 @@ router.post('/fetch', requireWorkspaceRole('owner', 'admin', 'member'), async (r
         totalArticles: allArticles.length, totalPages: pages.length, totalBlogs: blogs.length,
       },
       blogs: blogs.map(b => ({ id: b.id, title: b.title, handle: b.handle })),
-      products: products.map(p => ({
-        id: p.id, title: p.title, handle: p.handle, productType: p.product_type,
-        vendor: p.vendor, tags: p.tags, image: p.images?.[0]?.src || null,
-      })),
+      products: products.map(p => {
+        const variant = p.variants?.[0] || {};
+        const inStock = (p.variants || []).some(v => !v.inventory_management || v.inventory_policy === 'continue' || v.inventory_quantity > 0);
+        return {
+          id: p.id, title: p.title, handle: p.handle, productType: p.product_type,
+          vendor: p.vendor, tags: p.tags, image: p.images?.[0]?.src || null,
+          price: variant.price ?? null,
+          compareAtPrice: variant.compare_at_price ?? null,
+          description: String(p.body_html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 240),
+          available: p.status === 'active' && Boolean(p.published_at) && inStock,
+        };
+      }),
       collections,
       articles: allArticles,
       pages: pages.map(p => ({ id: p.id, title: p.title, handle: p.handle })),

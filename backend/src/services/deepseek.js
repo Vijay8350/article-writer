@@ -3,6 +3,7 @@ import config from '../config/env.js';
 import { aiImageInstructions } from '../lib/articleImagePrompts.js';
 import { answerEngineRules, ENHANCE_RULES } from '../lib/articleStructure.js';
 import { escapeControlChars, unreadableArticle } from '../lib/articleJson.js';
+import { WRITING_RULES, EDITOR_SYSTEM, buildEditPrompt } from '../lib/articleCraft.js';
 
 const DEEPSEEK_URL = config.deepseek.baseUrl;
 
@@ -46,16 +47,7 @@ export async function verifyKey(apiKey) {
 
 export async function generateArticle(prompt, ctx, apiKey, model) {
   const wordCount = ctx.wordCount || 1500;
-  const minWords = Math.round(wordCount * 0.9);
-
-  const sys = `You are a senior content strategist who has written for major publications for 15+ years. You write like a REAL HUMAN — opinionated, conversational, authentic. You NEVER sound robotic or AI-generated.
-
-CRITICAL RULES:
-1. WORD COUNT: You MUST write EXACTLY ${wordCount} words (minimum ${minWords}). If the user asks for ${wordCount} words, you write ${wordCount} words. NOT 500, NOT 800. FULL ${wordCount} WORDS. Each H2 section = 200-400 words.
-2. HUMAN VOICE: Use contractions (you'll, it's, don't). Include opinions ("Honestly, I think...", "Here's what most people miss..."). Use rhetorical questions. Vary sentences from 3 words to 25 words.
-3. BANNED PHRASES (NEVER use these): "In today's fast-paced world", "Let's dive in", "Without further ado", "In the realm of", "It's important to note", "In conclusion", "Unlock the power", "Navigate the world", "Game-changer", "Cutting-edge", "Embark on", "Elevate your", "Comprehensive guide"
-4. SEO: 5-8 H2s with keywords, 2-4 H3s, bold key phrases, bullet lists, internal links
-5. LINKS: You MUST include 3-6 product links and 2-4 collection links using <a href="/products/HANDLE">keyword anchor</a>
+  const sys = `You are a senior ecommerce content writer. You write genuinely helpful articles for shoppers, in the store's voice, around ${wordCount} words long (within 10%). Use 5-8 H2 sections with H3 sub-points where they help, lists, and internal links: 3-6 product links and 2-4 collection links using <a href="/products/HANDLE">descriptive anchor</a>.
 
 You return ONLY valid JSON. Never markdown code blocks. Never explanations.`;
 
@@ -63,7 +55,16 @@ You return ONLY valid JSON. Never markdown code blocks. Never explanations.`;
   const result = await callDeepSeek([
     { role: 'system', content: sys },
     { role: 'user', content: userPrompt }
-  ], 0.9, 16000, apiKey, model);
+  ], 0.7, 16000, apiKey, model);
+  return parseResponse(result);
+}
+
+// The second pass: an editor tightens the draft without touching its structure.
+export async function editArticle(article, ctx, apiKey, model) {
+  const result = await callDeepSeek([
+    { role: 'system', content: EDITOR_SYSTEM },
+    { role: 'user', content: buildEditPrompt(article, ctx) },
+  ], 0.4, 16000, apiKey, model);
   return parseResponse(result);
 }
 
@@ -84,7 +85,7 @@ Instructions: ${instructions}
 
 Requirements:
 - Keep or INCREASE the word count
-- Make tone human: contractions, opinions, questions, varied sentences
+${WRITING_RULES}
 - Remove AI phrases ("In today's world", "Let's dive in", etc.)
 - Add 3-5 product/collection links: <a href="/products/HANDLE">keyword anchor</a>
 - Add <strong> to key phrases
@@ -120,7 +121,7 @@ function brandLines(ctx) {
 
 function buildPrompt(userPrompt, ctx) {
   const wordCount = ctx.wordCount || 1500;
-  const products = ctx.products?.slice(0, 30).map(p => `- "${p.title}" → /products/${p.handle}`).join('\n') || 'None';
+  const products = ctx.products?.slice(0, 30).map(p => `- "${p.title}" → /products/${p.handle}${p.facts ? ` | ${p.facts}` : ''}`).join('\n') || 'None';
   const collections = ctx.collections?.slice(0, 15).map(c => `- "${c.title}" → /collections/${c.handle}`).join('\n') || 'None';
   const articles = ctx.existingArticles?.slice(0, 20).map(a => `- "${a.title}" → /blogs/${a.blogHandle || 'news'}/${a.handle}`).join('\n') || 'None';
 
@@ -143,16 +144,12 @@ ${imgs.map(i => `- IMG_URL: ${i.src || i.imageUrl} | PRODUCT: "${i.title}" → /
     ? ctx.secondaryKeywords.join(', ')
     : '(pick 4-6 related terms)';
 
-  return `████████████████████████████████████████
-██  WRITE EXACTLY ${wordCount} WORDS.         ██
-██  NOT 500. NOT 800. FULL ${wordCount}.       ██
-██  EACH H2 = 200-400 WORDS MINIMUM.   ██
-████████████████████████████████████████
+  return `TARGET LENGTH: about ${wordCount} words.
 
 Store: ${ctx.storeName || 'N/A'} (${ctx.niche || 'e-commerce'}) — ${ctx.storeDomain || ''}
 Audience: ${ctx.targetAudience || 'General shoppers'}
 ${brandLines(ctx)}
-PRODUCTS (link to 3-6 in article):
+PRODUCTS (recommend 3-6 of these, using only the details shown):
 ${products}
 
 COLLECTIONS (link to 2-4 in article):
@@ -182,12 +179,7 @@ ${ctx.aiImageSlots ? `\n${aiImageInstructions(ctx.aiImageSlots)}\n` : ''}
 ${ctx.campaignInstructions ? `CAMPAIGN INSTRUCTIONS (follow these first): ${ctx.campaignInstructions}\n` : ''}
 ${answerEngineRules(ctx.storeName)}
 
-WRITING STYLE:
-- Contractions: you'll, it's, don't, we've, that's
-- Personal opinions: "Honestly...", "Here's what most people miss..."
-- Rhetorical questions: "But does that actually work?", "Sound familiar?"
-- Mix short sentences (3-5 words) with longer detailed ones
-- Transitions: "That said,", "Look,", "The reality is,", "Here's why:"
+${WRITING_RULES}
 
 Return ONLY valid JSON (no markdown fences):
 {"title":"SEO title 50-70 chars, primary keyword near the front","handle":"keyword-slug","primaryKeyword":"${primaryKeyword}","bodyHtml":"<p>BLUF intro with primary keyword in first 100 words ...</p>...${wordCount}+ words total","summary":"1-2 sentence excerpt including the primary keyword","tags":"primary kw, secondary 1, secondary 2, secondary 3, niche tag, brand tag","seoTitle":"Primary Keyword - Benefit | ${ctx.storeName || 'Store'} (50-60 chars)","seoDescription":"150-160 char meta description with primary keyword + CTA","imagePrompts":["fallback 1","fallback 2"]}`;

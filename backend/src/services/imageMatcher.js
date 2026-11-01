@@ -7,7 +7,7 @@ const STOP_WORDS = new Set([
   'this', 'that', 'from', 'about', 'into', 'tips', 'ways', 'using', 'use',
 ]);
 
-function tokenize(text) {
+export function tokenize(text) {
   return String(text || '')
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
@@ -44,7 +44,7 @@ function shapeImage(product, topic) {
 // Returns null if no products have an image (caller can fall back to a brand logo).
 export function pickFeaturedImage(topic, products = []) {
   const topicTokens = [...new Set(tokenize(topic))];
-  const withImages = products.filter((p) => p.image);
+  const withImages = products.filter((p) => p.image && sellable(p));
   if (withImages.length === 0) return null;
 
   const ranked = withImages
@@ -55,11 +55,26 @@ export function pickFeaturedImage(topic, products = []) {
   return shapeImage(top.product, topic);
 }
 
+// Products a reader can actually buy. DNA built before these fields existed counts as sellable.
+const sellable = (p) => p.available !== false;
+
+// The products most relevant to a topic. Equal matches come in random order, so articles
+// on similar topics recommend different items rather than the same few.
+export function rankProducts(topic, products = [], limit = 24) {
+  const topicTokens = [...new Set(tokenize(topic))];
+  return products
+    .filter(sellable)
+    .map((product) => ({ product, score: scoreProduct(topicTokens, product), tie: Math.random() }))
+    .sort((a, b) => b.score - a.score || a.tie - b.tie)
+    .slice(0, limit)
+    .map((r) => r.product);
+}
+
 // The product clearly about this topic (a title word matches), or null.
 export function bestProductMatch(topic, products = []) {
   const topicTokens = [...new Set(tokenize(topic))];
   const top = products
-    .filter((p) => p.image)
+    .filter((p) => p.image && sellable(p))
     .map((product) => ({ product, score: scoreProduct(topicTokens, product) }))
     .sort((a, b) => b.score - a.score)[0];
   return top && top.score >= 3 ? top.product : null;
@@ -70,7 +85,7 @@ export function bestProductMatch(topic, products = []) {
 export function selectRelevantImages(topic, products = [], { max = 4, excludeHandles = [], relevantOnly = false } = {}) {
   const exclude = new Set(excludeHandles.filter(Boolean));
   const topicTokens = [...new Set(tokenize(topic))];
-  const withImages = products.filter((p) => p.image && !exclude.has(p.handle));
+  const withImages = products.filter((p) => p.image && sellable(p) && !exclude.has(p.handle));
 
   const ranked = withImages
     .map((p) => ({ product: p, score: scoreProduct(topicTokens, p) }))

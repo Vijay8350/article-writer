@@ -216,7 +216,7 @@ export async function getProducts(creds, limit = 250) {
   let pageInfo = null;
 
   do {
-    let url = `${baseUrl(creds)}/products.json?limit=${Math.min(limit, 250)}&fields=id,title,handle,product_type,tags,images,vendor,body_html`;
+    let url = `${baseUrl(creds)}/products.json?limit=${Math.min(limit, 250)}&fields=id,title,handle,product_type,tags,images,vendor,body_html,variants,status,published_at`;
     if (pageInfo) url = `${baseUrl(creds)}/products.json?limit=250&page_info=${pageInfo}`;
 
     const response = await axios.get(url, {

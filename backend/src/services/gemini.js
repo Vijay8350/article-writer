@@ -3,6 +3,7 @@ import config from '../config/env.js';
 import { aiImageInstructions } from '../lib/articleImagePrompts.js';
 import { answerEngineRules, ENHANCE_RULES } from '../lib/articleStructure.js';
 import { escapeControlChars, unreadableArticle } from '../lib/articleJson.js';
+import { WRITING_RULES, EDITOR_SYSTEM, buildEditPrompt } from '../lib/articleCraft.js';
 
 function geminiUrl(apiKey) {
   const key = apiKey || config.gemini.apiKey;
@@ -71,6 +72,12 @@ export async function generateArticle(prompt, businessContext, apiKey) {
   return parseArticleResponse(result);
 }
 
+// The second pass: an editor tightens the draft without touching its structure.
+export async function editArticle(article, ctx, apiKey) {
+  const raw = await callGemini(`${EDITOR_SYSTEM}\n\n${buildEditPrompt(article, ctx)}`, 0.4, 65000, apiKey);
+  return parseArticleResponse(raw);
+}
+
 export async function enhanceArticle(article, instructions, businessContext, apiKey) {
   const prompt = buildEnhancePrompt(article, instructions, businessContext);
   const result = await callGemini(prompt, 0.7, 65000, apiKey);
@@ -106,7 +113,7 @@ function buildArticlePrompt(userPrompt, ctx) {
   const minWords = Math.round(wordCount * 0.9);
   const maxWords = Math.round(wordCount * 1.1);
 
-  const productsSection = ctx.products?.slice(0, 30).map(p => `- "${p.title}" → /products/${p.handle}`).join('\n') || 'No products available';
+  const productsSection = ctx.products?.slice(0, 30).map(p => `- "${p.title}" → /products/${p.handle}${p.facts ? ` | ${p.facts}` : ''}`).join('\n') || 'No products available';
   const collectionsSection = ctx.collections?.slice(0, 15).map(c => `- "${c.title}" → /collections/${c.handle}`).join('\n') || 'No collections available';
   const articlesSection = ctx.existingArticles?.slice(0, 20).map(a => `- "${a.title}" → /blogs/${a.blogHandle || 'news'}/${a.handle}`).join('\n') || 'No existing articles';
 
@@ -157,16 +164,7 @@ ${userPrompt}
 
 === WRITING STYLE REQUIREMENTS ===
 
-HUMAN TONE (CRITICAL — readers must NOT detect AI):
-- Write like a real person talking to a friend who asked for advice
-- Use contractions: "you'll", "it's", "don't", "we've", "that's"
-- Include personal-sounding opinions: "Honestly, I think...", "What most people get wrong is...", "Here's the thing nobody tells you..."
-- Add rhetorical questions: "But does that actually work?", "Sound familiar?", "So what's the catch?"
-- Vary sentence lengths dramatically: some 4-word sentences. Then a longer, more complex sentence that weaves in details and nuance. Then something short again.
-- Use transitional phrases real writers use: "That said,", "Look,", "The reality is,", "Here's why this matters:", "On the flip side,"
-- NEVER use these AI phrases: "In today's fast-paced world", "In this comprehensive guide", "Let's dive in", "Without further ado", "In the realm of", "It's important to note", "Whether you're a beginner or expert", "In conclusion", "To sum up", "Unlock the power", "Navigate the world of", "Embark on a journey", "Elevate your", "Supercharge your", "Game-changer", "Revolutionize", "Cutting-edge"
-- Write with the confidence of the store's experts, but never claim personal tests or invent experiences
-- Include 1-2 slightly opinionated takes that a real expert would have
+${WRITING_RULES}
 
 KEYWORDS (target these):
 - PRIMARY keyword: "${primaryKeyword}" — use in: the title, first 100 words of the intro, exactly one H2, and the meta description. Density ~0.5–1.5% (no stuffing).
@@ -240,7 +238,7 @@ ${instructions}
 
 === REQUIREMENTS ===
 - Keep the article AT LEAST as long as the original — add more content, not less
-- Make the tone genuinely human: contractions, opinions, rhetorical questions, varied sentence lengths
+${WRITING_RULES}
 - Remove any AI-sounding phrases like "In today's world", "Let's dive in", "Without further ado"
 - Improve SEO: add internal links to products/collections, optimize headings with keywords
 - Add <strong> tags around key phrases for scannability

@@ -9,6 +9,8 @@ import * as usage from './usage.js';
 import * as activity from '../repositories/activity.js';
 import { calculateSeoScore, calculateAeoScore, countWords } from '../lib/seo.js';
 import { structureBody, tidySeoFields, extractFaqs, withFaqSchema, stripFaqSchema } from '../lib/articleStructure.js';
+import { relevantCatalog, repairLinks } from '../lib/articleCatalog.js';
+import { acceptEdit } from '../lib/articleCraft.js';
 
 const DEFAULT_ENHANCE_INSTRUCTIONS = 'Optimize this article for search engines and AI answer engines: question-led headings, a direct answer under each one, key takeaways and a strong FAQ. Add internal links and keep it human.';
 const MIN_KEPT_LENGTH = 0.7; // an edit that loses more than this much of the article is rejected
@@ -22,6 +24,22 @@ export async function loadWorkspaceContext(workspaceId) {
 }
 
 // ─── Core generation ────────────────────────────────────────────────────────
+// A second pass over the draft. It only replaces the draft if everything survived, and
+// any failure here keeps the draft: an edit can make an article better, never lose it.
+async function editDraft(ai, article, context) {
+  try {
+    const edited = await ai.service.editArticle(article, context, ai.apiKey, ai.model);
+    if (!acceptEdit(article, edited)) {
+      console.warn(`Editor pass rejected for "${article.title}": it changed the structure or length`);
+      return article;
+    }
+    return { ...article, title: edited.title || article.title, bodyHtml: edited.bodyHtml, summary: edited.summary || article.summary };
+  } catch (err) {
+    console.warn(`Editor pass skipped for "${article.title}": ${err.message}`);
+    return article;
+  }
+}
+
 // `brief` comes from a campaign: { instructions, imageCount }.
 export async function generateArticleForWorkspace(workspaceId, { topic, wordCount, aiModel, primaryKeyword, secondaryKeywords, imageMode, brief }, actor) {
   await usage.assertCanGenerate(workspaceId);
@@ -50,9 +68,7 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
     niche: dna.analysis.niche,
     targetAudience: dna.analysis.targetAudience,
     wordCount: wordCount || 1500,
-    products: dna.products,
-    collections: dna.collections,
-    existingArticles: dna.articles,
+    ...relevantCatalog(`${topic} ${primaryKeyword || ''}`, dna),
     featuredImage: productHero,
     inlineImages,
     selectedImages: inlineImages, // back-compat with older prompt code paths
@@ -66,7 +82,8 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
   };
 
   const ai = await resolveAi(workspaceId, 'article', aiModel);
-  const article = await ai.service.generateArticle(topic, businessContext, ai.apiKey, ai.model);
+  const draft = await ai.service.generateArticle(topic, businessContext, ai.apiKey, ai.model);
+  const article = await editDraft(ai, draft, businessContext);
 
   await usage.incrementUsage(workspaceId);
   if (actor) activity.log(actor, 'generate', article.title, workspaceId);
@@ -80,7 +97,7 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
   const finished = {
     ...article,
     primaryKeyword: keyword,
-    bodyHtml: structureBody(article.bodyHtml),
+    bodyHtml: structureBody(repairLinks(article.bodyHtml, dna)),
     ...tidySeoFields(article, { primaryKeyword: keyword }),
     featuredImage,
   };
@@ -105,11 +122,7 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
 
 export async function enhanceArticleForWorkspace(workspaceId, { article, instructions, aiModel }) {
   const { dna } = await loadWorkspaceContext(workspaceId);
-  const ctx = dna ? {
-    storeName: dna.shop.name,
-    products: dna.products,
-    collections: dna.collections,
-  } : {};
+  const ctx = dna ? { storeName: dna.shop.name, ...relevantCatalog(article.title, dna) } : {};
 
   const originalBody = stripFaqSchema(article.bodyHtml || article.body_html);
   const ai = await resolveAi(workspaceId, 'enhance', aiModel);
@@ -121,7 +134,7 @@ export async function enhanceArticleForWorkspace(workspaceId, { article, instruc
     ai.model
   );
 
-  const bodyHtml = structureBody(stripImagePlaceholders(enhanced.bodyHtml));
+  const bodyHtml = structureBody(repairLinks(stripImagePlaceholders(enhanced.bodyHtml), dna || {}));
   if (countWords(bodyHtml) < countWords(originalBody) * MIN_KEPT_LENGTH) {
     throw Object.assign(new Error('The AI shortened this article too much, so the result was discarded. Please try again.'), { status: 502 });
   }
