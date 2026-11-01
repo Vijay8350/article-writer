@@ -14,7 +14,7 @@ async function callDeepSeek(messages, temperature = 0.7, maxTokens = 16000, apiK
   const key = apiKey || config.deepseek.apiKey;
   // Reasoner models spend max_tokens on their chain of thought as well as the
   // answer, so a small budget would end mid-thought with no JSON at all.
-  const budget = /reasoner/i.test(model) ? Math.max(maxTokens, 32000) : maxTokens;
+  const budget = /reasoner|-pro\b/i.test(model) ? Math.max(maxTokens, 32000) : maxTokens;
   const response = await axios.post(
     `${DEEPSEEK_URL}/chat/completions`,
     { model, messages, temperature, max_tokens: budget },

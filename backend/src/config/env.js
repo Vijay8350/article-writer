@@ -45,6 +45,12 @@ const config = {
     maxRegenAttempts: Math.min(Math.max(parseInt(process.env.MAX_REGEN_ATTEMPTS || '3') || 3, 1), 5),
   },
 
+  // Google Search Console sign-in for the SEO section.
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+  },
+
   // "Connect with Facebook" (Instagram API with Facebook Login) + Meta's data-deletion callback.
   facebook: {
     appId: process.env.FACEBOOK_APP_ID || '',

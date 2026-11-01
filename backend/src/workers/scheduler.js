@@ -11,6 +11,8 @@ import { releaseStalePosts, finishExpiredCampaigns } from '../repositories/igStu
 import { releaseStale as releaseStaleProductImages } from '../repositories/productImages.js';
 import { finishExpired as finishExpiredBlogCampaigns } from '../repositories/campaigns.js';
 import { finishExpiredAutomations } from '../repositories/instagram.js';
+import { runDueSeoAudit } from '../services/seoAudit.js';
+import { releaseStale as releaseStaleSeoAudits } from '../repositories/seo.js';
 
 // Runs inside the SINGLE PM2 fork process. This is the ONLY reason it's safe
 // from double-firing — do NOT enable PM2 cluster mode / instances>1 without
@@ -64,6 +66,9 @@ async function tick() {
     if (await runDueCommentSweep()) return;
     if (await runDueAnalytics()) return;
 
+    // The daily SEO check: the longest job here, so it waits for everything else.
+    if (await runDueSeoAudit()) return;
+
     // Idle tick → housekeeping: un-stick interrupted Studio posts, and keep one
     // Instagram Login token alive (they expire after 60 days).
     await releaseStalePosts();
@@ -71,6 +76,7 @@ async function tick() {
     await finishExpiredCampaigns();
     await finishExpiredBlogCampaigns();
     await finishExpiredAutomations();
+    await releaseStaleSeoAudits();
     await refreshDueInstagramToken();
   } catch (err) {
     console.error('Scheduler tick error:', err.message);

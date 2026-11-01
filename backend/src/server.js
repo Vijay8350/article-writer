@@ -17,6 +17,7 @@ import invitationsRouter from './routes/invitations.js';
 import adminRouter from './routes/admin.js';
 import instagramRouter from './routes/instagram.js';
 import productImagesRouter from './routes/productImages.js';
+import seoRouter from './routes/seo.js';
 import igStudioRouter from './routes/igStudio.js';
 import dashboardRouter from './routes/dashboard.js';
 import metaRouter from './routes/meta.js';
@@ -59,6 +60,7 @@ app.use('/api/invitations', invitationsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/instagram', instagramRouter);
 app.use('/api/product-images', productImagesRouter);
+app.use('/api/seo', seoRouter);
 app.use('/api/dashboard', dashboardRouter);
 
 // Global error handler

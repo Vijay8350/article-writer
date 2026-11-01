@@ -78,6 +78,20 @@ export const getBusinessDna = () => api.get('/business-dna').then(r => r.data);
 export const fetchBusinessDna = () => api.post('/business-dna/fetch').then(r => r.data);
 export const clearBusinessDna = () => api.delete('/business-dna').then(r => r.data);
 export const syncCollections = () => api.post('/business-dna/sync-collections').then(r => r.data);
+
+// ─── SEO automation ─────────────────────────────────────────
+export const getSeoOverview = () => api.get('/seo/overview').then(r => r.data);
+export const saveSeoSettings = (data) => api.put('/seo/settings', data).then(r => r.data);
+export const runSeoAudit = (data) => api.post('/seo/audit', data).then(r => r.data);
+export const getSeoIssues = (status) => api.get('/seo/issues', { params: { status } }).then(r => r.data);
+export const fixSeoIssue = (id) => api.post(`/seo/issues/${id}/fix`).then(r => r.data);
+export const ignoreSeoIssue = (id) => api.post(`/seo/issues/${id}/ignore`).then(r => r.data);
+export const getSeoChanges = () => api.get('/seo/changes').then(r => r.data);
+export const undoSeoChange = (id) => api.post(`/seo/changes/${id}/undo`).then(r => r.data);
+export const startGoogleConnect = () => api.post('/seo/google/start').then(r => r.data);
+export const getGoogleSites = () => api.get('/seo/google/sites').then(r => r.data);
+export const setGoogleSite = (site) => api.put('/seo/google/site', { site }).then(r => r.data);
+export const disconnectGoogle = () => api.delete('/seo/google').then(r => r.data);
 export const fetchSocialBusinessDna = (data) => api.post('/business-dna/fetch-social', data).then(r => r.data);
 
 // ─── Articles ───────────────────────────────────────────────

@@ -10,6 +10,7 @@ import Campaigns from './pages/Campaigns';
 import InstagramAccounts from './pages/InstagramAccounts';
 import InstagramScheduler from './pages/InstagramScheduler';
 import InstagramProductImages from './pages/InstagramProductImages';
+import SeoAutomation from './pages/SeoAutomation';
 import InstagramStudio from './pages/InstagramStudio';
 import InstagramCampaigns from './pages/InstagramCampaigns';
 import InstagramComments from './pages/InstagramComments';
@@ -84,6 +85,7 @@ export default function App() {
         <Route path="/instagram" element={<InstagramAccounts />} />
         <Route path="/instagram-scheduler" element={<InstagramScheduler />} />
         <Route path="/instagram-product-images" element={<InstagramProductImages />} />
+        <Route path="/seo" element={<SeoAutomation />} />
         <Route path="/instagram-studio" element={<InstagramStudio />} />
         <Route path="/instagram-studio/:accountId" element={<InstagramStudio />} />
         <Route path="/instagram-studio/:accountId/:tab" element={<InstagramStudio />} />

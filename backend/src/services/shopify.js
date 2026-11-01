@@ -190,14 +190,48 @@ export async function updateArticle(creds, blogId, articleId, articleData) {
   return data.article;
 }
 
-// The meta title and description of an article, which live in metafields.
-export async function getArticleSeo(creds, articleId) {
+// ─── SEO fields ─────────────────────────────────────────────
+// Meta titles and descriptions live in metafields, the same way for every kind of page.
+
+const SEO_KEYS = { seoTitle: 'title_tag', seoDescription: 'description_tag' };
+const metafieldsUrl = (creds, type, id) => `${baseUrl(creds)}/${type}s/${id}/metafields.json`;
+
+export async function getResourceSeo(creds, type, id) {
   ensure(creds);
-  const { data } = await axios.get(`${baseUrl(creds)}/articles/${articleId}/metafields.json`, {
-    params: { namespace: 'global' }, headers: headers(creds), timeout: 15000,
-  });
+  const { data } = await axios.get(metafieldsUrl(creds, type, id), { params: { namespace: 'global' }, headers: headers(creds), timeout: 15000 });
   const value = (key) => data.metafields?.find((m) => m.key === key)?.value || '';
-  return { seoTitle: value('title_tag'), seoDescription: value('description_tag') };
+  return { seoTitle: value(SEO_KEYS.seoTitle), seoDescription: value(SEO_KEYS.seoDescription) };
+}
+
+export const getArticleSeo = (creds, articleId) => getResourceSeo(creds, 'article', articleId);
+
+// Creates the field or updates it, because posting an existing key replaces its value.
+export async function setResourceSeo(creds, type, id, seo) {
+  ensure(creds);
+  for (const [field, key] of Object.entries(SEO_KEYS)) {
+    if (!seo[field]) continue;
+    await axios.post(metafieldsUrl(creds, type, id), {
+      metafield: { namespace: 'global', key, value: seo[field], type: 'single_line_text_field' },
+    }, { headers: headers(creds), timeout: 15000 });
+  }
+}
+
+// Puts SEO fields back as they were, removing any that didn't exist before.
+export async function restoreResourceSeo(creds, type, id, before) {
+  ensure(creds);
+  await setResourceSeo(creds, type, id, before);
+  const { data } = await axios.get(metafieldsUrl(creds, type, id), { params: { namespace: 'global' }, headers: headers(creds), timeout: 15000 });
+  for (const [field, key] of Object.entries(SEO_KEYS)) {
+    const existing = data.metafields?.find((m) => m.key === key);
+    if (!before[field] && existing) {
+      await axios.delete(`${baseUrl(creds)}/metafields/${existing.id}.json`, { headers: headers(creds), timeout: 15000 });
+    }
+  }
+}
+
+export async function setImageAlt(creds, productId, imageId, alt) {
+  ensure(creds);
+  await axios.put(`${baseUrl(creds)}/products/${productId}/images/${imageId}.json`, { image: { id: imageId, alt } }, { headers: headers(creds), timeout: 15000 });
 }
 
 export async function deleteArticle(creds, blogId, articleId) {
@@ -259,7 +293,7 @@ export async function getCollections(creds, { strict = false } = {}) {
     return [];
   });
   const [custom, smart] = await Promise.all([read('custom_collections'), read('smart_collections')]);
-  const shape = (type) => (c) => ({ id: c.id, title: c.title, handle: c.handle, type });
+  const shape = (type) => (c) => ({ id: c.id, title: c.title, handle: c.handle, type, published: Boolean(c.published_at) });
   return [...custom.map(shape('custom')), ...smart.map(shape('smart'))];
 }
 

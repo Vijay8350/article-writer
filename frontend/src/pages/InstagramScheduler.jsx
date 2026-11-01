@@ -32,7 +32,7 @@ function browserTimezone() {
 }
 
 // Browsers list canonical names (e.g. Asia/Calcutta), so always include the current value.
-function timezoneOptions(current) {
+export function timezoneOptions(current) {
   const all = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
   return [...new Set([current, 'Asia/Kolkata', 'UTC', ...all])];
 }

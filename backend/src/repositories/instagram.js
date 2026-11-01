@@ -3,7 +3,7 @@ import { encrypt, decrypt } from '../lib/crypto.js';
 
 // Next wall-clock occurrence of `time` in time zone `tz`, strictly after now().
 // Args are SQL expressions (column names or $n params).
-function nextRunSql(tz, time) {
+export function nextRunSql(tz, time) {
   const today = `((now() AT TIME ZONE ${tz})::date + ${time}) AT TIME ZONE ${tz}`;
   const tomorrow = `((now() AT TIME ZONE ${tz})::date + 1 + ${time}) AT TIME ZONE ${tz}`;
   return `CASE WHEN ${today} > now() THEN ${today} ELSE ${tomorrow} END`;

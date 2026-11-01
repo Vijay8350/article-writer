@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, Link } from 'react-router-dom';
-import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2, Instagram, AlarmClock, MessageCircle, Sparkles, Megaphone, BarChart3, ImagePlus } from 'lucide-react';
+import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2, Instagram, AlarmClock, MessageCircle, Sparkles, Megaphone, BarChart3, ImagePlus, SearchCheck } from 'lucide-react';
 import { getSettings } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -19,6 +19,12 @@ const navSections = [
       { path: '/campaigns', icon: Rocket, label: 'Campaigns' },
       { path: '/articles', icon: FileText, label: 'Existing Articles' },
       { path: '/scheduled', icon: CalendarClock, label: 'Scheduled Posts' },
+    ],
+  },
+  {
+    title: 'SEO',
+    items: [
+      { path: '/seo', icon: SearchCheck, label: 'SEO Automation' },
     ],
   },
   {
