@@ -48,9 +48,10 @@ FACTS: ${page.facts || 'none beyond the name'}
 ${queries?.length ? `PEOPLE FIND THIS PAGE BY SEARCHING: ${queries.join(', ')}` : ''}
 
 Rules:
-- seoTitle: 5 to 8 words. Lead with what the page is, in the words a shopper would search.${storeName ? ` End with " | ${storeName}".` : ''}
-- seoDescription: one or two short sentences, about 20 words in all. Say what the page offers and why it's worth the click.
+- seoTitle: 5 to 8 words. Lead with what the page is, in the words a shopper would search, such as the styles, materials or occasions the facts mention.${storeName ? ` End with " | ${storeName}".` : ''}
+- seoDescription: one or two short sentences, about 20 words in all. Name what's actually on the page, using specifics from the facts: styles, finishes, stones, who it suits.
 - Write like a helpful shop assistant, not an advert: no words like stunning, timeless, exquisite or perfect.
+- Don't open with Browse, Explore or Discover, don't use the word "collection", and skip filler like "find what you want".
 - Use only the facts above. Never invent discounts, free shipping, materials, guarantees or stock claims.
 - No emojis, no capital-letter shouting, no quotation marks.
 - Don't count characters. The length is checked afterwards.
@@ -71,9 +72,18 @@ async function writeMeta(workspaceId, page, context) {
   return { seoTitle, seoDescription };
 }
 
+// A collection has no text of its own worth using, but its products say what it is. An
+// empty one has nothing true to say, so it's left until it has products.
+async function pageFacts(creds, page) {
+  if (page.type !== 'collection') return page.facts;
+  const titles = await shopify.getCollectionProductTitles(creds, page.id);
+  if (!titles.length) throw new Error('This collection has no products to describe.');
+  return `Products here include: ${titles.join('; ')}`;
+}
+
 async function fixMeta({ workspaceId, creds, page, context, audit, source }) {
   const before = await shopify.getResourceSeo(creds, page.type, page.id);
-  const after = await writeMeta(workspaceId, page, context);
+  const after = await writeMeta(workspaceId, { ...page, facts: await pageFacts(creds, page) }, context);
   await shopify.setResourceSeo(creds, page.type, page.id, after);
   await repo.logChange(workspaceId, {
     auditId: audit?.id, resourceType: page.type, resourceId: page.id, blogId: page.blogId, url: page.url, title: page.name,

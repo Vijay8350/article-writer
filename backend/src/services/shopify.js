@@ -297,6 +297,15 @@ export async function getCollections(creds, { strict = false } = {}) {
   return [...custom.map(shape('custom')), ...smart.map(shape('smart'))];
 }
 
+// The names of a few products in a collection, which say what the page really holds.
+export async function getCollectionProductTitles(creds, collectionId, limit = 12) {
+  ensure(creds);
+  const { data } = await axios.get(`${baseUrl(creds)}/collections/${collectionId}/products.json?limit=${limit}&fields=title`, {
+    headers: headers(creds), timeout: 15000,
+  });
+  return (data.products || []).map((p) => p.title);
+}
+
 // ─── Pages ──────────────────────────────────────────────────
 export async function getPages(creds) {
   ensure(creds);
