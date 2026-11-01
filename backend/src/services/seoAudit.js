@@ -10,6 +10,7 @@ import { safeAxiosConfig } from '../lib/safeHttp.js';
 import { detectIssues, siteScore, readPage, liveHosts, suspectLinks } from '../lib/seoRules.js';
 import { calculateAeoScore } from '../lib/seo.js';
 import { stripTags } from '../lib/articleStructure.js';
+import { INTERNAL_COLLECTION_RE } from '../lib/articleCatalog.js';
 
 // The full-site check: everything published on the store, each live page as Google sees
 // it, and Search Console's numbers when connected. Then the worst problems get fixed.
@@ -47,7 +48,7 @@ async function loadInventory(creds, domain) {
       images: (p.images || []).map((i) => ({ id: i.id, alt: i.alt, position: i.position })),
       facts: [p.product_type, stripTags(p.body_html).slice(0, 300)].filter(Boolean).join('. '), // never the price: metadata outlives it
     })),
-    ...liveCollections.map((c) => ({ type: 'collection', id: c.id, handle: c.handle, name: c.title, url: `${base}/collections/${c.handle}` })),
+    ...liveCollections.filter((c) => !INTERNAL_COLLECTION_RE.test(c.title)).map((c) => ({ type: 'collection', id: c.id, handle: c.handle, name: c.title, url: `${base}/collections/${c.handle}` })),
     ...articles.map((a) => ({
       type: 'article', id: a.id, blogId: a.blogId, handle: a.handle, name: a.title, url: `${base}/blogs/${a.blogHandle}/${a.handle}`,
       body: a.body_html, tags: a.tags, image: a.image, facts: stripTags(a.summary_html || a.body_html).slice(0, 300),

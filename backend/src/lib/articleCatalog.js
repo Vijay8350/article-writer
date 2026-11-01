@@ -11,7 +11,7 @@ const MAX_ARTICLES = 12;
 const MAX_LINKS_PER_PAGE = 2;
 
 // Creator collections and the like: real pages, but nothing a reader should be sent to.
-const INTERNAL_COLLECTION_RE = /\bugc\b|^home\s?page$|^all\s?products$/i;
+export const INTERNAL_COLLECTION_RE = /\bugc\b|^home\s?page$|^all\s?products$/i;
 
 function byRelevance(items, topic, text) {
   const tokens = new Set(tokenize(topic));

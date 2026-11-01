@@ -11,7 +11,8 @@ import { ISSUE_TYPES, SEVERITY_ORDER, deadLinks } from '../lib/seoRules.js';
 
 const RECHANGE_DAYS = 14; // a changed page rests this long before it can change again
 const MAX_ARTICLE_REWRITES = 1; // per run: these are the biggest changes the automation makes
-const MIN_SEO_DESCRIPTION = 90;
+const MIN_SEO_DESCRIPTION = 70;
+const MAX_SEO_DESCRIPTION = 160;
 const IMAGE_PAUSE_MS = 400; // Shopify allows about two admin calls a second
 const CLAIMS_RE = /free (?:shipping|delivery)|\d+\s*% off|guarantee\w*|warranty|lowest price|best price|cash on delivery|\bcod\b|hypoallergenic|waterproof|anti[- ]tarnish/gi;
 
@@ -21,6 +22,15 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function inventedClaim(text, page) {
   const known = `${page.name} ${page.facts || ''}`.toLowerCase();
   return (String(text).match(CLAIMS_RE) || []).find((claim) => !known.includes(claim.toLowerCase())) || null;
+}
+
+// A description over the limit falls back to its last whole sentence, never a cut-off one.
+function wholeSentences(text, max) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (clean.length <= max) return clean;
+  const ending = [...clean.slice(0, max + 1).matchAll(/[.!?](?=\s|$)/g)].pop();
+  if (!ending) throw new Error('The AI wrote a description too long to use.');
+  return clean.slice(0, ending.index + 1);
 }
 
 function parseMeta(raw) {
@@ -39,7 +49,8 @@ ${queries?.length ? `PEOPLE FIND THIS PAGE BY SEARCHING: ${queries.join(', ')}` 
 
 Rules:
 - seoTitle: 5 to 8 words. Lead with what the page is, in the words a shopper would search.${storeName ? ` End with " | ${storeName}".` : ''}
-- seoDescription: one or two plain sentences, about 25 words. Say what the page offers and why it's worth the click.
+- seoDescription: one or two short sentences, about 20 words in all. Say what the page offers and why it's worth the click.
+- Write like a helpful shop assistant, not an advert: no words like stunning, timeless, exquisite or perfect.
 - Use only the facts above. Never invent discounts, free shipping, materials, guarantees or stock claims.
 - No emojis, no capital-letter shouting, no quotation marks.
 - Don't count characters. The length is checked afterwards.
@@ -51,7 +62,9 @@ async function writeMeta(workspaceId, page, context) {
   const ai = await resolveAi(workspaceId, 'article', 'deepseek');
   const raw = await deepseek.complete(metaPrompt(page, context), ai.apiKey, { temperature: 0.4, model: ai.model });
   const parsed = parseMeta(raw);
-  const { seoTitle, seoDescription } = tidySeoFields({ title: page.name, handle: 'x', seoTitle: parsed.seoTitle, seoDescription: parsed.seoDescription });
+  const { seoTitle, seoDescription } = tidySeoFields({
+    title: page.name, handle: 'x', seoTitle: parsed.seoTitle, seoDescription: wholeSentences(parsed.seoDescription, MAX_SEO_DESCRIPTION),
+  });
   if (!seoTitle || seoDescription.length < MIN_SEO_DESCRIPTION) throw new Error('The AI returned metadata that was too short to use.');
   const claim = inventedClaim(`${seoTitle} ${seoDescription}`, page);
   if (claim) throw new Error(`The AI added a claim the page doesn't make: "${claim}"`);
