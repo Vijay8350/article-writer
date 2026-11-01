@@ -74,8 +74,7 @@ export async function imageBackend(workspaceId) {
       return finish(await engine.generate(prompt, references, size, aspect));
     },
     inspect: (prompt, jpegs) => engine.inspect(prompt, jpegs),
-    score: (jpeg, intended, dna, { brief, product } = {}) =>
-      engine.inspect(buildVisionPrompt(intended, dna, brief, product?.title), product ? [jpeg, Buffer.from(product.photo.data, 'base64')] : [jpeg]),
+    score: (jpeg, intended, dna, { brief, hasCard = false } = {}) => engine.inspect(buildVisionPrompt(intended, dna, brief, hasCard), [jpeg]),
     check: () => engine.check(),
   };
 }
@@ -97,8 +96,9 @@ export async function mapLimit(items, limit, fn) {
 
 // Generate → inspect, up to `attempts` times, telling the model what was wrong with
 // the last try. Returns the final attempt either way; the caller decides what a fail means.
-// `compareTo` is what the gate sees beside the result (by default the references).
-export async function generateUntilPassed(images, { prompt, gatePrompt, references = [], compareTo = references, format, attempts = 1 }) {
+// `compareTo` is what the gate sees beside the result (by default the references), and
+// `finish` runs on each image before the gate, so it judges the final picture.
+export async function generateUntilPassed(images, { prompt, gatePrompt, references = [], compareTo = references, format, attempts = 1, finish = null }) {
   const originals = compareTo.map((r) => Buffer.from(r.data, 'base64'));
   let jpeg = null;
   let verdict = null;
@@ -107,6 +107,7 @@ export async function generateUntilPassed(images, { prompt, gatePrompt, referenc
     tried++;
     const fixes = verdict?.reasons?.length ? `\n\nThe previous attempt was rejected. Fix these problems: ${verdict.reasons.join('; ')}` : '';
     jpeg = await images.generate(`${prompt}${fixes}`, references, { format });
+    if (finish) jpeg = await finish(jpeg);
     verdict = await images.inspect(gatePrompt, [jpeg, ...originals]);
   }
   return { jpeg, verdict, attempts: tried };
@@ -147,6 +148,64 @@ export function toArticleJpeg(bytes) {
     .resize(1200, 800, { fit: 'cover' })
     .flatten({ background: '#ffffff' })
     .jpeg({ quality: 82, mozjpeg: true })
+    .toBuffer();
+}
+
+// ─── Real product photos ────────────────────────────────────────────────────
+//
+// Image models repaint whatever they're shown, so a product they draw is never quite
+// the product. They only ever design around a reserved card: the store's own photo
+// is placed on it afterwards, so its design cannot change.
+
+const CARD_LAYOUTS = {
+  square: { width: 1080, height: 1080, card: { left: 392, top: 392, size: 648 } },
+  landscape: { width: 1200, height: 800, card: { left: 560, top: 100, size: 600 } },
+};
+const CARD_RADIUS = 32;
+const CARD_PADDING = 24;
+const SHADOW_SPREAD = 44;
+
+// The layout the model is shown: a plain canvas with the card it must keep empty.
+export async function layoutTemplate(format = 'square') {
+  const { width, height, card } = CARD_LAYOUTS[format];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#8f8f8f"/><rect x="${card.left}" y="${card.top}" width="${card.size}" height="${card.size}" rx="${CARD_RADIUS}" fill="#ffffff"/></svg>`;
+  const jpeg = await sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toBuffer();
+  return { data: jpeg.toString('base64'), mimeType: 'image/jpeg' };
+}
+
+const roundedRect = (size, fill) => Buffer.from(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" rx="${CARD_RADIUS}" fill="${fill}"/></svg>`
+);
+
+// The colour behind the product, so the card blends with the photo's own background.
+async function photoBackdrop(image) {
+  const { data } = await sharp(image).extract({ left: 0, top: 0, width: 1, height: 1 }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  return { r: data[0], g: data[1], b: data[2] };
+}
+
+// Places the store's photo on the card. It is only scaled to fit, never redrawn.
+export async function placeRealPhoto(art, photo, format = 'square') {
+  const { card } = CARD_LAYOUTS[format];
+  const source = Buffer.from(photo.data, 'base64');
+  const { r, g, b } = await photoBackdrop(source);
+  const inner = card.size - CARD_PADDING * 2;
+  // Trimming only drops empty margin, so the product fills more of the card.
+  const trimmed = await sharp(source).trim({ threshold: 14 }).toBuffer().catch(() => source);
+  const picture = await sharp(trimmed).resize(inner, inner, { fit: 'contain', background: { r, g, b } }).png().toBuffer();
+
+  const shadowSize = card.size + SHADOW_SPREAD * 2;
+  const shadow = await sharp({ create: { width: shadowSize, height: shadowSize, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: await sharp(roundedRect(card.size, 'rgba(0,0,0,0.38)')).png().toBuffer(), left: SHADOW_SPREAD, top: SHADOW_SPREAD }])
+    .png().toBuffer();
+  const softShadow = await sharp(shadow).blur(20).png().toBuffer();
+
+  return sharp(art)
+    .composite([
+      { input: softShadow, left: card.left - SHADOW_SPREAD, top: card.top - SHADOW_SPREAD + 10 },
+      { input: roundedRect(card.size, `rgb(${r},${g},${b})`), left: card.left, top: card.top },
+      { input: picture, left: card.left + CARD_PADDING, top: card.top + CARD_PADDING },
+    ])
+    .jpeg({ quality: 92, mozjpeg: true })
     .toBuffer();
 }
 
@@ -236,10 +295,10 @@ export async function checkGeminiModels(apiKey) {
 
 const refHttp = axios.create({ ...safeAxiosConfig, timeout: 15000, maxRedirects: 3, maxContentLength: 6 * 1024 * 1024, responseType: 'arraybuffer' });
 
-// Up to 3 reference images as small JPEGs for the image model; unreadable ones are skipped.
-export async function loadReferenceImages(urls, { maxSize = 768 } = {}) {
+// Up to `limit` images as small JPEGs; unreadable ones are skipped.
+export async function loadReferenceImages(urls, { maxSize = 768, limit = 3 } = {}) {
   const out = [];
-  for (const url of (urls || []).slice(0, 3)) {
+  for (const url of (urls || []).slice(0, limit)) {
     try {
       const res = await refHttp.get(url);
       if (!/^image\//.test(String(res.headers['content-type'] || ''))) continue;

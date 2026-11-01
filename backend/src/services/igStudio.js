@@ -59,8 +59,8 @@ export async function generatePostText(workspaceId, accountId, { promptText, sou
 
 // ─── Stage 3 + 4: image → quality gate (regenerate, fail closed) ─────────────
 
-// The store product a campaign is about, when one clearly matches. Its real photo goes
-// in the banner, so a campaign never advertises something the store doesn't sell.
+// The store product a campaign is about, when one clearly matches. Its real photo is
+// placed on the banner unchanged, so a campaign only ever shows what the store sells.
 async function campaignProduct(workspaceId, campaign) {
   if (!campaign) return null;
   const store = await dnaRepo.getDna(workspaceId);
@@ -72,18 +72,15 @@ async function campaignProduct(workspaceId, campaign) {
 
 // The slides after the cover, drawn from the cover so they read as one series. A slide
 // that can't pass the gate is left out; the post goes out with the slides that did.
-async function renderExtraSlides({ images, cover, slides, dna, idea, campaign, brief, product, log }) {
+async function renderExtraSlides({ images, cover, slides, dna, idea, campaign, brief, log }) {
   const reference = { data: cover.toString('base64'), mimeType: 'image/jpeg' };
-  const productPhotos = product ? [product.photo] : [];
   const extras = slides.slice(1);
   const results = await media.mapLimit(extras, SLIDE_PARALLEL, async (slide, i) => {
     const { jpeg, verdict } = await media.generateUntilPassed(images, {
-      prompt: buildImagePrompt(dna, idea, slide, {
-        hasReferences: false, campaign, productTitle: product?.title, slide: { index: i + 2, total: slides.length },
-      }),
-      gatePrompt: buildVisionPrompt(slide, dna, brief, product?.title),
-      references: [...productPhotos, reference],
-      compareTo: productPhotos,
+      prompt: buildImagePrompt(dna, idea, slide, { campaign, slide: { index: i + 2, total: slides.length } }),
+      gatePrompt: buildVisionPrompt(slide, dna, brief),
+      references: [reference],
+      compareTo: [],
       format: 'square',
       attempts: config.instagram.maxRegenAttempts,
     });
@@ -111,14 +108,13 @@ export async function generatePostImage(workspaceId, postId) {
     ]);
     const styleReferences = campaign?.reference_images?.length ? await media.loadReferenceImages(campaign.reference_images) : [];
     const product = await campaignProduct(workspaceId, campaign);
-    const references = [...(product ? [product.photo] : []), ...styleReferences];
+    const hasCard = Boolean(product);
+    const references = [...(hasCard ? [await media.layoutTemplate('square')] : []), ...styleReferences];
     const brief = campaign ? campaignBrief(campaign) : '';
     const slides = splitSlides({ headline: post.headline || '', lines: post.lines || [] }, campaign?.images_per_post || 1, { banner: Boolean(campaign) });
     const intended = slides[0];
     const idea = imgPrompt?.prompt_text || null;
-    const prompt = buildImagePrompt(dna, idea, intended, {
-      hasReferences: styleReferences.length > 0, campaign, productTitle: product?.title,
-    });
+    const prompt = buildImagePrompt(dna, idea, intended, { hasReferences: styleReferences.length > 0, campaign, hasCard });
 
     let jpeg = null;
     let verdict = null;
@@ -126,7 +122,8 @@ export async function generatePostImage(workspaceId, postId) {
     while (attempts < config.instagram.maxRegenAttempts) {
       attempts++;
       jpeg = await images.generate(prompt, references);
-      verdict = await images.score(jpeg, intended, dna, { brief, product });
+      if (hasCard) jpeg = await media.placeRealPhoto(jpeg, product.photo, 'square');
+      verdict = await images.score(jpeg, intended, dna, { brief, hasCard });
       await repo.log({
         workspaceId, accountId, postId,
         stage: 'quality_gate',
@@ -140,7 +137,7 @@ export async function generatePostImage(workspaceId, postId) {
 
     const extraFiles = verdict.pass && slides.length > 1
       ? await renderExtraSlides({
-        images, cover: jpeg, slides, dna, idea, campaign, brief, product,
+        images, cover: jpeg, slides, dna, idea, campaign, brief,
         log: (message) => repo.log({ workspaceId, accountId, postId, stage: 'quality_gate', level: 'warn', message }),
       })
       : [];

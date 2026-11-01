@@ -227,7 +227,7 @@ function CreateTab({ status, accounts, canManage }) {
                   ))}
                   <button type="button" className={`chip ${style === 'auto' ? 'active' : ''}`} onClick={() => setStyle('auto')}>Surprise me</button>
                 </div>
-                <div className="form-helper">Promo banner shows the product with its name and price.</div>
+                <div className="form-helper">Styles change the background and layout. Your product photo is never redrawn.</div>
               </div>
 
               <div className="form-group">
@@ -237,7 +237,7 @@ function CreateTab({ status, accounts, canManage }) {
               </div>
 
               <ImagesPerPost value={imagesPerPost} onChange={setImagesPerPost} label="4. Images in this post"
-                help="The first is the cover. The rest show the product in other scenes, as a swipeable carousel." />
+                help="The first is the cover. The rest use your other photos of this product, as a swipeable carousel." />
 
               <button className="btn btn-primary" type="button" onClick={handleGenerate} disabled={!selected || !status.images.ok || busy === 'generate'}>
                 {busy === 'generate'
@@ -245,8 +245,8 @@ function CreateTab({ status, accounts, canManage }) {
                   : <><ImagePlus size={16} /> {selected ? `Generate image of ${selected.title.slice(0, 40)}` : 'Pick a product first'}</>}
               </button>
               <div className="form-helper">
-                Your store photo is only the starting point: it's turned into a designed image, then checked against the
-                real product before it can be posted. This usually takes one to three minutes.
+                Your real product photo is placed on a designed background exactly as it is, so the product's design never
+                changes. The result is checked before it can be posted. This usually takes one to three minutes.
               </div>
             </>
           )}

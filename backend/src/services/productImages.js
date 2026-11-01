@@ -8,17 +8,14 @@ import { buildCaption } from './productCaption.js';
 import { resolveAi } from './ai.js';
 import { assertCanGenerateIgPost, incrementIgUsage } from './usage.js';
 import {
-  buildProductImagePrompt, buildProductVisionPrompt, buildBannerVisionPrompt, resolveProductStyle,
-  extraSlideStyles, productBannerCopy, bannerCopyLines,
+  buildProductImagePrompt, buildBannerVisionPrompt, resolveProductStyle, extraSlideStyles, productBannerCopy, bannerCopyLines,
 } from '../lib/igPrompts.js';
 
-// A product on a store's website → an AI image of THAT product → Instagram.
-// The store's real photos are the references, so the model restages the product
-// instead of inventing one, and the vision gate compares the result against them.
-// Only images that pass (status = 'ready') can be posted: fail closed.
+// A product on a store's website → a designed image → Instagram. The model only designs
+// around an empty card: the store's real photo is placed on it afterwards, so the
+// product's design can't change. Only images that pass the gate (status = 'ready') can
+// be posted: fail closed.
 
-const MAX_REFERENCES = 2;
-const MAX_PHOTOS = 3; // store photos to draw a carousel's slides from
 const SLIDE_PARALLEL = 3;
 const MAX_CAPTION = 2200;
 
@@ -48,9 +45,9 @@ function bannerCopy(product, row) {
   });
 }
 
-// The slides after the cover: the same product in other scenes, from other store
-// photos where there are any. One that fails its check is left out.
-async function renderExtraSlides({ images, row, product, photos, cover, coverStyle }) {
+// The slides after the cover: the store's other photos of the product on new
+// backgrounds. One that fails its check is left out.
+async function renderExtraSlides({ images, row, product, photos, template, cover, coverStyle }) {
   const count = row.images_per_post - 1;
   if (count < 1) return { files: [], skipped: 0 };
   const styles = extraSlideStyles(coverStyle.key);
@@ -61,9 +58,10 @@ async function renderExtraSlides({ images, row, product, photos, cover, coverSty
       prompt: buildProductImagePrompt(product, {
         storeName: row.site_name, style: styles[i % styles.length], slide: { index: i + 2, total: count + 1 },
       }),
-      gatePrompt: buildProductVisionPrompt(product),
-      references: [photo, coverRef],
-      compareTo: [photo],
+      gatePrompt: buildBannerVisionPrompt({ hasCard: true }),
+      references: [template, coverRef],
+      compareTo: [],
+      finish: (art) => media.placeRealPhoto(art, photo, 'square'),
       format: 'square',
       attempts: config.instagram.maxRegenAttempts,
     });
@@ -78,22 +76,25 @@ async function renderExtraSlides({ images, row, product, photos, cover, coverSty
 // once against the plan's Instagram post limit, however many images it took.
 async function render(workspaceId, row, product) {
   const images = await media.imageBackend(workspaceId);
-  const photos = await media.loadReferenceImages(product.images.slice(0, MAX_PHOTOS), { maxSize: 1024 });
+  const photos = await media.loadReferenceImages(product.images.slice(0, row.images_per_post), { maxSize: 1024, limit: row.images_per_post });
   if (!photos.length) throw new Error(`Couldn't download the photo of "${product.title}".`);
 
+  const template = await media.layoutTemplate('square');
   const style = resolveProductStyle(row.style);
   const copy = style.banner ? bannerCopy(product, row) : null;
   const { jpeg, verdict, attempts } = await media.generateUntilPassed(images, {
     prompt: buildProductImagePrompt(product, { storeName: row.site_name, style, notes: row.notes, copy }),
-    gatePrompt: copy
-      ? buildBannerVisionPrompt({ texts: bannerCopyLines(copy), brief: row.notes, productTitle: product.title })
-      : buildProductVisionPrompt(product, { notes: row.notes }),
-    references: photos.slice(0, MAX_REFERENCES),
+    gatePrompt: buildBannerVisionPrompt({ texts: copy ? bannerCopyLines(copy) : [], brief: row.notes, hasCard: true }),
+    references: [template],
+    compareTo: [],
+    finish: (art) => media.placeRealPhoto(art, photos[0], 'square'),
     format: 'square',
     attempts: config.instagram.maxRegenAttempts,
   });
 
-  const extras = verdict.pass ? await renderExtraSlides({ images, row, product, photos, cover: jpeg, coverStyle: style }) : { files: [], skipped: 0 };
+  const extras = verdict.pass
+    ? await renderExtraSlides({ images, row, product, photos, template, cover: jpeg, coverStyle: style })
+    : { files: [], skipped: 0 };
   const file = await media.saveImage(jpeg); // the last attempt is kept either way, so a failure can be reviewed
   await Promise.all(allFiles(row).map(media.deleteImage));
   await incrementIgUsage(workspaceId);

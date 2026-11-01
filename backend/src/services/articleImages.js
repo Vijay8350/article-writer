@@ -1,7 +1,9 @@
 import * as aiKeys from '../repositories/aiKeys.js';
 import { withDefaults } from './ai.js';
 import { bestProductMatch } from './imageMatcher.js';
-import { imageBackend, generateUntilPassed, loadReferenceImages, saveImage, publicImageUrl, mapLimit } from './igMedia.js';
+import {
+  imageBackend, generateUntilPassed, loadReferenceImages, saveImage, publicImageUrl, mapLimit, layoutTemplate, placeRealPhoto,
+} from './igMedia.js';
 import { buildArticleImagePrompt, buildArticleBannerPrompt, buildArticleVisionPrompt } from '../lib/articleImagePrompts.js';
 import { buildBannerVisionPrompt } from '../lib/igPrompts.js';
 
@@ -77,10 +79,11 @@ export async function addAiImages({ plan, article, topic, dna, brief }) {
   if (found.length < plan.slots) html = addMissingSlots(html, plan.slots - found.length);
   const inline = findSlots(html).slice(0, plan.slots);
 
-  // Every image gets the matching product's photo. Without it the model invents a
-  // similar product the store doesn't sell, and the gate has nothing to compare against.
+  // The model never draws a product. The hero puts the matching product's real photo on
+  // a card, and every other image shows only the setting around it.
   const match = bestProductMatch(topic, dna.products || []);
-  const references = match ? await loadReferenceImages([match.image], { maxSize: 1024 }) : [];
+  const [realPhoto] = match ? await loadReferenceImages([match.image], { maxSize: 1024 }) : [];
+  const template = realPhoto ? await layoutTemplate('landscape') : null;
   const jobs = [
     {
       hero: true,
@@ -93,18 +96,20 @@ export async function addAiImages({ plan, article, topic, dna, brief }) {
   const storeName = dna.shop?.name;
   const niche = dna.analysis?.niche;
   const instructions = brief?.instructions;
-  const withProduct = references.length > 0;
   const headline = bannerHeadline(article.title);
   const results = await mapLimit(jobs, PARALLEL, async (job) => {
     const banner = job.hero && brief;
+    const hasCard = Boolean(job.hero && realPhoto);
     const { jpeg, verdict } = await generateUntilPassed(plan.backend, {
       prompt: banner
-        ? buildArticleBannerPrompt({ headline, scene: job.scene, storeName, niche, withProduct, instructions })
-        : buildArticleImagePrompt({ scene: job.scene, storeName, niche, withProduct, instructions }),
+        ? buildArticleBannerPrompt({ headline, scene: job.scene, storeName, niche, hasCard, instructions })
+        : buildArticleImagePrompt({ scene: job.scene, storeName, niche, hasCard, instructions }),
       gatePrompt: banner
-        ? buildBannerVisionPrompt({ texts: [headline], brief: instructions, productTitle: match?.title })
-        : buildArticleVisionPrompt(job.scene),
-      references,
+        ? buildBannerVisionPrompt({ texts: [headline], brief: instructions, hasCard })
+        : buildArticleVisionPrompt(job.scene, { hasCard }),
+      references: hasCard ? [template] : [],
+      compareTo: [],
+      finish: hasCard ? (art) => placeRealPhoto(art, realPhoto, 'landscape') : null,
       format: 'landscape',
       attempts: ATTEMPTS,
     });

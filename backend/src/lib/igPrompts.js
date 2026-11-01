@@ -118,8 +118,8 @@ export function campaignBrief(campaign) {
 
 // Stage 3: the image prompt — visual identity + image-idea prompt + exact text to render.
 // A campaign post is a designed banner; `slide` marks a later slide of a carousel, and
-// `productTitle` names the real store product in the first attached photo.
-export function buildImagePrompt(dna, imageIdea, content, { hasReferences = false, campaign = null, slide = null, productTitle = null } = {}) {
+// `hasCard` reserves the first attached layout's card for the real product photo.
+export function buildImagePrompt(dna, imageIdea, content, { hasReferences = false, campaign = null, slide = null, hasCard = false } = {}) {
   const vi = dna?.visual_identity || {};
   const style = [
     vi.mood && `mood: ${vi.mood}`,
@@ -134,12 +134,12 @@ export function buildImagePrompt(dna, imageIdea, content, { hasReferences = fals
     ...(campaign ? BANNER_RULES : []),
     campaign ? campaignBrief(campaign) : '',
     campaign ? 'Use that brief for the look and theme. The only words on the image are the ones listed below.' : '',
-    productTitle ? `The first attached photo shows a real product from the store, "${productTitle}". Feature that exact product, large and clear, keeping its shape, colours and details unchanged. Show no other products.` : '',
-    campaign && !productTitle ? 'No photo of a real product is attached, so do not invent a specific product for sale: build the visual from scene, colour, light and texture.' : '',
+    hasCard ? RESERVED_CARD : '',
+    campaign ? NO_PRODUCT_DRAWN : '',
     slide ? `This is slide ${slide.index} of ${slide.total} in one swipeable carousel. The last attached image is slide 1: use the same palette, typography and layout family so they read as one series.` : '',
     imageIdea ? `Scene/style direction: ${imageIdea}.` : '',
     style ? `Visual identity — ${style}.` : '',
-    hasReferences ? `Use the ${productTitle ? 'other ' : ''}attached reference images only for palette, texture and composition — do not copy any text or logos from them.` : '',
+    hasReferences ? `Use the ${hasCard ? 'other ' : ''}attached reference images only for palette, texture and composition — do not copy any text or logos from them.` : '',
     ...(textBlock ? [
       'Render the following text cleanly and legibly, spelled EXACTLY as written, well-composed and high-contrast against the background:',
       textBlock,
@@ -156,14 +156,19 @@ const BANNER_RULES = [
   'Keep it clean and instantly readable on a phone: large, high-contrast type in at most two sizes, with nothing cramped, cut off or crowded near the edges.',
 ];
 
+// The model never draws a product. It designs around a reserved card, and the store's
+// real photo is placed on that card afterwards, so the design can't change.
+const RESERVED_CARD = 'The attached layout image shows a white card. A real product photo is placed on that card afterwards, so keep the card exactly where it is, keep it completely empty, and design the rest of the image around it. The grey area is yours to replace entirely. Put all text away from the card, never on, touching or behind it.';
+const NO_PRODUCT_DRAWN = 'Do NOT draw the product, or any jewellery, merchandise or item for sale, anywhere in the image. Use only backgrounds, colour, light, texture and graphic shapes.';
+
 export const PRODUCT_IMAGE_STYLES = [
-  { key: 'banner', label: 'Promo banner', banner: true, direction: 'the real product large and beautifully lit on a rich, complementary background, with the headline and price badge in a clean area beside it' },
-  { key: 'lifestyle', label: 'Lifestyle', direction: 'a natural, aspirational lifestyle scene showing the product in real use, in a setting its buyer would recognise' },
-  { key: 'studio', label: 'Clean studio', direction: 'a premium studio shot on a seamless softly graded background, with controlled soft lighting and a gentle shadow' },
-  { key: 'flatlay', label: 'Flat lay', direction: 'a styled overhead flat lay with a few tasteful, relevant props that never compete with the product' },
-  { key: 'closeup', label: 'Close-up detail', direction: 'a macro beauty shot that shows off the texture, finish and craftsmanship of the product' },
-  { key: 'bold', label: 'Bold colour', direction: 'a vivid single-colour backdrop chosen to complement the product, with crisp directional light and strong scroll-stopping contrast' },
-  { key: 'festive', label: 'Festive gifting', direction: 'a warm celebratory gifting setting with soft fairy-light bokeh and rich tones, tasteful rather than cluttered' },
+  { key: 'banner', label: 'Promo banner', banner: true, direction: 'a rich, premium backdrop in colours that flatter the product, with the headline across the top and a bold price badge on the left' },
+  { key: 'lifestyle', label: 'Soft lifestyle', direction: 'a softly blurred, aspirational home or outdoor setting its buyer would recognise, with no people' },
+  { key: 'studio', label: 'Clean studio', direction: 'a seamless softly graded studio backdrop with controlled lighting' },
+  { key: 'flatlay', label: 'Styled surface', direction: 'a beautiful textured surface such as marble, linen or silk, with a few tasteful non-product props' },
+  { key: 'minimal', label: 'Minimal', direction: 'a calm, minimal single-tone backdrop with lots of breathing room' },
+  { key: 'bold', label: 'Bold colour', direction: 'a vivid single-colour backdrop that complements the product, with strong scroll-stopping contrast' },
+  { key: 'festive', label: 'Festive gifting', direction: 'a warm celebratory setting with soft fairy-light bokeh and rich tones, tasteful rather than cluttered' },
 ];
 
 export const isProductStyle = (key) => key === 'auto' || PRODUCT_IMAGE_STYLES.some((s) => s.key === key);
@@ -186,77 +191,50 @@ export function productBannerCopy(product, { price, discount, storeName }) {
 
 export const bannerCopyLines = (copy) => [copy.headline, copy.price, copy.discount, copy.cta, copy.storeName].filter(Boolean);
 
-function productBannerPrompt(product, { style, notes, copy }) {
-  return [
-    `Design a square, attractive Instagram promo banner for a product${copy.storeName ? ` from ${copy.storeName}` : ''}.`,
-    ...BANNER_RULES,
-    `Product: ${product.title}${product.productType ? ` (${product.productType})` : ''}.`,
-    'The attached photo shows the REAL product. Keep it exactly the same: same shape, proportions, colours, pattern and details. Do not redesign it or add parts to it.',
-    `Layout: ${style.direction}.`,
-    notes ? `Instructions from the store owner (follow these first): ${notes}.` : '',
-    'Render this text, spelled EXACTLY as written, including currency symbols:',
-    `Headline: "${copy.headline}"`,
-    copy.price ? `Price, in a bold eye-catching badge: "${copy.price}"` : '',
-    copy.discount ? `Discount tag: "${copy.discount}"` : '',
-    `Button-style call to action: "${copy.cta}"`,
-    copy.storeName ? `Small brand name: "${copy.storeName}"` : '',
-    'Add no other words unless the store owner asked for them, and no fake logos or watermarks.',
-  ].filter(Boolean).join('\n');
-}
-
 export function buildProductImagePrompt(product, { storeName, style, notes, copy, slide } = {}) {
-  if (copy) return productBannerPrompt(product, { style, notes, copy });
   return [
-    `Create a square, scroll-stopping Instagram product photo${storeName ? ` for ${storeName}` : ''}.`,
-    `Product: ${product.title}${product.productType ? ` (${product.productType})` : ''}.`,
-    product.description ? `Product notes: ${product.description.slice(0, 300)}` : '',
-    'The first attached photo shows the REAL product. Keep it exactly the same: same shape, proportions, colours, pattern, material, finish and count, plus any text or logo printed on the product itself. Do not redesign it, recolour it or add parts to it.',
-    slide ? `This is slide ${slide.index} of ${slide.total} in one swipeable carousel. The last attached image is slide 1: match its colour palette and mood, without copying its text or layout.` : '',
-    `Scene: ${style.direction}.`,
+    `Design a square, attractive Instagram ${copy ? 'promo banner' : 'image'}${storeName ? ` for ${storeName}` : ''}, for this product: ${product.title}.`,
+    ...BANNER_RULES,
+    RESERVED_CARD,
+    NO_PRODUCT_DRAWN,
+    `Background: ${style.direction}.`,
+    slide ? `This is slide ${slide.index} of ${slide.total} in one swipeable carousel. The last attached image is slide 1: match its colour palette and mood, without copying its text.` : '',
     notes ? `Instructions from the store owner (follow these first): ${notes}.` : '',
-    'Frame it tightly: the product must be large in the frame and the first thing the eye lands on, sharp, beautifully lit and photorealistic, with believable shadows and reflections.',
-    'If a person appears, they are secondary: modestly dressed, cropped close around the product, with the product in the sharpest focus.',
-    'Do not add text, prices, badges, logos or watermarks unless the store owner asked for them above.',
+    ...(copy ? [
+      'Render this text in the space around the card, spelled EXACTLY as written, including currency symbols:',
+      `Headline: "${copy.headline}"`,
+      copy.price ? `Price, in a bold eye-catching badge: "${copy.price}"` : '',
+      copy.discount ? `Discount tag: "${copy.discount}"` : '',
+      `Button-style call to action: "${copy.cta}"`,
+      copy.storeName ? `Small brand name: "${copy.storeName}"` : '',
+      'Add no other words unless the store owner asked for them, and no fake logos or watermarks.',
+    ] : ['Add no text, logos or watermarks unless the store owner asked for them above.']),
   ].filter(Boolean).join('\n');
 }
 
-// The gate for designed banners: exact text first, then the product, then the design.
-export function buildBannerVisionPrompt({ texts, brief, productTitle }) {
-  return `You are a strict quality inspector for marketing banners in an unattended auto-poster. Inspect the FIRST attached image.${productTitle ? ` Every other attached image is a REAL photo of the product "${productTitle}".` : ''}
+// The gate for designed images. `hasCard` means a real product photo sits on a card: that
+// part is final, so the gate looks for anything drawn around it instead.
+export function buildBannerVisionPrompt({ texts = [], brief, hasCard = false }) {
+  return `You are a strict quality inspector for marketing images in an unattended auto-poster. Inspect the attached image.${hasCard ? ' The rounded card holds a REAL product photo, placed there unchanged, so do not judge the photo itself.' : ''}
 
-This text must appear on it, spelled exactly:
+${texts.length ? `This text must appear on it, spelled exactly:
 """
 ${texts.join('\n')}
-"""
+"""` : 'This image should carry no text.'}
 ${brief ? `\nThe owner's instructions:\n"""\n${brief}\n"""\n` : ''}
 Evaluate, in order of importance:
-1. TEXT FIDELITY (most important): every line above appears, spelled exactly, with the right numbers and currency symbols. Fail on misspelled, garbled, duplicated or invented words. Text printed on the real product, or asked for in the owner's instructions, is fine. Report the text you read in rendered_text.
-2. ${productTitle ? 'PRODUCT FIDELITY: the banner shows the same product as the real photos, with the same shape, colours and details, large enough to see clearly.' : 'RELEVANCE: the visual suits the headline.'}
-3. DESIGN: it looks like a professional ad, attractive and easy to read on a phone. Fail if it is cluttered, amateurish or low contrast, or if any text is cut off or too small.
-4. INSTRUCTIONS: it follows the owner's instructions, if there are any.
-5. SAFETY: no NSFW, offensive or nonsensical content.
-
-Be conservative: when uncertain, FAIL. Respond ONLY with JSON:
-{ "pass": boolean, "score": number (0-100), "reasons": string[], "rendered_text": string }`;
-}
-
-// The gate for product photos: the generated image (first) against the real photo(s).
-export function buildProductVisionPrompt(product, { notes } = {}) {
-  return `You are a strict quality inspector for an unattended Instagram auto-poster. The FIRST attached image is an AI-generated marketing image. Every other attached image is a REAL photo of the product "${product.title}".
-${notes ? `\nThe store owner's instructions were: "${notes}".\n` : ''}
-Evaluate, in order of importance:
-1. PRODUCT FIDELITY (most important): the generated image must show the same product as the real photos: same shape, proportions, colours, pattern and details. Fail if it was changed, swapped, or shown in a misleading quantity.
-2. NO UNWANTED TEXT: fail on any text, price, badge, logo or watermark that is neither printed on the real product nor asked for in the store owner's instructions. Report any such text in rendered_text.
-3. REALISM: fail on distorted hands, faces or objects, or obvious AI artifacts.
-4. APPEAL: sharp and well lit, with the product large enough to see its details at phone size. Fail if the product is only a small detail in a portrait or scene.
-5. SAFETY: no NSFW, offensive or nonsensical content.
+1. TEXT FIDELITY (most important): ${texts.length ? 'every line above appears, spelled exactly, with the right numbers and currency symbols. Fail on misspelled, garbled, duplicated, missing or invented words.' : 'fail on any text, unless the owner asked for it.'} Text asked for in the owner's instructions is fine. Report the text you read in rendered_text.
+2. NOTHING INVENTED: fail if any product, jewellery or item for sale is drawn anywhere${hasCard ? ' outside the card' : ''}.${hasCard ? '\n3. LAYOUT: fail if any text is hidden, cut off or touching the card.' : ''}
+${hasCard ? '4' : '3'}. DESIGN: it looks like a professional ad, attractive and easy to read on a phone. Fail if it is cluttered, amateurish or low contrast, or if any text is cut off or too small.
+${hasCard ? '5' : '4'}. INSTRUCTIONS: it follows the owner's instructions, if there are any.
+${hasCard ? '6' : '5'}. SAFETY: no NSFW, offensive or nonsensical content.
 
 Be conservative: when uncertain, FAIL. Respond ONLY with JSON:
 { "pass": boolean, "score": number (0-100), "reasons": string[], "rendered_text": string }`;
 }
 
 // Stage 4: the vision quality gate.
-export function buildVisionPrompt(intended, dna, brief = '', productTitle = null) {
+export function buildVisionPrompt(intended, dna, brief = '', hasCard = false) {
   const intendedText = [intended.headline, ...(intended.lines || [])].filter(Boolean).join('\n');
   const donts = dna?.donts?.length ? `\nBrand don'ts: ${dna.donts.join('; ')}.` : '';
   return `You are a strict quality inspector for an unattended Instagram auto-poster. Inspect the FIRST attached image.
@@ -265,7 +243,7 @@ ${intendedText ? `The text that was SUPPOSED to be rendered on it is:
 """
 ${intendedText}
 """` : 'This image is supposed to carry NO text at all.'}
-${brief ? `\nIt belongs to this campaign. Judge its look and theme against the brief: ${brief}\nThe words on it are fixed above, so never fail it for a message the brief mentions: other slides or the caption carry those.\n` : ''}${productTitle ? `\nEvery other attached image is a REAL photo of the product "${productTitle}". The first image must show that same product faithfully, and no invented products.\n` : ''}
+${brief ? `\nIt belongs to this campaign. Judge its look and theme against the brief: ${brief}\nThe words on it are fixed above, so never fail it for a message the brief mentions: other slides or the caption carry those. Fail it if any product, jewellery or item for sale is drawn${hasCard ? ' outside the rounded card, which holds a real product photo placed there unchanged. Fail it if text is hidden by or touching that card' : ''}.\n` : ''}
 Evaluate, in order of importance:
 1. TEXT FIDELITY (most important): read the text actually visible in the image. It must match the intended text exactly — fail on any misspelling, garbled/duplicated/missing words, or gibberish.
 2. LEGIBILITY: text is sharp, high-contrast, and easily readable.

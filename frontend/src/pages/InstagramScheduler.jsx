@@ -90,7 +90,7 @@ export function JobFields({ value, onChange, accounts, styles = [] }) {
             {styles.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
             <option value="auto">A different style each day</option>
           </select>
-          <div className="form-helper">Promo banner shows the product with its name and price.</div>
+          <div className="form-helper">Styles change the background and layout. Your product photo is never redrawn.</div>
         </div>
         <ImagesPerPost value={value.imagesPerPost} onChange={(imagesPerPost) => onChange({ ...value, imagesPerPost })} />
         <ScheduleWindow startsAt={value.startsAt} endsAt={value.endsAt} onChange={(change) => onChange({ ...value, ...change })} />
@@ -127,7 +127,7 @@ function PreviewCard({ preview }) {
       </div>
       <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.5, overflowWrap: 'anywhere' }}>{preview.caption}</div>
       <div className="form-helper" style={{ marginTop: 8 }}>
-        Preview only — nothing was posted. The real post gets a freshly written caption and new designed images made from these photos.
+        Preview only — nothing was posted. The real post gets a freshly written caption, with these photos placed on new designed backgrounds.
       </div>
     </div>
   );
@@ -253,8 +253,8 @@ export default function InstagramScheduler() {
         <div>
           <h1>🗓️ Instagram Scheduler</h1>
           <p>
-            Add as many posting jobs as you like. Each job takes the next product from a website, turns its photos into
-            designed images, and posts them to Instagram every day at its time with a caption written by DeepSeek.
+            Add as many posting jobs as you like. Each job takes the next product from a website, places its real photos on
+            designed backgrounds, and posts them to Instagram every day at its time with a caption written by DeepSeek.
           </p>
         </div>
         {accounts.length > 0 && !showForm && (
