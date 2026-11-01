@@ -90,13 +90,19 @@ Respond with JSON: { "headline": string, "lines": string[], "caption": string, "
 - hashtags: a mix of broad/medium/niche tags per the hashtag strategy (with or without '#')`;
 }
 
-// A post's text across a carousel: the headline on the cover, the lines on the slides
-// after it, any surplus on the last one. A slide left without text is purely visual.
-export function splitSlides({ headline, lines = [] }, count) {
-  if (count <= 1) return [{ headline, lines }];
-  const rest = Array.from({ length: count - 1 }, () => []);
-  lines.forEach((line, i) => rest[Math.min(i, count - 2)].push(line));
-  return [{ headline, lines: [] }, ...rest.map((slideLines) => ({ headline: '', lines: slideLines }))];
+const MAX_BANNER_LINES = 3; // on a single banner, under the headline
+const MAX_SLIDE_LINES = 2; // on each slide after a carousel's cover
+
+// A post's text across its images: the headline on the cover, the lines in order on the
+// slides after it. Banners stay readable, so text beyond their limit stays off the image.
+// A slide left without text is purely visual.
+export function splitSlides({ headline, lines = [] }, count, { banner = false } = {}) {
+  if (count <= 1) return [{ headline, lines: banner ? lines.slice(0, MAX_BANNER_LINES) : lines }];
+  const slideCount = count - 1;
+  const perSlide = Math.ceil(lines.length / slideCount) || 1;
+  const size = banner ? Math.min(perSlide, MAX_SLIDE_LINES) : perSlide;
+  const slides = Array.from({ length: slideCount }, (_, i) => ({ headline: '', lines: lines.slice(i * size, (i + 1) * size) }));
+  return [{ headline, lines: [] }, ...slides];
 }
 
 // A campaign's brief, for the image model and the gate alike.
@@ -111,8 +117,9 @@ export function campaignBrief(campaign) {
 }
 
 // Stage 3: the image prompt — visual identity + image-idea prompt + exact text to render.
-// A campaign post is a designed banner; `slide` marks a later slide of a carousel.
-export function buildImagePrompt(dna, imageIdea, content, { hasReferences = false, campaign = null, slide = null } = {}) {
+// A campaign post is a designed banner; `slide` marks a later slide of a carousel, and
+// `productTitle` names the real store product in the first attached photo.
+export function buildImagePrompt(dna, imageIdea, content, { hasReferences = false, campaign = null, slide = null, productTitle = null } = {}) {
   const vi = dna?.visual_identity || {};
   const style = [
     vi.mood && `mood: ${vi.mood}`,
@@ -126,10 +133,13 @@ export function buildImagePrompt(dna, imageIdea, content, { hasReferences = fals
     campaign ? 'Design a square (1080x1080), attractive Instagram campaign banner.' : 'Create a square (1080x1080) Instagram quote graphic.',
     ...(campaign ? BANNER_RULES : []),
     campaign ? campaignBrief(campaign) : '',
+    campaign ? 'Use that brief for the look and theme. The only words on the image are the ones listed below.' : '',
+    productTitle ? `The first attached photo shows a real product from the store, "${productTitle}". Feature that exact product, large and clear, keeping its shape, colours and details unchanged. Show no other products.` : '',
+    campaign && !productTitle ? 'No photo of a real product is attached, so do not invent a specific product for sale: build the visual from scene, colour, light and texture.' : '',
     slide ? `This is slide ${slide.index} of ${slide.total} in one swipeable carousel. The last attached image is slide 1: use the same palette, typography and layout family so they read as one series.` : '',
     imageIdea ? `Scene/style direction: ${imageIdea}.` : '',
     style ? `Visual identity — ${style}.` : '',
-    hasReferences ? 'Use the attached reference images only for palette, texture and composition — do not copy any text or logos from them.' : '',
+    hasReferences ? `Use the ${productTitle ? 'other ' : ''}attached reference images only for palette, texture and composition — do not copy any text or logos from them.` : '',
     ...(textBlock ? [
       'Render the following text cleanly and legibly, spelled EXACTLY as written, well-composed and high-contrast against the background:',
       textBlock,
@@ -246,7 +256,7 @@ Be conservative: when uncertain, FAIL. Respond ONLY with JSON:
 }
 
 // Stage 4: the vision quality gate.
-export function buildVisionPrompt(intended, dna, brief = '') {
+export function buildVisionPrompt(intended, dna, brief = '', productTitle = null) {
   const intendedText = [intended.headline, ...(intended.lines || [])].filter(Boolean).join('\n');
   const donts = dna?.donts?.length ? `\nBrand don'ts: ${dna.donts.join('; ')}.` : '';
   return `You are a strict quality inspector for an unattended Instagram auto-poster. Inspect the FIRST attached image.
@@ -255,11 +265,11 @@ ${intendedText ? `The text that was SUPPOSED to be rendered on it is:
 """
 ${intendedText}
 """` : 'This image is supposed to carry NO text at all.'}
-${brief ? `\nIt belongs to this campaign, and should follow its brief: ${brief}\n` : ''}
+${brief ? `\nIt belongs to this campaign. Judge its look and theme against the brief: ${brief}\nThe words on it are fixed above, so never fail it for a message the brief mentions: other slides or the caption carry those.\n` : ''}${productTitle ? `\nEvery other attached image is a REAL photo of the product "${productTitle}". The first image must show that same product faithfully, and no invented products.\n` : ''}
 Evaluate, in order of importance:
 1. TEXT FIDELITY (most important): read the text actually visible in the image. It must match the intended text exactly — fail on any misspelling, garbled/duplicated/missing words, or gibberish.
 2. LEGIBILITY: text is sharp, high-contrast, and easily readable.
-3. ON-BRAND / ON-TOPIC: matches the intended vibe.${donts}${brief ? ' Fail if it ignores the campaign brief, or looks cluttered or amateurish rather than like a professional ad.' : ''}
+3. ON-BRAND / ON-TOPIC: matches the intended vibe.${donts}${brief ? ' Fail if it looks cluttered or amateurish rather than like a professional ad.' : ''}
 4. SAFETY: no NSFW, offensive, nonsensical, or broken/artifact content.
 
 Be conservative — when uncertain, FAIL. Respond ONLY with JSON:
@@ -269,8 +279,10 @@ Be conservative — when uncertain, FAIL. Respond ONLY with JSON:
 // Campaign brief → the seed prompt its posts are generated from.
 export function buildCampaignPrompt({ name, handle, topic, goal, tone, perDay, days, hasRefs, instructions, imagesPerPost = 1 }) {
   return `Campaign "${name || 'Untitled'}" for @${handle} — theme: ${topic || 'account DNA pillars'}. Goal: ${String(goal).toLowerCase()}. Tone: ${String(tone).toLowerCase()}. Cadence: ${perDay} post(s) per day ${days ? `for ${days} days` : 'with no end date'}, at the account's scheduled slots.${
-    imagesPerPost > 1 ? ` Each post is a carousel of ${imagesPerPost} images: write ${imagesPerPost - 1} short supporting line(s), one for each slide after the cover.` : ''
-  }${instructions ? ` Instructions from the owner (follow these first): ${instructions}.` : ''}${
+    imagesPerPost > 1 ? ` Each post is a carousel of ${imagesPerPost} images, with up to ${MAX_SLIDE_LINES} supporting lines on each slide after the cover.` : ''
+  } On-image text must stay short: write at most ${imagesPerPost > 1 ? (imagesPerPost - 1) * MAX_SLIDE_LINES : MAX_BANNER_LINES} supporting lines, the most important first.${
+    instructions ? ` Instructions from the owner (follow these first): ${instructions}.` : ''
+  } Never invent a discount, price, offer or deadline the owner did not state.${
     hasRefs ? " Visual direction: follow the campaign reference images for palette, texture and composition, blended with the account's visual identity." : ''
   } Every idea must be de-duplicated against past posts; every image must pass the quality gate (text fidelity, legibility, on-DNA, safety) before publishing — skip, never force.`;
 }

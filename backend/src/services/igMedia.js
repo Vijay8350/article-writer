@@ -74,7 +74,8 @@ export async function imageBackend(workspaceId) {
       return finish(await engine.generate(prompt, references, size, aspect));
     },
     inspect: (prompt, jpegs) => engine.inspect(prompt, jpegs),
-    score: (jpeg, intended, dna, brief) => engine.inspect(buildVisionPrompt(intended, dna, brief), [jpeg]),
+    score: (jpeg, intended, dna, { brief, product } = {}) =>
+      engine.inspect(buildVisionPrompt(intended, dna, brief, product?.title), product ? [jpeg, Buffer.from(product.photo.data, 'base64')] : [jpeg]),
     check: () => engine.check(),
   };
 }

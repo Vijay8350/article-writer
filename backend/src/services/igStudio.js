@@ -1,6 +1,8 @@
 import config from '../config/env.js';
 import * as repo from '../repositories/igStudio.js';
 import * as igRepo from '../repositories/instagram.js';
+import * as dnaRepo from '../repositories/dna.js';
+import { bestProductMatch } from './imageMatcher.js';
 import { getTextAi } from './igAi.js';
 import * as media from './igMedia.js';
 import { publishPost } from './instagram.js';
@@ -57,17 +59,31 @@ export async function generatePostText(workspaceId, accountId, { promptText, sou
 
 // ─── Stage 3 + 4: image → quality gate (regenerate, fail closed) ─────────────
 
+// The store product a campaign is about, when one clearly matches. Its real photo goes
+// in the banner, so a campaign never advertises something the store doesn't sell.
+async function campaignProduct(workspaceId, campaign) {
+  if (!campaign) return null;
+  const store = await dnaRepo.getDna(workspaceId);
+  const match = bestProductMatch(`${campaign.topic || ''} ${campaign.name}`, store?.products || []);
+  if (!match) return null;
+  const [photo] = await media.loadReferenceImages([match.image], { maxSize: 1024 });
+  return photo ? { title: match.title, photo } : null;
+}
+
 // The slides after the cover, drawn from the cover so they read as one series. A slide
 // that can't pass the gate is left out; the post goes out with the slides that did.
-async function renderExtraSlides({ images, cover, slides, dna, idea, campaign, brief, log }) {
+async function renderExtraSlides({ images, cover, slides, dna, idea, campaign, brief, product, log }) {
   const reference = { data: cover.toString('base64'), mimeType: 'image/jpeg' };
+  const productPhotos = product ? [product.photo] : [];
   const extras = slides.slice(1);
   const results = await media.mapLimit(extras, SLIDE_PARALLEL, async (slide, i) => {
     const { jpeg, verdict } = await media.generateUntilPassed(images, {
-      prompt: buildImagePrompt(dna, idea, slide, { hasReferences: true, campaign, slide: { index: i + 2, total: slides.length } }),
-      gatePrompt: buildVisionPrompt(slide, dna, brief),
-      references: [reference],
-      compareTo: [],
+      prompt: buildImagePrompt(dna, idea, slide, {
+        hasReferences: false, campaign, productTitle: product?.title, slide: { index: i + 2, total: slides.length },
+      }),
+      gatePrompt: buildVisionPrompt(slide, dna, brief, product?.title),
+      references: [...productPhotos, reference],
+      compareTo: productPhotos,
       format: 'square',
       attempts: config.instagram.maxRegenAttempts,
     });
@@ -93,12 +109,16 @@ export async function generatePostImage(workspaceId, postId) {
       repo.pickPrompt(accountId, 'image_idea'),
       post.campaign_id ? repo.getCampaign(workspaceId, post.campaign_id) : null,
     ]);
-    const references = campaign?.reference_images?.length ? await media.loadReferenceImages(campaign.reference_images) : [];
+    const styleReferences = campaign?.reference_images?.length ? await media.loadReferenceImages(campaign.reference_images) : [];
+    const product = await campaignProduct(workspaceId, campaign);
+    const references = [...(product ? [product.photo] : []), ...styleReferences];
     const brief = campaign ? campaignBrief(campaign) : '';
-    const slides = splitSlides({ headline: post.headline || '', lines: post.lines || [] }, campaign?.images_per_post || 1);
+    const slides = splitSlides({ headline: post.headline || '', lines: post.lines || [] }, campaign?.images_per_post || 1, { banner: Boolean(campaign) });
     const intended = slides[0];
     const idea = imgPrompt?.prompt_text || null;
-    const prompt = buildImagePrompt(dna, idea, intended, { hasReferences: references.length > 0, campaign });
+    const prompt = buildImagePrompt(dna, idea, intended, {
+      hasReferences: styleReferences.length > 0, campaign, productTitle: product?.title,
+    });
 
     let jpeg = null;
     let verdict = null;
@@ -106,7 +126,7 @@ export async function generatePostImage(workspaceId, postId) {
     while (attempts < config.instagram.maxRegenAttempts) {
       attempts++;
       jpeg = await images.generate(prompt, references);
-      verdict = await images.score(jpeg, intended, dna, brief);
+      verdict = await images.score(jpeg, intended, dna, { brief, product });
       await repo.log({
         workspaceId, accountId, postId,
         stage: 'quality_gate',
@@ -120,7 +140,7 @@ export async function generatePostImage(workspaceId, postId) {
 
     const extraFiles = verdict.pass && slides.length > 1
       ? await renderExtraSlides({
-        images, cover: jpeg, slides, dna, idea, campaign, brief,
+        images, cover: jpeg, slides, dna, idea, campaign, brief, product,
         log: (message) => repo.log({ workspaceId, accountId, postId, stage: 'quality_gate', level: 'warn', message }),
       })
       : [];

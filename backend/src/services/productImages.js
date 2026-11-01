@@ -67,11 +67,11 @@ async function renderExtraSlides({ images, row, product, photos, cover, coverSty
       format: 'square',
       attempts: config.instagram.maxRegenAttempts,
     });
-    if (!verdict.pass) throw new Error('failed the quality check');
+    if (!verdict.pass) throw new Error(verdict.reasons[0] || `score ${verdict.score}`);
     return media.saveImage(jpeg);
   });
   const files = results.filter((r) => typeof r === 'string');
-  return { files, skipped: count - files.length };
+  return { files, skipped: count - files.length, reason: results.find((r) => r?.error)?.error.message };
 }
 
 // The generate → inspect loop for one row: the cover, then any extra slides. Counts
@@ -104,7 +104,7 @@ async function render(workspaceId, row, product) {
     qa_score: verdict.score,
     qa_reasons: verdict.reasons,
     attempts,
-    error: extras.skipped ? `${extras.skipped} extra image(s) failed the quality check and were left out.` : null,
+    error: extras.skipped ? `${extras.skipped} extra image(s) failed the quality check and were left out: ${extras.reason}`.slice(0, 500) : null,
   });
 }
 
