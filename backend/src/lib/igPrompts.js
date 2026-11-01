@@ -137,7 +137,8 @@ export function buildProductImagePrompt(product, { storeName, style, notes } = {
     'The attached photo shows the REAL product. Keep it exactly the same: same shape, proportions, colours, pattern, material, finish and count, plus any text or logo printed on the product itself. Do not redesign it, recolour it or add parts to it.',
     `Scene: ${style.direction}.`,
     notes ? `Art direction from the store owner: ${notes}.` : '',
-    'The product is the clear hero: sharp, beautifully lit and photorealistic, with believable shadows and reflections.',
+    'Frame it tightly: the product must be large in the frame and the first thing the eye lands on, sharp, beautifully lit and photorealistic, with believable shadows and reflections.',
+    'If a person appears, they are secondary: modestly dressed, cropped close around the product, with the product in the sharpest focus.',
     'Do NOT add any text, captions, prices, badges, logos or watermarks to the image.',
   ].filter(Boolean).join('\n');
 }
@@ -150,7 +151,7 @@ Evaluate, in order of importance:
 1. PRODUCT FIDELITY (most important): the generated image must show the same product as the real photos: same shape, proportions, colours, pattern and details. Fail if it was changed, swapped, or shown in a misleading quantity.
 2. NO ADDED TEXT: fail on any text, price, badge, logo or watermark that is not printed on the real product. Report any such text in rendered_text.
 3. REALISM: fail on distorted hands, faces or objects, or obvious AI artifacts.
-4. APPEAL: sharp, well lit, and the product is the clear subject.
+4. APPEAL: sharp and well lit, with the product large enough to see its details at phone size. Fail if the product is only a small detail in a portrait or scene.
 5. SAFETY: no NSFW, offensive or nonsensical content.
 
 Be conservative: when uncertain, FAIL. Respond ONLY with JSON:
