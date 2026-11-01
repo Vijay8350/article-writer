@@ -125,6 +125,7 @@ function fitTitle(text, max) {
   return `${fitText(clean.slice(0, at), max - brand.length)}${brand}`;
 }
 
+const BRAND_SUFFIX_RE = /\s+\|\s+[^|]+$/;
 const validHandle = (handle) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(handle || '') && handle.length <= MAX_HANDLE;
 
 // Meta title and description at lengths search engines show in full. `keepHandle` is for
@@ -135,6 +136,7 @@ export function tidySeoFields(article, { primaryKeyword, keepHandle = false } = 
     : slugify(primaryKeyword || article.handle || article.title).slice(0, MAX_HANDLE).replace(/-+$/, '');
   return {
     handle,
+    title: String(article.title || '').replace(BRAND_SUFFIX_RE, ''), // the brand belongs in the meta title only
     seoTitle: fitTitle(article.seoTitle || article.title, MAX_SEO_TITLE),
     seoDescription: fitText(article.seoDescription || article.summary, MAX_SEO_DESCRIPTION),
   };
