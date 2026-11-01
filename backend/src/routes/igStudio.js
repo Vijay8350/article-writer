@@ -70,13 +70,16 @@ router.get('/status', async (req, res) => {
       return { ok: Boolean(usable), detail: `${usable || ai.model} · ${ai.apiKey ? 'workspace key' : 'platform key'}` };
     } catch (err) { return { ok: false, detail: err.message }; }
   })();
-  const geminiCheck = await (async () => {
-    try { return await media.checkGeminiModels(await media.geminiKeyFor(req.workspace.id)); } catch (err) { return { ok: false, detail: err.message }; }
+  const imagesCheck = await (async () => {
+    try {
+      const backend = await media.imageBackend(req.workspace.id);
+      return { provider: backend.provider, ...(await backend.check()) };
+    } catch (err) { return { provider: config.images.provider, ok: false, detail: err.message }; }
   })();
   const publishProblem = media.publicUrlProblem();
   const value = {
     deepseek: deepseekCheck,
-    gemini: geminiCheck,
+    images: imagesCheck,
     publishing: { ok: !publishProblem, detail: publishProblem || `Images served from ${config.publicBaseUrl}` },
     facebookLogin: { ok: facebookLoginConfigured(), detail: facebookLoginConfigured() ? `Redirect URL: ${redirectUri()}` : 'Set FACEBOOK_APP_ID and FACEBOOK_APP_SECRET' },
     maxRegenAttempts: config.instagram.maxRegenAttempts,
@@ -142,7 +145,11 @@ router.put('/accounts/:accountId/schedule', manage, async (req, res, next) => {
       if (!prompt && !campaign) warnings.push('Add an active quote-idea prompt (Prompts tab) or an active campaign — slots are skipped without one.');
       const problem = media.publicUrlProblem();
       if (problem) warnings.push(problem);
-      try { await media.geminiKeyFor(req.workspace.id); } catch (err) { warnings.push(err.message); }
+      try {
+        const backend = await media.imageBackend(req.workspace.id);
+        const check = await backend.check();
+        if (!check.ok) warnings.push(`Images (${backend.provider}): ${check.detail}`);
+      } catch (err) { warnings.push(err.message); }
     }
     res.json({ success: true, data: dna, warnings, message: 'Schedule saved' });
   } catch (err) { next(err); }

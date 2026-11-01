@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { homedir } from 'os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(__dirname, '../../../.env') });
@@ -67,6 +68,27 @@ const config = {
     // gemini-3.1-flash-lite-image is Google's replacement for gemini-2.5-flash-image (no shutdown date).
     imageModel: process.env.GEMINI_IMAGE_MODEL || 'gemini-3.1-flash-lite-image',
     visionModel: process.env.GEMINI_VISION_MODEL || process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+  },
+
+  // Instagram Studio images (artwork + the vision quality gate). IG_IMAGE_PROVIDER:
+  //   auto   — first one that's set up: codex → openai → gemini (default)
+  //   codex  — the Codex CLI/app's ChatGPT sign-in (the auth.json `codex login` writes)
+  //   openai — OPENAI_API_KEY against the public Images + Responses APIs
+  //   gemini — the workspace/platform Gemini key
+  images: {
+    provider: ['auto', 'codex', 'openai', 'gemini'].includes(process.env.IG_IMAGE_PROVIDER) ? process.env.IG_IMAGE_PROVIDER : 'auto',
+    quality: ['low', 'medium', 'high'].includes(process.env.IG_IMAGE_QUALITY) ? process.env.IG_IMAGE_QUALITY : 'medium',
+    codex: {
+      authFile: process.env.CODEX_AUTH_FILE || resolve(process.env.CODEX_HOME || resolve(homedir(), '.codex'), 'auth.json'),
+      imageModel: process.env.CODEX_IMAGE_MODEL || 'gpt-image-2',
+      visionModel: process.env.CODEX_VISION_MODEL || 'gpt-5.5',
+    },
+    openai: {
+      apiKey: process.env.OPENAI_API_KEY || '',
+      baseUrl: (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, ''),
+      imageModel: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2',
+      visionModel: process.env.OPENAI_VISION_MODEL || 'gpt-5.5',
+    },
   },
 };
 

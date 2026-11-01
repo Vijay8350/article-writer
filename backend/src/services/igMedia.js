@@ -9,11 +9,13 @@ import * as aiKeys from '../repositories/aiKeys.js';
 import { safeAxiosConfig } from '../lib/safeHttp.js';
 import { buildVisionPrompt } from '../lib/igPrompts.js';
 import { parseVerdict } from '../lib/igSchemas.js';
+import * as openai from './openaiImages.js';
 
-// Gemini image generation (the quote text baked into the artwork) + the Gemini
-// vision quality gate + local storage for the finished JPEGs. Instagram fetches
-// images itself, so they're served publicly at /api/media/ig/<random>.jpg —
-// unguessable names, nothing else in that folder.
+// Image generation (the quote text baked into the artwork) + the vision quality
+// gate + local storage for the finished JPEGs. Gemini lives here; the Codex /
+// OpenAI backends are in openaiImages.js and `imageBackend` picks between them.
+// Instagram fetches images itself, so they're served publicly at
+// /api/media/ig/<random>.jpg — unguessable names, nothing else in that folder.
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const MEDIA_DIR = resolve(__dirname, '../../media/ig');
@@ -44,6 +46,35 @@ export async function geminiKeyFor(workspaceId) {
   const key = geminiKey || config.gemini.apiKey;
   if (!key) throw Object.assign(new Error('No Gemini API key — add one in Settings (it makes the images).'), { status: 400 });
   return key;
+}
+
+// The backend that makes and inspects this workspace's images:
+// { provider, generate(prompt, references) → 1080² JPEG, score(jpeg, intended, dna) → verdict, check() }.
+// IG_IMAGE_PROVIDER=auto takes the first one that's set up: codex → openai → gemini.
+export async function imageBackend(workspaceId) {
+  const want = config.images.provider;
+  const pick = want !== 'auto' ? want
+    : (await openai.codexConfigured()) ? 'codex'
+      : openai.openaiConfigured() ? 'openai' : 'gemini';
+
+  if (pick === 'codex' || pick === 'openai') {
+    const backend = pick === 'codex' ? openai.codexBackend : openai.openaiBackend;
+    return {
+      provider: pick,
+      generate: async (prompt, references = []) => toInstagramJpeg(await backend.generate(prompt, references)),
+      score: (jpeg, intended, dna) => backend.score(jpeg, intended, dna),
+      check: () => backend.check(),
+    };
+  }
+  const key = () => geminiKeyFor(workspaceId);
+  return {
+    provider: 'gemini',
+    generate: async (prompt, references = []) => generateImage(prompt, await key(), references),
+    score: async (jpeg, intended, dna) => scoreImage(jpeg, intended, dna, await key()),
+    check: async () => {
+      try { return await checkGeminiModels(await key()); } catch (err) { return { ok: false, detail: err.message }; }
+    },
+  };
 }
 
 // First base64 image anywhere in a response, whichever API shape it uses

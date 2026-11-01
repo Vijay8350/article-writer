@@ -61,7 +61,7 @@ export async function generatePostImage(workspaceId, postId) {
   if (!post) throw badRequest('This post is busy or already published.');
   const accountId = post.account_id;
   try {
-    const apiKey = await media.geminiKeyFor(workspaceId);
+    const images = await media.imageBackend(workspaceId);
     const [dna, imgPrompt, campaign] = await Promise.all([
       repo.getDna(workspaceId, accountId),
       repo.pickPrompt(accountId, 'image_idea'),
@@ -76,13 +76,13 @@ export async function generatePostImage(workspaceId, postId) {
     let attempts = 0;
     while (attempts < config.instagram.maxRegenAttempts) {
       attempts++;
-      jpeg = await media.generateImage(prompt, apiKey, references);
-      verdict = await media.scoreImage(jpeg, intended, dna, apiKey);
+      jpeg = await images.generate(prompt, references);
+      verdict = await images.score(jpeg, intended, dna);
       await repo.log({
         workspaceId, accountId, postId,
         stage: 'quality_gate',
         level: verdict.pass ? 'info' : 'warn',
-        message: `Image attempt ${attempts}: ${verdict.pass ? 'passed' : 'failed'} (score ${verdict.score})`,
+        message: `Image attempt ${attempts} (${images.provider}): ${verdict.pass ? 'passed' : 'failed'} (score ${verdict.score})`,
         context: { reasons: verdict.reasons, rendered_text: verdict.renderedText },
       });
       if (verdict.pass) break;

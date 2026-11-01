@@ -24,7 +24,8 @@ const TABS = [
 
 function Readiness({ status, onRecheck }) {
   if (!status) return null;
-  const items = [['DeepSeek (text)', status.deepseek], ['Gemini (images)', status.gemini], ['Publishing', status.publishing]];
+  const imageProvider = { codex: 'Codex', openai: 'OpenAI', gemini: 'Gemini' }[status.images?.provider] || 'Images';
+  const items = [['DeepSeek (text)', status.deepseek], [`${imageProvider} (images)`, status.images || status.gemini], ['Publishing', status.publishing]];
   return (
     <div className="flex items-center gap-12 mb-24" style={{ flexWrap: 'wrap', fontSize: 13 }}>
       {items.map(([label, s]) => (

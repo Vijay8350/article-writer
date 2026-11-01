@@ -71,6 +71,20 @@ FACEBOOK_APP_ID=...                       # "Connect with Facebook" + Meta data-
 FACEBOOK_APP_SECRET=...
 # Optional: GEMINI_IMAGE_MODEL (default gemini-3.1-flash-lite-image), GEMINI_VISION_MODEL,
 # MAX_REGEN_ATTEMPTS (default 3), FACEBOOK_SCOPES (comma-separated override)
+
+# Instagram Studio images — which backend draws the post image + runs the vision quality gate.
+# IG_IMAGE_PROVIDER=auto (default) takes the first one that is set up: codex → openai → gemini.
+#   codex  : the Codex CLI's ChatGPT sign-in. On the server: `sudo npm i -g @openai/codex`,
+#            then `codex login --device-auth` as the user PM2 runs as (ubuntu) and finish the
+#            sign-in in a browser. Tokens live in ~/.codex/auth.json (override: CODEX_AUTH_FILE)
+#            and are refreshed automatically. Billed to that ChatGPT plan's Codex limits; OpenAI
+#            documents no API contract for this, so it may stop working — then use openai.
+#   openai : OPENAI_API_KEY (public Images + Responses APIs, pay per image).
+# IG_IMAGE_PROVIDER=auto
+# IG_IMAGE_QUALITY=medium                  # low | medium | high
+# OPENAI_API_KEY=
+# Optional: CODEX_IMAGE_MODEL / OPENAI_IMAGE_MODEL (default gpt-image-2),
+#           CODEX_VISION_MODEL / OPENAI_VISION_MODEL (default gpt-5.5)
 ```
 
 > **Production (since Nov 2026):** `https://app.jsyxi.com` on EC2 `3.110.185.60` (ap-south-1, 908 MB RAM,
