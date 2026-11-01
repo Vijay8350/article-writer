@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Megaphone, Plus, Play, Pause, Trash2, Loader2, Sparkles, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Megaphone, Plus, Play, Pause, Trash2, Loader2, Sparkles, ArrowLeft, ArrowRight, Pencil, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { getInstagramAccounts, getIgCampaigns, createIgCampaign, setIgCampaignStatus, deleteIgCampaign, generateIgCampaignPost } from '../lib/api';
+import { getInstagramAccounts, getIgCampaigns, createIgCampaign, updateIgCampaign, setIgCampaignStatus, deleteIgCampaign, generateIgCampaignPost } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { errMsg, muted } from '../components/studio/shared';
 
@@ -13,37 +13,52 @@ const DAYS = [7, 14, 30];
 const STATUS_BADGE = { active: 'badge-success', paused: 'badge-warning', done: 'badge-purple' };
 
 function Chips({ options, value, onChange, format = (o) => o }) {
+  // A saved value outside the presets stays visible when editing.
+  const shown = [...new Set([...options, value])];
   return (
     <div className="chips">
-      {options.map((o) => (
+      {shown.map((o) => (
         <button type="button" key={o} className={`chip ${value === o ? 'active' : ''}`} aria-pressed={value === o} onClick={() => onChange(o)}>{format(o)}</button>
       ))}
     </div>
   );
 }
 
-function Wizard({ accounts, onCreated, onCancel }) {
+const NEW_CAMPAIGN = { name: '', topic: '', goal: GOALS[1], tone: TONES[0], perDay: 1, days: 7, refs: '' };
+
+const formFrom = (c) => ({
+  accountId: c.account_id, name: c.name, topic: c.topic || '', goal: c.goal || GOALS[1], tone: c.tone || TONES[0],
+  perDay: c.per_day, days: c.days, refs: (c.reference_images || []).join('\n'),
+});
+
+// Creates a campaign, or edits `campaign` when one is passed.
+function Wizard({ accounts, campaign, onSaved, onCancel }) {
   const [step, setStep] = useState(1);
-  const [f, setF] = useState({ accountId: accounts[0]?.id || '', name: '', topic: '', goal: GOALS[1], tone: TONES[0], perDay: 1, days: 7, refs: '' });
+  const [f, setF] = useState(campaign ? formFrom(campaign) : { ...NEW_CAMPAIGN, accountId: accounts[0]?.id || '' });
   const [saving, setSaving] = useState(false);
+  const top = useRef(null);
+  useEffect(() => { if (campaign) top.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, [campaign]);
   const handle = accounts.find((a) => a.id === f.accountId)?.username || 'account';
+  const accountLocked = campaign?.posts_done > 0; // its posts belong to that account
+  const total = f.perDay * f.days;
   const refs = f.refs.split('\n').map((s) => s.trim()).filter(Boolean);
   const preview = `Campaign "${f.name || 'Untitled'}" for @${handle} — theme: ${f.topic || 'account DNA pillars'}. Goal: ${f.goal.toLowerCase()}. Tone: ${f.tone.toLowerCase()}. Cadence: ${f.perDay} post(s) per day for ${f.days} days, at the account's scheduled slots.${refs.length ? ' Visual direction: follow the reference images.' : ''} Every idea de-duplicated; every image must pass the quality gate before publishing — skip, never force.`;
 
-  const create = async () => {
+  const save = async () => {
     setSaving(true);
     try {
-      const res = await createIgCampaign({ ...f, referenceImages: refs });
+      const data = { ...f, referenceImages: refs };
+      const res = await (campaign ? updateIgCampaign(campaign.id, data) : createIgCampaign(data));
       toast.success(res.message);
-      onCreated();
-    } catch (err) { toast.error(errMsg(err)); }
+      onSaved();
+    } catch (err) { toast.error(errMsg(err), { duration: 8000 }); }
     setSaving(false);
   };
 
   return (
-    <div className="card mb-24" style={{ maxWidth: 760 }}>
+    <div className="card mb-24" ref={top} style={{ maxWidth: 760 }}>
       <div className="card-header">
-        <h2>New campaign · step {step} of 3 — {['', 'Basics', 'Reference images', 'Review'][step]}</h2>
+        <h2>{campaign ? `Edit ${campaign.name}` : 'New campaign'} · step {step} of 3 — {['', 'Basics', 'Reference images', 'Review'][step]}</h2>
         <button className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>
       </div>
       <div className="card-body">
@@ -56,9 +71,10 @@ function Wizard({ accounts, onCreated, onCancel }) {
               </div>
               <div className="form-group">
                 <label className="form-label">Account</label>
-                <select className="form-select" value={f.accountId} onChange={(e) => setF({ ...f, accountId: e.target.value })}>
+                <select className="form-select" value={f.accountId} disabled={accountLocked} onChange={(e) => setF({ ...f, accountId: e.target.value })}>
                   {accounts.map((a) => <option key={a.id} value={a.id}>@{a.username}</option>)}
                 </select>
+                {accountLocked && <div className="form-helper">This campaign already has posts on this account, so the account can't change.</div>}
               </div>
             </div>
             <div className="form-group">
@@ -77,8 +93,8 @@ function Wizard({ accounts, onCreated, onCancel }) {
         {step === 2 && (
           <>
             <p className="form-helper mb-16" style={{ fontSize: 13 }}>
-              Optional — paste up to 3 image URLs showing the look you want (palette, texture, composition). Gemini uses them for art
-              direction, blended with the account's visual identity. Leave blank to use only the account's visual identity.
+              Optional — paste up to 3 image URLs showing the look you want (palette, texture, composition). The image model uses them
+              for art direction, blended with the account's visual identity. Leave blank to use only the account's visual identity.
             </p>
             <textarea className="form-textarea" rows={4} value={f.refs} onChange={(e) => setF({ ...f, refs: e.target.value })}
               placeholder={'https://…/reference-1.jpg\nhttps://…/reference-2.jpg'} />
@@ -92,17 +108,25 @@ function Wizard({ accounts, onCreated, onCancel }) {
           <>
             <div style={{ background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', padding: 16, fontSize: 14, lineHeight: 1.6 }}>{preview}</div>
             <div className="chips mt-16">
-              <span className="badge badge-purple">{f.perDay * f.days} posts total</span>
+              <span className="badge badge-purple">{total} posts total</span>
               <span className="badge badge-info">Quality gate on every post</span>
               <span className="badge badge-info">Uses the account's DNA</span>
             </div>
-            <p className="form-helper mt-16">
-              While it's active, the campaign feeds the account's autopilot slots (Studio → Schedule). You can also generate its posts one at a time.
-            </p>
+            {campaign ? (
+              <p className="form-helper mt-16">
+                {campaign.posts_done} of these are already made and stay as they are. New posts follow these settings.
+                {total <= campaign.posts_done && ' This total is already reached, so saving ends the campaign.'}
+                {campaign.status === 'done' && total > campaign.posts_done && ' Saving brings it back paused, so nothing posts until you resume it.'}
+              </p>
+            ) : (
+              <p className="form-helper mt-16">
+                While it's active, the campaign feeds the account's autopilot slots (Studio → Schedule). You can also generate its posts one at a time.
+              </p>
+            )}
             <div className="flex justify-between mt-16">
               <button className="btn btn-secondary" onClick={() => setStep(2)}><ArrowLeft size={16} /> Back</button>
-              <button className="btn btn-primary" onClick={create} disabled={saving}>
-                {saving ? <Loader2 size={16} className="spinning" /> : <Sparkles size={16} />} Create campaign
+              <button className="btn btn-primary" onClick={save} disabled={saving}>
+                {saving ? <Loader2 size={16} className="spinning" /> : campaign ? <Save size={16} /> : <Sparkles size={16} />} {campaign ? 'Save changes' : 'Create campaign'}
               </button>
             </div>
           </>
@@ -117,7 +141,7 @@ export default function InstagramCampaigns() {
   const canManage = activeRole === 'owner' || activeRole === 'admin';
   const [accounts, setAccounts] = useState(null);
   const [campaigns, setCampaigns] = useState([]);
-  const [showWizard, setShowWizard] = useState(false);
+  const [wizard, setWizard] = useState(null); // 'new', or the campaign being edited
   const [busy, setBusy] = useState(null);
 
   const load = async () => {
@@ -143,8 +167,8 @@ export default function InstagramCampaigns() {
           <h1>📣 Instagram Campaigns</h1>
           <p>A themed run of posts — topic, goal, tone and cadence — that feeds an account's autopilot slots until it's done.</p>
         </div>
-        {canManage && accounts?.length > 0 && !showWizard && (
-          <button className="btn btn-primary" onClick={() => setShowWizard(true)}><Plus size={16} /> New campaign</button>
+        {canManage && accounts?.length > 0 && !wizard && (
+          <button className="btn btn-primary" onClick={() => setWizard('new')}><Plus size={16} /> New campaign</button>
         )}
       </div>
 
@@ -157,7 +181,15 @@ export default function InstagramCampaigns() {
         </div></div></div>
       ) : (
         <>
-          {showWizard && <Wizard accounts={accounts} onCancel={() => setShowWizard(false)} onCreated={() => { setShowWizard(false); load(); }} />}
+          {wizard && (
+            <Wizard
+              key={wizard === 'new' ? 'new' : wizard.id}
+              accounts={accounts}
+              campaign={wizard === 'new' ? null : wizard}
+              onCancel={() => setWizard(null)}
+              onSaved={() => { setWizard(null); load(); }}
+            />
+          )}
           <div className="card">
             <div className="card-header"><h2>Campaigns ({campaigns.length})</h2></div>
             <div className="card-body">
@@ -189,6 +221,11 @@ export default function InstagramCampaigns() {
                           </button>
                         )}
                         <Link className="btn btn-ghost btn-sm" to={`/instagram-studio/${c.account_id}/content`}>Open in Studio</Link>
+                        {canManage && (
+                          <button className="btn btn-ghost btn-sm" disabled={!!busy} title="Edit" aria-label="Edit campaign" onClick={() => setWizard(c)}>
+                            <Pencil size={14} />
+                          </button>
+                        )}
                         {canManage && c.status !== 'done' && (
                           <button className="btn btn-ghost btn-sm" disabled={!!busy} title={c.status === 'active' ? 'Pause' : 'Resume'} aria-label={c.status === 'active' ? 'Pause' : 'Resume'}
                             onClick={() => act(`st:${c.id}`, () => setIgCampaignStatus(c.id, c.status === 'active' ? 'paused' : 'active'))}>

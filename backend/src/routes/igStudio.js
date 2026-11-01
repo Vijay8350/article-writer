@@ -458,24 +458,52 @@ router.get('/campaigns', async (req, res, next) => {
   try { ok(res, await repo.listCampaigns(req.workspace.id)); } catch (err) { next(err); }
 });
 
+// Shared by create and edit. Posts are generated from `prompt`, so it's rebuilt
+// every time: an edit that left it alone would change nothing.
+function campaignFields(b, acc) {
+  const perDay = Math.min(Math.max(parseInt(b.perDay) || 1, 1), 5);
+  const days = Math.min(Math.max(parseInt(b.days) || 7, 1), 90);
+  const referenceImages = (Array.isArray(b.referenceImages) ? b.referenceImages : String(b.referenceImages || '').split('\n'))
+    .map((s) => String(s).trim()).filter((s) => /^https?:\/\//i.test(s)).slice(0, 3);
+  const name = text(b.name, 120) || 'Untitled campaign';
+  const fields = {
+    accountId: acc.id, name, topic: text(b.topic, 300), goal: text(b.goal, 100) || 'Engagement & saves',
+    tone: text(b.tone, 100) || 'Calm & wise', perDay, days, referenceImages,
+  };
+  fields.prompt = buildCampaignPrompt({
+    name, handle: acc.username || 'account', topic: fields.topic, goal: fields.goal, tone: fields.tone, perDay, days, hasRefs: referenceImages.length > 0,
+  });
+  return fields;
+}
+
 router.post('/campaigns', manage, async (req, res, next) => {
   try {
     const b = req.body || {};
     const acc = UUID_RE.test(b.accountId || '') ? await igRepo.getAccountMeta(req.workspace.id, b.accountId) : null;
     if (!acc) return bad(res, 'Pick a connected Instagram account.');
-    const perDay = Math.min(Math.max(parseInt(b.perDay) || 1, 1), 5);
-    const days = Math.min(Math.max(parseInt(b.days) || 7, 1), 90);
-    const referenceImages = (Array.isArray(b.referenceImages) ? b.referenceImages : String(b.referenceImages || '').split('\n'))
-      .map((s) => String(s).trim()).filter((s) => /^https?:\/\//i.test(s)).slice(0, 3);
-    const name = text(b.name, 120) || 'Untitled campaign';
-    const fields = {
-      accountId: acc.id, name, topic: text(b.topic, 300), goal: text(b.goal, 100) || 'Engagement & saves',
-      tone: text(b.tone, 100) || 'Calm & wise', perDay, days, referenceImages,
-    };
-    fields.prompt = buildCampaignPrompt({
-      name, handle: acc.username || 'account', topic: fields.topic, goal: fields.goal, tone: fields.tone, perDay, days, hasRefs: referenceImages.length > 0,
-    });
-    ok(res, await repo.createCampaign(req.workspace.id, req.user.id, fields), 'Campaign created');
+    ok(res, await repo.createCampaign(req.workspace.id, req.user.id, campaignFields(b, acc)), 'Campaign created');
+  } catch (err) { next(err); }
+});
+
+// Edits a campaign. Posts already made stay as they are; new ones follow the new settings.
+router.put('/campaigns/:id', manage, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const current = UUID_RE.test(req.params.id) ? await repo.getCampaign(req.workspace.id, req.params.id) : null;
+    if (!current) return bad(res, 'Campaign not found', 404);
+
+    const accountId = b.accountId || current.account_id;
+    if (accountId !== current.account_id && current.posts_done > 0) {
+      return bad(res, "This campaign already has posts, so its account can't change.");
+    }
+    const acc = UUID_RE.test(accountId) ? await igRepo.getAccountMeta(req.workspace.id, accountId) : null;
+    if (!acc) return bad(res, 'Pick a connected Instagram account.');
+
+    const saved = await repo.updateCampaign(req.workspace.id, current.id, campaignFields(b, acc));
+    const message = saved.status === 'done' ? 'Saved. The new total is already reached, so this campaign is done.'
+      : current.status === 'done' ? 'Saved. The campaign is paused: resume it to continue.'
+        : 'Campaign saved';
+    ok(res, saved, message);
   } catch (err) { next(err); }
 });
 

@@ -105,6 +105,7 @@ export const cancelScheduledPost = (id) => api.delete(`/scheduled-posts/${id}`).
 // ─── Campaigns ──────────────────────────────────────────────
 export const getCampaigns = () => api.get('/campaigns').then(r => r.data);
 export const createCampaign = (data) => api.post('/campaigns', data).then(r => r.data);
+export const updateCampaign = (id, data) => api.put(`/campaigns/${id}`, data).then(r => r.data);
 export const setCampaignStatus = (id, status) => api.patch(`/campaigns/${id}`, { status }).then(r => r.data);
 export const deleteCampaign = (id) => api.delete(`/campaigns/${id}`).then(r => r.data);
 export const runCampaignNow = (id) => api.post(`/campaigns/${id}/run-now`).then(r => r.data);
@@ -162,6 +163,7 @@ export const getStudioAnalytics = (accountId) => api.get(`${igAcc(accountId)}/an
 export const getStudioLogs = (accountId) => api.get(`${igAcc(accountId)}/logs`).then(r => r.data);
 export const getIgCampaigns = () => api.get('/ig/campaigns').then(r => r.data);
 export const createIgCampaign = (data) => api.post('/ig/campaigns', data).then(r => r.data);
+export const updateIgCampaign = (id, data) => api.put(`/ig/campaigns/${id}`, data).then(r => r.data);
 export const setIgCampaignStatus = (id, status) => api.patch(`/ig/campaigns/${id}`, { status }).then(r => r.data);
 export const deleteIgCampaign = (id) => api.delete(`/ig/campaigns/${id}`).then(r => r.data);
 export const generateIgCampaignPost = (id) => api.post(`/ig/campaigns/${id}/generate`).then(r => r.data);

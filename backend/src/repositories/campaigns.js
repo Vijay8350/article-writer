@@ -13,6 +13,27 @@ export async function create(workspaceId, createdBy, c) {
   return rows[0];
 }
 
+// Saves edited settings. A run in progress finishes as planned; otherwise a change
+// of cadence re-plans the next run, one period from now (or none for manual).
+export async function update(workspaceId, id, c) {
+  const { rows } = await query(
+    `UPDATE campaigns
+        SET name = $3, collection_handle = $4, collection_title = $5, articles_per_run = $7,
+            word_count = $8, ai_model = $9, blog_id = $10, publish_mode = $11,
+            next_run_at = CASE
+              WHEN cadence = $6::text OR run_remaining > 0 THEN next_run_at
+              WHEN $6::text = 'daily' THEN now() + interval '1 day'
+              WHEN $6::text = 'monthly' THEN now() + interval '1 month'
+              ELSE NULL END,
+            cadence = $6::text
+      WHERE id = $1 AND workspace_id = $2
+      RETURNING *`,
+    [id, workspaceId, c.name, c.collectionHandle || null, c.collectionTitle, c.cadence,
+     c.articlesPerRun, c.wordCount, c.aiModel, c.blogId || null, c.publishMode]
+  );
+  return rows[0] || null;
+}
+
 export async function listForWorkspace(workspaceId) {
   const { rows } = await query(
     `SELECT c.*,

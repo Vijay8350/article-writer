@@ -229,6 +229,25 @@ export async function getCampaign(workspaceId, id) {
   return rows[0] || null;
 }
 
+// Saves an edited campaign. Its target follows the new schedule: reaching it ends the
+// campaign, and a finished one that gets extended comes back paused, so autopilot
+// posts nothing until someone resumes it.
+export async function updateCampaign(workspaceId, id, c) {
+  const { rows } = await query(
+    `UPDATE ig_campaigns
+        SET account_id = $3, name = $4, topic = $5, goal = $6, tone = $7, per_day = $8, days = $9,
+            prompt = $10, reference_images = $11, posts_target = $12::int,
+            status = CASE WHEN $12::int <= posts_done THEN 'done'
+                          WHEN status = 'done' THEN 'paused'
+                          ELSE status END
+      WHERE id = $1 AND workspace_id = $2
+      RETURNING *`,
+    [id, workspaceId, c.accountId, c.name, c.topic || null, c.goal, c.tone, c.perDay, c.days, c.prompt,
+      c.referenceImages, c.perDay * c.days]
+  );
+  return rows[0] || null;
+}
+
 export async function setCampaignStatus(workspaceId, id, status) {
   const { rowCount } = await query('UPDATE ig_campaigns SET status = $3 WHERE id = $1 AND workspace_id = $2', [id, workspaceId, status]);
   return rowCount > 0;

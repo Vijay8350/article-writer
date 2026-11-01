@@ -10,6 +10,28 @@ router.use(requireAuth, requireWorkspace);
 const CADENCES = ['manual', 'daily', 'monthly'];
 const PUBLISH_MODES = ['live', 'draft'];
 
+// Shared by create and edit: { fields } or { error }.
+function parseCampaign(body) {
+  const { name, collectionHandle, collectionTitle, cadence, articlesPerRun,
+    wordCount, aiModel, blogId, publishMode } = body || {};
+
+  if (!collectionTitle) return { error: 'A category/collection is required' };
+  if (!blogId) return { error: 'A target blog is required' };
+  if (cadence && !CADENCES.includes(cadence)) return { error: 'Invalid cadence' };
+  if (publishMode && !PUBLISH_MODES.includes(publishMode)) return { error: 'Invalid publish mode' };
+
+  return {
+    fields: {
+      name: String(name || '').trim() || collectionTitle, collectionHandle, collectionTitle,
+      cadence: cadence || 'manual',
+      articlesPerRun: Math.min(Math.max(parseInt(articlesPerRun) || 1, 1), 20),
+      wordCount: parseInt(wordCount) || 1500,
+      aiModel: aiModel === 'deepseek' ? 'deepseek' : 'gemini',
+      blogId: String(blogId), publishMode: publishMode === 'live' ? 'live' : 'draft',
+    },
+  };
+}
+
 router.get('/', async (req, res, next) => {
   try { res.json({ success: true, data: await campaigns.listForWorkspace(req.workspace.id) }); }
   catch (error) { next(error); }
@@ -17,27 +39,25 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { name, collectionHandle, collectionTitle, cadence, articlesPerRun,
-      wordCount, aiModel, blogId, publishMode } = req.body || {};
-
-    if (!collectionTitle) return res.status(400).json({ success: false, error: 'A category/collection is required' });
-    if (!blogId) return res.status(400).json({ success: false, error: 'A target blog is required' });
-    if (cadence && !CADENCES.includes(cadence)) return res.status(400).json({ success: false, error: 'Invalid cadence' });
-    if (publishMode && !PUBLISH_MODES.includes(publishMode)) return res.status(400).json({ success: false, error: 'Invalid publish mode' });
+    const { fields, error } = parseCampaign(req.body);
+    if (error) return res.status(400).json({ success: false, error });
 
     const store = await stores.getStoreMeta(req.workspace.id);
     if (!store) return res.status(400).json({ success: false, error: 'Connect a Shopify store first' });
 
-    const perRun = Math.min(Math.max(parseInt(articlesPerRun) || 1, 1), 20);
-
-    const row = await campaigns.create(req.workspace.id, req.user.id, {
-      name: name || collectionTitle, collectionHandle, collectionTitle,
-      cadence: cadence || 'manual', articlesPerRun: perRun,
-      wordCount: parseInt(wordCount) || 1500,
-      aiModel: aiModel === 'deepseek' ? 'deepseek' : 'gemini',
-      blogId, publishMode: publishMode === 'live' ? 'live' : 'draft',
-    });
+    const row = await campaigns.create(req.workspace.id, req.user.id, fields);
     res.status(201).json({ success: true, data: row });
+  } catch (error) { next(error); }
+});
+
+// Edits a campaign's settings. Articles already written stay as they are.
+router.put('/:id', async (req, res, next) => {
+  try {
+    const { fields, error } = parseCampaign(req.body);
+    if (error) return res.status(400).json({ success: false, error });
+    const row = await campaigns.update(req.workspace.id, req.params.id, fields);
+    if (!row) return res.status(404).json({ success: false, error: 'Campaign not found' });
+    res.json({ success: true, data: row, message: 'Campaign saved' });
   } catch (error) { next(error); }
 });
 

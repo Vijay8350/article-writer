@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Rocket, Plus, Play, Pause, Trash2, RefreshCw, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Rocket, Plus, Play, Pause, Trash2, RefreshCw, Loader2, ChevronDown, ChevronRight, Pencil, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
-  getCampaigns, createCampaign, setCampaignStatus, deleteCampaign, runCampaignNow,
+  getCampaigns, createCampaign, updateCampaign, setCampaignStatus, deleteCampaign, runCampaignNow,
   getCampaignArticles, getBusinessDna, getSettings,
 } from '../lib/api';
 
@@ -14,6 +14,97 @@ const ARTICLE_BADGE = {
   limit_reached: 'badge-danger',
 };
 
+const BLANK_FORM = {
+  name: '', collectionTitle: '', collectionHandle: '', cadence: 'manual', articlesPerRun: 3,
+  wordCount: 1500, aiModel: 'gemini', publishMode: 'draft', blogId: '',
+};
+
+const formFrom = (c) => ({
+  name: c.name, collectionTitle: c.collection_title, collectionHandle: c.collection_handle || '', cadence: c.cadence,
+  articlesPerRun: c.articles_per_run, wordCount: c.word_count, aiModel: c.ai_model, publishMode: c.publish_mode, blogId: c.blog_id || '',
+});
+
+// The shape the API takes, with the handle of the chosen category.
+const toPayload = (form, collections) => ({
+  ...form,
+  collectionHandle: collections.find(c => c.title === form.collectionTitle)?.handle || form.collectionHandle || undefined,
+  articlesPerRun: Number(form.articlesPerRun),
+  wordCount: Number(form.wordCount),
+});
+
+// `withName` adds the campaign name, which a new campaign takes from its category.
+function CampaignFields({ value, onChange, collections, blogs, withName = false }) {
+  const set = (key) => (e) => onChange({ ...value, [key]: e.target.value });
+  // A category or blog removed from the store stays selectable on campaigns that use it.
+  const categories = [...new Set([value.collectionTitle, ...collections.map(c => c.title)].filter(Boolean))];
+  const blogOptions = value.blogId && !blogs.some(b => String(b.id) === String(value.blogId))
+    ? [{ id: value.blogId, title: `Blog ${value.blogId}` }, ...blogs]
+    : blogs;
+  // A name that simply repeats the category keeps following it.
+  const setCategory = (e) => onChange({
+    ...value,
+    collectionTitle: e.target.value,
+    name: value.name === value.collectionTitle ? e.target.value : value.name,
+  });
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+      {withName && (
+        <div className="form-group">
+          <label className="form-label">Campaign name</label>
+          <input className="form-input" value={value.name} onChange={set('name')} maxLength={120} />
+        </div>
+      )}
+      <div className="form-group">
+        <label className="form-label">Category (collection)</label>
+        <select className="form-select" value={value.collectionTitle} onChange={setCategory}>
+          {categories.map(title => <option key={title} value={title}>{title}</option>)}
+        </select>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Cadence</label>
+        <select className="form-select" value={value.cadence} onChange={set('cadence')}>
+          <option value="manual">Manual (Run now only)</option>
+          <option value="daily">Daily</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Articles / run</label>
+        <input className="form-input" type="number" min={1} max={20} value={value.articlesPerRun} onChange={set('articlesPerRun')} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Word count</label>
+        <input className="form-input" type="number" min={500} max={5000} step={100} value={value.wordCount} onChange={set('wordCount')} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">AI Model</label>
+        <select className="form-select" value={value.aiModel} onChange={set('aiModel')}>
+          <option value="gemini">🧠 Gemini</option>
+          <option value="deepseek">🔮 DeepSeek</option>
+        </select>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Publish mode</label>
+        <select className="form-select" value={value.publishMode} onChange={set('publishMode')}>
+          <option value="draft">Save as draft</option>
+          <option value="live">Publish live</option>
+        </select>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Blog</label>
+        {blogOptions.length ? (
+          <select className="form-select" value={value.blogId} onChange={set('blogId')}>
+            {blogOptions.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+          </select>
+        ) : (
+          <input className="form-input" value={value.blogId} onChange={set('blogId')} placeholder="Blog ID" />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Campaigns() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,15 +114,9 @@ export default function Campaigns() {
   const [articles, setArticles] = useState({});
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState(null);
-
-  // form
-  const [collectionTitle, setCollectionTitle] = useState('');
-  const [cadence, setCadence] = useState('manual');
-  const [articlesPerRun, setArticlesPerRun] = useState(3);
-  const [wordCount, setWordCount] = useState(1500);
-  const [aiModel, setAiModel] = useState('gemini');
-  const [publishMode, setPublishMode] = useState('draft');
-  const [blogId, setBlogId] = useState('');
+  const [form, setForm] = useState(BLANK_FORM);
+  const [editing, setEditing] = useState(null); // { id, ...form } of the campaign being edited
+  const [saving, setSaving] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -43,43 +128,48 @@ export default function Campaigns() {
     getBusinessDna().then(res => {
       if (res.data?.collections?.length) {
         setCollections(res.data.collections);
-        setCollectionTitle(res.data.collections[0].title);
+        setForm(f => ({ ...f, collectionTitle: res.data.collections[0].title }));
       }
       if (res.data?.blogs?.length) {
         setBlogs(res.data.blogs);
-        setBlogId(res.data.blogs[0].id);
+        setForm(f => ({ ...f, blogId: res.data.blogs[0].id }));
       }
     }).catch(() => {});
     getSettings().then(res => {
       const preferred = res.data?.ai?.providers?.article;
-      if (preferred) setAiModel(preferred);
+      if (preferred) setForm(f => ({ ...f, aiModel: preferred }));
     }).catch(() => {});
   }, []);
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!collectionTitle) return toast.error('Pick a category');
-    if (!blogId) return toast.error('Pick a blog');
+    if (!form.collectionTitle) return toast.error('Pick a category');
+    if (!form.blogId) return toast.error('Pick a blog');
     setCreating(true);
     try {
-      const coll = collections.find(c => c.title === collectionTitle);
-      await createCampaign({
-        name: collectionTitle,
-        collectionTitle,
-        collectionHandle: coll?.handle,
-        cadence,
-        articlesPerRun: Number(articlesPerRun),
-        wordCount: Number(wordCount),
-        aiModel,
-        publishMode,
-        blogId,
-      });
+      await createCampaign({ ...toPayload(form, collections), name: form.collectionTitle });
       toast.success('Campaign created');
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to create campaign');
     }
     setCreating(false);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    if (!editing.collectionTitle) return toast.error('Pick a category');
+    if (!editing.blogId) return toast.error('Pick a blog');
+    setSaving(true);
+    try {
+      const res = await updateCampaign(editing.id, toPayload(editing, collections));
+      toast.success(res.message || 'Campaign saved');
+      setEditing(null);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to save the campaign');
+    }
+    setSaving(false);
   };
 
   const toggleStatus = async (c) => {
@@ -134,56 +224,7 @@ export default function Campaigns() {
             </div>
           ) : (
             <form onSubmit={handleCreate}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
-                <div className="form-group">
-                  <label className="form-label">Category (collection)</label>
-                  <select className="form-select" value={collectionTitle} onChange={e => setCollectionTitle(e.target.value)}>
-                    {collections.map(c => <option key={c.id || c.handle} value={c.title}>{c.title}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Cadence</label>
-                  <select className="form-select" value={cadence} onChange={e => setCadence(e.target.value)}>
-                    <option value="manual">Manual (Run now only)</option>
-                    <option value="daily">Daily</option>
-                    <option value="monthly">Monthly</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Articles / run</label>
-                  <input className="form-input" type="number" min={1} max={20} value={articlesPerRun}
-                    onChange={e => setArticlesPerRun(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Word count</label>
-                  <input className="form-input" type="number" min={500} max={5000} step={100} value={wordCount}
-                    onChange={e => setWordCount(e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">AI Model</label>
-                  <select className="form-select" value={aiModel} onChange={e => setAiModel(e.target.value)}>
-                    <option value="gemini">🧠 Gemini</option>
-                    <option value="deepseek">🔮 DeepSeek</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Publish mode</label>
-                  <select className="form-select" value={publishMode} onChange={e => setPublishMode(e.target.value)}>
-                    <option value="draft">Save as draft</option>
-                    <option value="live">Publish live</option>
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Blog</label>
-                  {blogs.length ? (
-                    <select className="form-select" value={blogId} onChange={e => setBlogId(e.target.value)}>
-                      {blogs.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
-                    </select>
-                  ) : (
-                    <input className="form-input" value={blogId} onChange={e => setBlogId(e.target.value)} placeholder="Blog ID" />
-                  )}
-                </div>
-              </div>
+              <CampaignFields value={form} onChange={setForm} collections={collections} blogs={blogs} />
               <button className="btn btn-primary w-full" type="submit" disabled={creating}>
                 {creating ? <><Loader2 size={16} className="spinning" /> Creating...</> : <><Plus size={16} /> Create Campaign</>}
               </button>
@@ -227,6 +268,9 @@ export default function Campaigns() {
                       <button className="btn btn-secondary btn-sm" onClick={() => runNow(c)} disabled={busyId === c.id} title="Run now">
                         <Play size={14} /> Run now
                       </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing(editing?.id === c.id ? null : { id: c.id, ...formFrom(c) })} disabled={busyId === c.id} title="Edit" aria-label="Edit campaign" aria-expanded={editing?.id === c.id}>
+                        <Pencil size={14} />
+                      </button>
                       <button className="btn btn-ghost btn-sm" onClick={() => toggleStatus(c)} disabled={busyId === c.id} title={c.status === 'active' ? 'Pause' : 'Resume'}>
                         {c.status === 'active' ? <Pause size={14} /> : <Play size={14} />}
                       </button>
@@ -235,6 +279,23 @@ export default function Campaigns() {
                       </button>
                     </div>
                   </div>
+
+                  {editing?.id === c.id && (
+                    <form onSubmit={handleSave} style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
+                      <CampaignFields value={editing} onChange={setEditing} collections={collections} blogs={blogs} withName />
+                      <div className="form-helper mb-16">
+                        Changes apply to the next articles. Articles already written stay as they are.
+                        {editing.cadence !== c.cadence && editing.cadence !== 'manual' && ` The next run will be one ${editing.cadence === 'daily' ? 'day' : 'month'} from now.`}
+                        {editing.cadence === 'manual' && c.cadence !== 'manual' && ' Scheduled runs will stop.'}
+                      </div>
+                      <div className="flex gap-8">
+                        <button className="btn btn-primary btn-sm" type="submit" disabled={saving}>
+                          {saving ? <Loader2 size={14} className="spinning" /> : <Save size={14} />} Save changes
+                        </button>
+                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => setEditing(null)}>Cancel</button>
+                      </div>
+                    </form>
+                  )}
 
                   {expanded === c.id && (
                     <div style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
