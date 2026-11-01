@@ -12,9 +12,10 @@ export const DEFAULT_MODEL = 'deepseek-chat';
 
 async function callDeepSeek(messages, temperature = 0.7, maxTokens = 16000, apiKey, model = DEFAULT_MODEL) {
   const key = apiKey || config.deepseek.apiKey;
-  // Reasoner models spend max_tokens on their chain of thought as well as the
-  // answer, so a small budget would end mid-thought with no JSON at all.
-  const budget = /reasoner|-pro\b/i.test(model) ? Math.max(maxTokens, 32000) : maxTokens;
+  // Current models spend max_tokens on their chain of thought as well as the answer, so
+  // a small budget ends mid-thought with no reply at all. This only caps the reply: a
+  // shorter one costs no more.
+  const budget = Math.max(maxTokens, /reasoner|-pro\b/i.test(model) ? 32000 : 6000);
   const response = await axios.post(
     `${DEEPSEEK_URL}/chat/completions`,
     { model, messages, temperature, max_tokens: budget },

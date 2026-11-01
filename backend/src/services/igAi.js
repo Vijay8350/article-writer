@@ -47,7 +47,7 @@ class DeepSeekJson {
           messages,
           temperature,
           // Reasoner models spend max_tokens on their chain of thought too.
-          max_tokens: /reasoner/i.test(model) ? Math.max(maxTokens, 16000) : maxTokens,
+          max_tokens: /reasoner|-pro\b/i.test(model) ? Math.max(maxTokens, 16000) : maxTokens,
           response_format: { type: 'json_object' },
         },
         { headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' }, timeout: timeoutMs },
