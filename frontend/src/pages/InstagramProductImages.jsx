@@ -255,7 +255,7 @@ function CreateTab({ status, accounts, canManage }) {
           ) : images.length === 0 ? (
             <div className="empty-state"><ImagePlus size={48} /><h3>No images yet</h3><p>Generate your first one above.</p></div>
           ) : (
-            <div className="ig-post-grid">
+            <div className="ig-post-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 250px), 1fr))' }}>
               {images.map((item) => (
                 <ImageCard key={item.id} item={item} accounts={accounts} styles={status.styles} canManage={canManage} busy={itemBusy(item.id)}
                   onRegenerate={() => act({ id: item.id, action: 'regenerate' }, () => regenerateProductImage(item.id, {}))}

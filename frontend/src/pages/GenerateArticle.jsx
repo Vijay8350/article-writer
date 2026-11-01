@@ -221,11 +221,11 @@ export default function GenerateArticle() {
                 <div className="form-group">
                   <label className="form-label">Article images</label>
                   <select className="form-select" value={imageMode} onChange={e => setImageMode(e.target.value)}>
-                    <option value="mixed">🎨 ChatGPT images + store photos</option>
-                    <option value="ai">🎨 ChatGPT images only</option>
-                    <option value="products">🛍️ Store photos only</option>
+                    <option value="mixed">🎨 ChatGPT + store</option>
+                    <option value="ai">🎨 ChatGPT only</option>
+                    <option value="products">🛍️ Store photos</option>
                   </select>
-                  {imageMode !== 'products' && <div className="form-helper">Adds 2-4 minutes while the images are made and checked.</div>}
+                  {imageMode !== 'products' && <div className="form-helper">Adds 1-2 minutes while the images are made and checked.</div>}
                 </div>
 
                 <div className="form-group">
@@ -272,7 +272,7 @@ export default function GenerateArticle() {
               <div className="loading-text" style={{ fontSize: 18 }}>✍️ Writing your article...</div>
               <div className="loading-text">Using {aiModel === 'gemini' ? 'Google Gemini' : 'DeepSeek'} AI with your Business DNA</div>
               <div className="loading-text" style={{ fontSize: 12, marginTop: 8 }}>
-                {imageMode === 'products' ? 'This may take 30-60 seconds' : 'Writing, then making and checking the images. This may take 3-5 minutes.'}
+                {imageMode === 'products' ? 'This may take 30-60 seconds' : 'Writing, then making and checking the images. This may take 1-3 minutes.'}
               </div>
             </div>
           )}

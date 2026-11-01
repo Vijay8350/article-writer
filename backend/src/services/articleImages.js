@@ -84,25 +84,26 @@ export async function addAiImages({ plan, article, topic, dna }) {
   if (found.length < plan.slots) html = addMissingSlots(html, plan.slots - found.length);
   const inline = findSlots(html).slice(0, plan.slots);
 
+  // Every image gets the matching product's photo. Without it the model invents a
+  // similar product the store doesn't sell, and the gate has nothing to compare against.
   const match = bestProductMatch(topic, dna.products || []);
-  const heroReferences = match ? await loadReferenceImages([match.image], { maxSize: 1024 }) : [];
+  const references = match ? await loadReferenceImages([match.image], { maxSize: 1024 }) : [];
   const jobs = [
     {
       hero: true,
       scene: article.imagePrompts?.[0] || `A hero image for a blog article titled "${article.title}"`,
       alt: article.title,
-      references: heroReferences,
     },
-    ...inline.map((slot) => ({ ...slot, references: [] })),
+    ...inline,
   ];
 
   const storeName = dna.shop?.name;
   const niche = dna.analysis?.niche;
   const results = await mapLimit(jobs, PARALLEL, async (job) => {
     const { jpeg, verdict } = await generateUntilPassed(plan.backend, {
-      prompt: buildArticleImagePrompt({ scene: job.scene, storeName, niche, withProduct: job.references.length > 0 }),
+      prompt: buildArticleImagePrompt({ scene: job.scene, storeName, niche, withProduct: references.length > 0 }),
       gatePrompt: buildArticleVisionPrompt(job.scene),
-      references: job.references,
+      references,
       format: 'landscape',
       attempts: ATTEMPTS,
     });
