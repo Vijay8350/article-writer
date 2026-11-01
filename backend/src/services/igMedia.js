@@ -164,11 +164,13 @@ const CARD_LAYOUTS = {
 const CARD_RADIUS = 32;
 const CARD_PADDING = 24;
 const SHADOW_SPREAD = 44;
+const PLAIN_BACKDROP = 235; // every channel at least this bright counts as a plain light background
 
-// The layout the model is shown: a plain canvas with the card it must keep empty.
+// The layout the model is shown: a guide marking the zone it must leave clear. Drawn as
+// a soft tone, not a white card, or it paints a card of its own behind the real one.
 export async function layoutTemplate(format = 'square') {
   const { width, height, card } = CARD_LAYOUTS[format];
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#8f8f8f"/><rect x="${card.left}" y="${card.top}" width="${card.size}" height="${card.size}" rx="${CARD_RADIUS}" fill="#ffffff"/></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#6e6e6e"/><rect x="${card.left}" y="${card.top}" width="${card.size}" height="${card.size}" rx="${CARD_RADIUS}" fill="#9c9c9c"/></svg>`;
   const jpeg = await sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toBuffer();
   return { data: jpeg.toString('base64'), mimeType: 'image/jpeg' };
 }
@@ -183,15 +185,19 @@ async function photoBackdrop(image) {
   return { r: data[0], g: data[1], b: data[2] };
 }
 
-// Places the store's photo on the card. It is only scaled to fit, never redrawn.
+// Places the store's photo on the card. It is only scaled to fit, never redrawn. A photo
+// on a plain light background sits on a matching card, with its empty margin trimmed so
+// the product fills it. Any other photo fills the card edge to edge.
 export async function placeRealPhoto(art, photo, format = 'square') {
   const { card } = CARD_LAYOUTS[format];
   const source = Buffer.from(photo.data, 'base64');
   const { r, g, b } = await photoBackdrop(source);
-  const inner = card.size - CARD_PADDING * 2;
-  // Trimming only drops empty margin, so the product fills more of the card.
-  const trimmed = await sharp(source).trim({ threshold: 14 }).toBuffer().catch(() => source);
-  const picture = await sharp(trimmed).resize(inner, inner, { fit: 'contain', background: { r, g, b } }).png().toBuffer();
+  const plain = Math.min(r, g, b) >= PLAIN_BACKDROP;
+  const padding = plain ? CARD_PADDING : 0;
+  const inner = card.size - padding * 2;
+  const fitted = plain ? await sharp(source).trim({ threshold: 14 }).toBuffer().catch(() => source) : source;
+  const scaled = await sharp(fitted).resize(inner, inner, { fit: 'contain', background: { r, g, b } }).ensureAlpha().png().toBuffer();
+  const picture = plain ? scaled : await sharp(scaled).composite([{ input: roundedRect(inner, '#fff'), blend: 'dest-in' }]).png().toBuffer();
 
   const shadowSize = card.size + SHADOW_SPREAD * 2;
   const shadow = await sharp({ create: { width: shadowSize, height: shadowSize, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
@@ -203,7 +209,7 @@ export async function placeRealPhoto(art, photo, format = 'square') {
     .composite([
       { input: softShadow, left: card.left - SHADOW_SPREAD, top: card.top - SHADOW_SPREAD + 10 },
       { input: roundedRect(card.size, `rgb(${r},${g},${b})`), left: card.left, top: card.top },
-      { input: picture, left: card.left + CARD_PADDING, top: card.top + CARD_PADDING },
+      { input: picture, left: card.left + padding, top: card.top + padding },
     ])
     .jpeg({ quality: 92, mozjpeg: true })
     .toBuffer();

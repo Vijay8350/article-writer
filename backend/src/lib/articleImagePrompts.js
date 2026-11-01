@@ -13,7 +13,7 @@ export function aiImageInstructions(slots) {
 Also make the FIRST item of imagePrompts a SCENE for the article's main hero image, following the same rules.`;
 }
 
-const RESERVED_CARD = 'The attached layout image shows a white card. A real product photo is placed on that card afterwards, so keep the card exactly where it is, keep it completely empty, and fill the grey area around it. Put any text away from the card, never on, touching or behind it.';
+const RESERVED_CARD = 'The attached layout image is only a guide: replace all of its grey. Its lighter rounded square marks a clear zone, and a real product photo is placed over that zone afterwards. Do not draw a card, box, frame, panel or any shape there: simply let the background continue through it, with nothing important inside. Put any text well outside that zone.';
 const NO_PRODUCT_DRAWN = 'Do NOT draw any product, jewellery, merchandise or item for sale anywhere: the store never shows a drawn version of what it sells. Show only the setting, light, textures and mood.';
 
 export function buildArticleImagePrompt({ scene, storeName, niche, hasCard = false, instructions }) {
@@ -51,7 +51,7 @@ ${scene}
 """
 
 Evaluate, in order of importance:
-1. NOTHING INVENTED: fail if any product, jewellery or item for sale is drawn anywhere${hasCard ? ' outside the card' : ''}.
+1. NOTHING INVENTED: fail if any product, jewellery or item for sale is drawn anywhere${hasCard ? ' outside the card, or if a second, empty card or box shows behind it' : ''}.
 2. NO TEXT: fail on any visible text, letters, numbers, logos or watermarks.
 3. REALISM: fail on distorted hands, faces or objects, impossible geometry, or obvious AI artifacts.
 4. RELEVANCE: the setting and mood suit the intended scene. The product itself is deliberately not shown.

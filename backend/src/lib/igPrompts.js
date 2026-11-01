@@ -158,7 +158,7 @@ const BANNER_RULES = [
 
 // The model never draws a product. It designs around a reserved card, and the store's
 // real photo is placed on that card afterwards, so the design can't change.
-const RESERVED_CARD = 'The attached layout image shows a white card. A real product photo is placed on that card afterwards, so keep the card exactly where it is, keep it completely empty, and design the rest of the image around it. The grey area is yours to replace entirely. Put all text away from the card, never on, touching or behind it.';
+const RESERVED_CARD = 'The attached layout image is only a guide: replace all of its grey. Its lighter rounded square marks a clear zone, and a real product photo is placed over that zone afterwards. Do not draw a card, box, frame, panel or any shape there: simply let the background continue through it, with nothing important inside. Put all text and badges well outside that zone, in the space above it and to its left.';
 const NO_PRODUCT_DRAWN = 'Do NOT draw the product, or any jewellery, merchandise or item for sale, anywhere in the image. Use only backgrounds, colour, light, texture and graphic shapes.';
 
 export const PRODUCT_IMAGE_STYLES = [
@@ -222,6 +222,7 @@ ${texts.length ? `This text must appear on it, spelled exactly:
 ${texts.join('\n')}
 """` : 'This image should carry no text.'}
 ${brief ? `\nThe owner's instructions:\n"""\n${brief}\n"""\n` : ''}
+${hasCard ? 'Fail it if a second, empty card or box shows behind or beside the photo.\n' : ''}
 Evaluate, in order of importance:
 1. TEXT FIDELITY (most important): ${texts.length ? 'every line above appears, spelled exactly, with the right numbers and currency symbols. Fail on misspelled, garbled, duplicated, missing or invented words.' : 'fail on any text, unless the owner asked for it.'} Text asked for in the owner's instructions is fine. Report the text you read in rendered_text.
 2. NOTHING INVENTED: fail if any product, jewellery or item for sale is drawn anywhere${hasCard ? ' outside the card' : ''}.${hasCard ? '\n3. LAYOUT: fail if any text is hidden, cut off or touching the card.' : ''}
