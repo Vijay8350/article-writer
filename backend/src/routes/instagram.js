@@ -7,6 +7,7 @@ import { deleteImage } from '../services/igMedia.js';
 import * as storefront from '../services/storefront.js';
 import { identifyAccount, checkAccountStatus } from '../services/instagram.js';
 import { previewAutomation, runAutomation } from '../services/instagramAutopost.js';
+import { PRODUCT_IMAGE_STYLES } from '../lib/igPrompts.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
@@ -19,6 +20,12 @@ function isValidTimezone(tz) {
 }
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Daily jobs: 'photo' posts the store's photos, 'ai' draws a new image from them.
+const IMAGE_MODES = ['photo', 'ai'];
+const validImageFields = ({ imageMode, imageStyle }) =>
+  (imageMode === undefined || IMAGE_MODES.includes(imageMode))
+  && (!imageStyle || PRODUCT_IMAGE_STYLES.some((s) => s.key === imageStyle));
 
 // The workspace's account for :id, or null (a malformed id is simply "not found").
 const findAccount = (req) =>
@@ -86,8 +93,12 @@ router.get('/automations', async (req, res, next) => {
 
 router.post('/automations', manage, async (req, res, next) => {
   try {
-    const { siteUrl, accountId, postTime = '10:00', timezone = 'Asia/Kolkata', captionInstructions, hashtags } = req.body || {};
+    const {
+      siteUrl, accountId, postTime = '10:00', timezone = 'Asia/Kolkata', captionInstructions, hashtags,
+      imageMode = 'photo', imageStyle, imageNotes,
+    } = req.body || {};
     if (!siteUrl) return bad(res, 'Website URL is required');
+    if (!validImageFields({ imageMode, imageStyle })) return bad(res, 'Unknown image option');
     if (!accountId || !(await repo.getAccountMeta(req.workspace.id, accountId))) return bad(res, 'Pick a connected Instagram account');
     if (!TIME_RE.test(postTime)) return bad(res, 'Post time must be HH:MM (24-hour)');
     if (!isValidTimezone(timezone)) return bad(res, 'Invalid time zone');
@@ -99,6 +110,7 @@ router.post('/automations', manage, async (req, res, next) => {
     const row = await repo.createAutomation(req.workspace.id, req.user.id, {
       accountId, siteUrl: store.url, siteName: store.name, currency: store.currency,
       postTime, timezone, captionInstructions: captionInstructions?.trim(), hashtags: hashtags?.trim(),
+      imageMode, imageStyle, imageNotes: imageNotes?.trim(),
     });
     res.status(201).json({ success: true, message: `Daily posts scheduled for ${store.name || store.url}`, data: row });
   } catch (error) { next(error); }
@@ -106,15 +118,16 @@ router.post('/automations', manage, async (req, res, next) => {
 
 router.patch('/automations/:id', manage, async (req, res, next) => {
   try {
-    const { accountId, postTime, timezone, captionInstructions, hashtags, status } = req.body || {};
+    const { accountId, postTime, timezone, captionInstructions, hashtags, status, imageMode, imageStyle, imageNotes } = req.body || {};
     if (status !== undefined && !['active', 'paused'].includes(status)) return bad(res, 'status must be active or paused');
+    if (!validImageFields({ imageMode, imageStyle })) return bad(res, 'Unknown image option');
     if (postTime !== undefined && !TIME_RE.test(postTime)) return bad(res, 'Post time must be HH:MM (24-hour)');
     if (timezone !== undefined && !isValidTimezone(timezone)) return bad(res, 'Invalid time zone');
     if (accountId !== undefined && !(await repo.getAccountMeta(req.workspace.id, accountId))) return bad(res, 'Pick a connected Instagram account');
 
     const row = await repo.updateAutomation(req.workspace.id, req.params.id, {
-      accountId, postTime, timezone, status,
-      captionInstructions: captionInstructions?.trim(), hashtags: hashtags?.trim(),
+      accountId, postTime, timezone, status, imageMode, imageStyle,
+      captionInstructions: captionInstructions?.trim(), hashtags: hashtags?.trim(), imageNotes: imageNotes?.trim(),
     });
     if (!row) return bad(res, 'Automation not found', 404);
     res.json({ success: true, message: 'Saved', data: row });

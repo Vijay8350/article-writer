@@ -11,6 +11,7 @@ export default function GenerateArticle() {
   const [secondaryKeywords, setSecondaryKeywords] = useState('');
   const [wordCount, setWordCount] = useState(1500);
   const [aiModel, setAiModel] = useState('gemini');
+  const [imageMode, setImageMode] = useState('mixed');
   const [selectedBlog, setSelectedBlog] = useState('');
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -33,6 +34,7 @@ export default function GenerateArticle() {
     getSettings().then(res => {
       const preferred = res.data?.ai?.providers?.article;
       if (preferred) setAiModel(preferred);
+      if (res.data?.ai?.articleImages) setImageMode(res.data.ai.articleImages);
     }).catch(() => {});
     refreshUsage();
   }, []);
@@ -47,7 +49,7 @@ export default function GenerateArticle() {
     setArticle(null);
     try {
       const res = await generateArticle({
-        topic, wordCount, aiModel, blogId: selectedBlog,
+        topic, wordCount, aiModel, imageMode, blogId: selectedBlog,
         primaryKeyword: primaryKeyword.trim() || undefined,
         secondaryKeywords: secondaryKeywords ? secondaryKeywords.split(',').map(s => s.trim()).filter(Boolean) : undefined,
       });
@@ -91,13 +93,14 @@ export default function GenerateArticle() {
     setArticle(null);
     try {
       const res = await generateAndPublish({
-        topic, wordCount, aiModel, blogId: selectedBlog,
+        topic, wordCount, aiModel, imageMode, blogId: selectedBlog,
         primaryKeyword: primaryKeyword.trim() || undefined,
         secondaryKeywords: secondaryKeywords ? secondaryKeywords.split(',').map(s => s.trim()).filter(Boolean) : undefined,
       });
       setArticle(res.data.article);
       setEditedArticle({ ...res.data.article });
       toast.success('Generated & published to Shopify!');
+      if (res.data.article?.publishWarning) toast(res.data.article.publishWarning, { icon: '⚠️', duration: 8000 });
       refreshUsage();
     } catch (err) {
       if (err.response?.data?.code === 'LIMIT_REACHED') {
@@ -216,6 +219,16 @@ export default function GenerateArticle() {
                 </div>
 
                 <div className="form-group">
+                  <label className="form-label">Article images</label>
+                  <select className="form-select" value={imageMode} onChange={e => setImageMode(e.target.value)}>
+                    <option value="mixed">🎨 ChatGPT images + store photos</option>
+                    <option value="ai">🎨 ChatGPT images only</option>
+                    <option value="products">🛍️ Store photos only</option>
+                  </select>
+                  {imageMode !== 'products' && <div className="form-helper">Adds 2-4 minutes while the images are made and checked.</div>}
+                </div>
+
+                <div className="form-group">
                   <label className="form-label">Publish to Blog</label>
                   {dna.blogs?.length > 0 ? (
                     <select className="form-select" value={selectedBlog} onChange={e => setSelectedBlog(e.target.value)}>
@@ -258,7 +271,9 @@ export default function GenerateArticle() {
               <div className="spinner spinner-lg" />
               <div className="loading-text" style={{ fontSize: 18 }}>✍️ Writing your article...</div>
               <div className="loading-text">Using {aiModel === 'gemini' ? 'Google Gemini' : 'DeepSeek'} AI with your Business DNA</div>
-              <div className="loading-text" style={{ fontSize: 12, marginTop: 8 }}>This may take 30-60 seconds</div>
+              <div className="loading-text" style={{ fontSize: 12, marginTop: 8 }}>
+                {imageMode === 'products' ? 'This may take 30-60 seconds' : 'Writing, then making and checking the images. This may take 3-5 minutes.'}
+              </div>
             </div>
           )}
 
@@ -341,7 +356,9 @@ export default function GenerateArticle() {
                         style={{ width: '100%', borderRadius: 'var(--radius-md)', border: '1px solid rgba(139,92,246,0.2)', display: 'block' }}
                       />
                       <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text-secondary)' }}>
-                        From <strong>{article.featuredImage.productTitle}</strong>
+                        {article.featuredImage.source === 'ai'
+                          ? 'Made with ChatGPT for this article'
+                          : <>From <strong>{article.featuredImage.productTitle}</strong></>}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
                         Will be set as the Shopify article's main image.
@@ -387,6 +404,22 @@ export default function GenerateArticle() {
                     )}
                   </div>
                 </div>
+
+                {/* Images ChatGPT made for this article */}
+                {article?.aiImages?.length > 0 && (
+                  <div className="card mb-24">
+                    <div className="card-header"><h3>🎨 ChatGPT Images</h3></div>
+                    <div className="card-body">
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                        {article.aiImages.map((img) => (
+                          <a key={img.src} href={img.src} target="_blank" rel="noreferrer">
+                            <img src={img.src} alt={img.alt} loading="lazy" style={{ width: '100%', aspectRatio: '3 / 2', objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid rgba(139,92,246,0.2)', display: 'block' }} />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Auto-inserted product images */}
                 {article?.insertedImages?.length > 0 && (

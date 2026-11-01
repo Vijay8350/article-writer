@@ -1,12 +1,12 @@
 import * as repo from '../repositories/instagram.js';
-import * as deepseek from './deepseek.js';
 import { resolveAi } from './ai.js';
 import * as storefront from './storefront.js';
 import * as instagram from './instagram.js';
+import { buildCaption } from './productCaption.js';
+import { renderForAutomation, markPosted } from './productImages.js';
+import { publicImageUrl } from './igMedia.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const MAX_CAPTION = 2200; // Instagram limits
-const MAX_HASHTAGS = 30;
 
 // Rotation: never-posted in-stock products first (newest first — so new arrivals
 // go out soon), then whichever was posted longest ago. `history` is oldest-first.
@@ -36,63 +36,6 @@ export function pickProduct(products, history) {
   return ready[0];
 }
 
-const HASHTAG_RE = /#[\p{L}\p{N}_]+/gu;
-
-// Case-insensitive de-dupe that keeps the first spelling seen.
-function uniqueTags(tags) {
-  const seen = new Map();
-  for (const t of tags) if (!seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
-  return [...seen.values()];
-}
-
-export async function buildCaption(automation, product, { apiKey, model } = {}) {
-  const storeName = automation.site_name || new URL(automation.site_url).hostname;
-  const price = storefront.formatPrice(product.price, automation.currency);
-  const onSale = product.compareAtPrice && Number(product.compareAtPrice) > Number(product.price);
-  const priceLine = onSale
-    ? `${price} (was ${storefront.formatPrice(product.compareAtPrice, automation.currency)}, ${Math.round((1 - product.price / product.compareAtPrice) * 100)}% off)`
-    : price;
-  const fixedTags = automation.hashtags?.match(HASHTAG_RE) || [];
-
-  const prompt = `You write Instagram captions for "${storeName}", an online store.
-
-PRODUCT
-Title: ${product.title}
-Price: ${priceLine || 'n/a'}
-Type: ${product.productType || 'n/a'}
-Tags: ${product.tags || 'n/a'}
-Description: ${product.description || 'n/a'}
-${automation.caption_instructions ? `\nSTORE OWNER'S INSTRUCTIONS (follow these): ${automation.caption_instructions}\n` : ''}
-Write the caption:
-- A scroll-stopping hook as the first line (it's all people see before "more")
-- 2–4 short lines on why this product is great, using only the details above — never invent specs
-- Mention the price
-- End with a call to action to shop now
-- Emojis welcome; keep it under 900 characters
-- Do NOT put any URL or hashtags in the caption — they are added separately
-
-Also suggest up to ${Math.max(5, 20 - fixedTags.length)} relevant, popular hashtags.
-
-Return ONLY valid JSON, no markdown: {"caption": "...", "hashtags": ["#tag", "..."]}`;
-
-  const raw = await deepseek.complete(prompt, apiKey, { temperature: 0.8, maxTokens: 1200, model });
-  let body;
-  let aiTags = [];
-  try {
-    const parsed = JSON.parse(raw.replace(/```json\s*|```/g, '').trim());
-    body = String(parsed.caption || '').trim();
-    aiTags = (Array.isArray(parsed.hashtags) ? parsed.hashtags.join(' ') : '').match(HASHTAG_RE) || [];
-  } catch {
-    body = raw.trim(); // model ignored the JSON format — use its text as-is
-  }
-  if (!body) throw new Error('DeepSeek returned an empty caption');
-
-  const tagRoom = Math.max(0, MAX_HASHTAGS - (body.match(HASHTAG_RE) || []).length);
-  const hashtags = uniqueTags([...fixedTags, ...aiTags]).slice(0, tagRoom).join(' ');
-  const tail = `\n\n🛒 Shop now: ${product.url}${hashtags ? `\n\n${hashtags}` : ''}`;
-  return body.slice(0, MAX_CAPTION - tail.length) + tail;
-}
-
 async function prepare(automation) {
   const products = await storefront.getProducts(automation.site_url);
   const product = pickProduct(products, await repo.productHistory(automation));
@@ -110,7 +53,19 @@ export async function previewAutomation(automation) {
     caption,
     imageUrls,
     format: imageUrls.length > 1 ? 'carousel' : 'single',
+    imageMode: automation.image_mode,
   };
+}
+
+// AI jobs draw a fresh image. If that can't happen today the store's own photos
+// go out instead, and the post history says why.
+async function aiImageFor(automation, prepared) {
+  try {
+    const row = await renderForAutomation(automation, prepared.product, prepared.caption);
+    return { row, imageUrls: [publicImageUrl(row.image_file)] };
+  } catch (err) {
+    return { note: `AI image skipped, posted the store photos instead: ${err.message}` };
+  }
 }
 
 // Runs one LEASED automation end-to-end; always logs the outcome and releases the lease.
@@ -120,10 +75,14 @@ export async function runAutomation(automation, trigger) {
   try {
     prepared = await prepare(automation);
     const account = await repo.getAccountWithToken(automation.account_id);
-    const { mediaId, permalink } = await instagram.publishPost(account, prepared.imageUrls, prepared.caption);
+    const ai = automation.image_mode === 'ai' ? await aiImageFor(automation, prepared) : {};
+    const imageUrls = ai.imageUrls || prepared.imageUrls;
+    const { mediaId, permalink } = await instagram.publishPost(account, imageUrls, prepared.caption);
     ok = true;
+    if (ai.row) await markPosted(ai.row, { mediaId, permalink });
     return await repo.logPost(automation, {
-      trigger, ...productFields(prepared), status: 'published', igMediaId: mediaId, permalink,
+      trigger, ...productFields({ ...prepared, imageUrls }), imageSource: ai.row ? 'ai' : 'photo',
+      status: 'published', igMediaId: mediaId, permalink, error: ai.note,
     });
   } catch (err) {
     return await repo.logPost(automation, {

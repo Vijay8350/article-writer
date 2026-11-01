@@ -6,7 +6,7 @@ import {
 import toast from 'react-hot-toast';
 import {
   getInstagramAccounts, getInstagramAutomations, createInstagramAutomation, updateInstagramAutomation,
-  deleteInstagramAutomation, previewInstagramPost, postInstagramNow, getInstagramPosts,
+  deleteInstagramAutomation, previewInstagramPost, postInstagramNow, getInstagramPosts, getProductImageStatus,
 } from '../lib/api';
 
 const POST_BADGE = { published: 'badge-success', failed: 'badge-danger' };
@@ -17,7 +17,7 @@ const danger = { fontSize: 12, color: 'var(--accent-danger)' };
 const siteLabel = (j) => j.site_name || j.site_url.replace(/^https?:\/\//, '');
 
 // "today 2:00 PM" / "tomorrow 10:00 AM" / "10/3/2026 9:00 AM"
-function fmtNext(d) {
+export function fmtNext(d) {
   const date = new Date(d);
   const days = Math.round((new Date(date.toDateString()) - new Date(new Date().toDateString())) / 864e5);
   const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -35,13 +35,15 @@ function timezoneOptions(current) {
   return [...new Set([current, 'Asia/Kolkata', 'UTC', ...all])];
 }
 
-const emptyJob = (accounts) => ({
+export const emptyJob = (accounts) => ({
   siteUrl: '', accountId: accounts[0]?.id || '', postTime: '10:00', timezone: browserTimezone(),
-  captionInstructions: '', hashtags: '',
+  captionInstructions: '', hashtags: '', imageMode: 'photo', imageStyle: '', imageNotes: '',
 });
 
-function JobFields({ value, onChange, accounts }) {
+// `aiOnly` hides the image choice, for the AI Product Posts page.
+export function JobFields({ value, onChange, accounts, styles = [], aiOnly = false }) {
   const set = (key) => (e) => onChange({ ...value, [key]: e.target.value });
+  const isAi = aiOnly || value.imageMode === 'ai';
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
@@ -62,6 +64,33 @@ function JobFields({ value, onChange, accounts }) {
           </select>
         </div>
       </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+        {!aiOnly && (
+          <div className="form-group">
+            <label className="form-label">Post image</label>
+            <select className="form-select" value={value.imageMode} onChange={set('imageMode')}>
+              <option value="photo">The store's product photos</option>
+              <option value="ai">New ChatGPT image of the product</option>
+            </select>
+          </div>
+        )}
+        {isAi && (
+          <div className="form-group">
+            <label className="form-label">Image style</label>
+            <select className="form-select" value={value.imageStyle || ''} onChange={set('imageStyle')}>
+              <option value="">A different style each day</option>
+              {styles.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+      {isAi && (
+        <div className="form-group">
+          <label className="form-label">Direction for the image (optional)</label>
+          <input className="form-input" value={value.imageNotes || ''} onChange={set('imageNotes')} maxLength={500}
+            placeholder="e.g. warm Indian home setting, soft morning light" />
+        </div>
+      )}
       <div className="form-group">
         <label className="form-label">Caption instructions for DeepSeek (optional)</label>
         <textarea className="form-textarea" rows={2} value={value.captionInstructions} onChange={set('captionInstructions')}
@@ -89,7 +118,8 @@ function PreviewCard({ preview }) {
       </div>
       <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.5, overflowWrap: 'anywhere' }}>{preview.caption}</div>
       <div className="form-helper" style={{ marginTop: 8 }}>
-        Preview only — nothing was posted. The real post gets a freshly written caption.
+        Preview only — nothing was posted. The real post gets a freshly written caption
+        {preview.imageMode === 'ai' ? ', and a new ChatGPT image made from these photos.' : '.'}
       </div>
     </div>
   );
@@ -98,6 +128,7 @@ function PreviewCard({ preview }) {
 export default function InstagramScheduler() {
   const [accounts, setAccounts] = useState([]);
   const [jobs, setJobs] = useState([]);
+  const [styles, setStyles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null); // "<action>:<id>" of the running action
 
@@ -123,7 +154,10 @@ export default function InstagramScheduler() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    getProductImageStatus().then(res => setStyles(res.data?.styles || [])).catch(() => {});
+  }, []);
 
   // Runs one action with its busy flag and a toast on failure.
   const run = async (key, fn) => {
@@ -144,6 +178,7 @@ export default function InstagramScheduler() {
       [j.id]: {
         accountId: j.account_id, postTime: j.post_time, timezone: j.timezone,
         captionInstructions: j.caption_instructions || '', hashtags: j.hashtags || '',
+        imageMode: j.image_mode || 'photo', imageStyle: j.image_style || '', imageNotes: j.image_notes || '',
       },
     }));
     loadPosts(j.id).catch(() => {});
@@ -166,6 +201,7 @@ export default function InstagramScheduler() {
     setNewJob({
       siteUrl: j.site_url, accountId: j.account_id, postTime: j.post_time, timezone: j.timezone,
       captionInstructions: j.caption_instructions || '', hashtags: j.hashtags || '',
+      imageMode: j.image_mode || 'photo', imageStyle: j.image_style || '', imageNotes: j.image_notes || '',
     });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -261,7 +297,7 @@ export default function InstagramScheduler() {
                       Jobs for the same website and account share one rotation, so they never post the same product twice in a row.
                     </div>
                   </div>
-                  <JobFields value={newJob} onChange={setNewJob} accounts={accounts} />
+                  <JobFields value={newJob} onChange={setNewJob} accounts={accounts} styles={styles} />
                   <div className="form-helper mb-16">
                     Instagram doesn't make links in captions clickable — the product link appears as text, so keep your store link in your bio too.
                   </div>
@@ -312,6 +348,7 @@ export default function InstagramScheduler() {
                               <strong>{siteLabel(j)}</strong>
                               <span style={{ color: 'var(--text-muted)' }}>→ @{j.username}</span>
                               <span className={`badge ${j.status === 'active' ? 'badge-success' : 'badge-warning'}`}>{j.status}</span>
+                              {j.image_mode === 'ai' && <span className="badge badge-purple">ChatGPT image</span>}
                             </div>
                             <div style={muted}>
                               {j.timezone} · {j.published_count} posted
@@ -346,7 +383,7 @@ export default function InstagramScheduler() {
 
                           {edits[j.id] && (
                             <div>
-                              <JobFields value={edits[j.id]} onChange={v => setEdits(e => ({ ...e, [j.id]: v }))} accounts={accounts} />
+                              <JobFields value={edits[j.id]} onChange={v => setEdits(e => ({ ...e, [j.id]: v }))} accounts={accounts} styles={styles} />
                               <button className="btn btn-secondary btn-sm" onClick={() => handleSave(j)} disabled={!!busy}>
                                 {busy === `save:${j.id}` ? <Loader2 size={14} className="spinning" /> : <Save size={14} />} Save job
                               </button>
@@ -374,6 +411,7 @@ export default function InstagramScheduler() {
                                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
                                           <span className={`badge ${POST_BADGE[p.status]}`}>{p.status}</span>
                                           {p.trigger === 'manual' && <span style={{ ...muted, marginLeft: 6 }}>manual</span>}
+                                          {p.image_source === 'ai' && <span style={{ ...muted, marginLeft: 6 }}>ChatGPT image</span>}
                                         </td>
                                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
                                           {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer">View post</a>}

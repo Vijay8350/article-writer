@@ -112,6 +112,51 @@ export function buildImagePrompt(dna, imageIdea, content, { hasReferences = fals
   ].filter(Boolean).join('\n');
 }
 
+// ─── AI product images: real store photo → Instagram image ──────────────────
+
+export const PRODUCT_IMAGE_STYLES = [
+  { key: 'lifestyle', label: 'Lifestyle', direction: 'a natural, aspirational lifestyle scene showing the product in real use, in a setting its buyer would recognise' },
+  { key: 'studio', label: 'Clean studio', direction: 'a premium studio shot on a seamless softly graded background, with controlled soft lighting and a gentle shadow' },
+  { key: 'flatlay', label: 'Flat lay', direction: 'a styled overhead flat lay with a few tasteful, relevant props that never compete with the product' },
+  { key: 'closeup', label: 'Close-up detail', direction: 'a macro beauty shot that shows off the texture, finish and craftsmanship of the product' },
+  { key: 'bold', label: 'Bold colour', direction: 'a vivid single-colour backdrop chosen to complement the product, with crisp directional light and strong scroll-stopping contrast' },
+  { key: 'festive', label: 'Festive gifting', direction: 'a warm celebratory gifting setting with soft fairy-light bokeh and rich tones, tasteful rather than cluttered' },
+];
+
+// A saved style, or a different one each time when none is chosen.
+export function resolveProductStyle(key) {
+  return PRODUCT_IMAGE_STYLES.find((s) => s.key === key)
+    || PRODUCT_IMAGE_STYLES[Math.floor(Math.random() * PRODUCT_IMAGE_STYLES.length)];
+}
+
+export function buildProductImagePrompt(product, { storeName, style, notes } = {}) {
+  return [
+    `Create a square, scroll-stopping Instagram product photo${storeName ? ` for ${storeName}` : ''}.`,
+    `Product: ${product.title}${product.productType ? ` (${product.productType})` : ''}.`,
+    product.description ? `Product notes: ${product.description.slice(0, 300)}` : '',
+    'The attached photo shows the REAL product. Keep it exactly the same: same shape, proportions, colours, pattern, material, finish and count, plus any text or logo printed on the product itself. Do not redesign it, recolour it or add parts to it.',
+    `Scene: ${style.direction}.`,
+    notes ? `Art direction from the store owner: ${notes}.` : '',
+    'The product is the clear hero: sharp, beautifully lit and photorealistic, with believable shadows and reflections.',
+    'Do NOT add any text, captions, prices, badges, logos or watermarks to the image.',
+  ].filter(Boolean).join('\n');
+}
+
+// The gate for product images: the generated image (first) against the real photo(s).
+export function buildProductVisionPrompt(product) {
+  return `You are a strict quality inspector for an unattended Instagram auto-poster. The FIRST attached image is an AI-generated marketing image. Every other attached image is a REAL photo of the product "${product.title}".
+
+Evaluate, in order of importance:
+1. PRODUCT FIDELITY (most important): the generated image must show the same product as the real photos: same shape, proportions, colours, pattern and details. Fail if it was changed, swapped, or shown in a misleading quantity.
+2. NO ADDED TEXT: fail on any text, price, badge, logo or watermark that is not printed on the real product. Report any such text in rendered_text.
+3. REALISM: fail on distorted hands, faces or objects, or obvious AI artifacts.
+4. APPEAL: sharp, well lit, and the product is the clear subject.
+5. SAFETY: no NSFW, offensive or nonsensical content.
+
+Be conservative: when uncertain, FAIL. Respond ONLY with JSON:
+{ "pass": boolean, "score": number (0-100), "reasons": string[], "rendered_text": string }`;
+}
+
 // Stage 4: the vision quality gate.
 export function buildVisionPrompt(intended, dna) {
   const intendedText = [intended.headline, ...(intended.lines || [])].filter(Boolean).join('\n');

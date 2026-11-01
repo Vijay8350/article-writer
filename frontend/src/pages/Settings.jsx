@@ -321,6 +321,23 @@ export default function Settings() {
               );
             })}
 
+            <div className="form-group">
+              <label className="form-label">Article images</label>
+              <select
+                className="form-select"
+                value={aiPrefs.articleImages || 'mixed'}
+                onChange={e => setAiPrefs(p => ({ ...p, articleImages: e.target.value }))}
+                disabled={!canManage}
+              >
+                <option value="mixed">ChatGPT images + store photos</option>
+                <option value="ai">ChatGPT images only</option>
+                <option value="products">Store photos only</option>
+              </select>
+              <div className="form-helper">
+                Used for every article, including scheduled posts and campaigns. You can still change it per article on the Generate page.
+              </div>
+            </div>
+
             <div style={{ borderTop: '1px solid var(--border-secondary)', margin: '8px 0 20px' }} />
 
             <div className="form-group">

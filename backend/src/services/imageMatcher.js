@@ -55,8 +55,19 @@ export function pickFeaturedImage(topic, products = []) {
   return shapeImage(top.product, topic);
 }
 
-// Inline images for the body. Pass `excludeHandles` to keep the featured product out.
-export function selectRelevantImages(topic, products = [], { max = 4, excludeHandles = [] } = {}) {
+// The product clearly about this topic (a title word matches), or null.
+export function bestProductMatch(topic, products = []) {
+  const topicTokens = [...new Set(tokenize(topic))];
+  const top = products
+    .filter((p) => p.image)
+    .map((product) => ({ product, score: scoreProduct(topicTokens, product) }))
+    .sort((a, b) => b.score - a.score)[0];
+  return top && top.score >= 3 ? top.product : null;
+}
+
+// Inline images for the body. Pass `excludeHandles` to keep the featured product out,
+// and `relevantOnly` to return nothing rather than unrelated products.
+export function selectRelevantImages(topic, products = [], { max = 4, excludeHandles = [], relevantOnly = false } = {}) {
   const exclude = new Set(excludeHandles.filter(Boolean));
   const topicTokens = [...new Set(tokenize(topic))];
   const withImages = products.filter((p) => p.image && !exclude.has(p.handle));
@@ -66,7 +77,7 @@ export function selectRelevantImages(topic, products = [], { max = 4, excludeHan
     .sort((a, b) => b.score - a.score);
 
   const positives = ranked.filter((r) => r.score > 0);
-  const chosen = (positives.length ? positives : ranked).slice(0, max);
+  const chosen = (positives.length || relevantOnly ? positives : ranked).slice(0, max);
 
   return chosen.map(({ product }) => shapeImage(product, topic));
 }

@@ -8,6 +8,7 @@ import { runDueResearch } from '../services/igResearch.js';
 import { runDueCommentSweep } from '../services/igComments.js';
 import { runDueAnalytics } from '../services/igAnalytics.js';
 import { releaseStalePosts } from '../repositories/igStudio.js';
+import { releaseStale as releaseStaleProductImages } from '../repositories/productImages.js';
 
 // Runs inside the SINGLE PM2 fork process. This is the ONLY reason it's safe
 // from double-firing — do NOT enable PM2 cluster mode / instances>1 without
@@ -45,7 +46,8 @@ async function tick() {
       return; // one generation per tick max
     }
 
-    // Then one Instagram product autopost (light: one short DeepSeek call + Graph API).
+    // Then one Instagram product autopost (a DeepSeek caption + Graph API, plus an
+    // AI image for jobs that use one; a slow run just skips the ticks it overlaps).
     if (await runDueInstagramPost()) return;
 
     // Then one Instagram Studio autopilot slot (text → image + quality gate → publish).
@@ -63,6 +65,7 @@ async function tick() {
     // Idle tick → housekeeping: un-stick interrupted Studio posts, and keep one
     // Instagram Login token alive (they expire after 60 days).
     await releaseStalePosts();
+    await releaseStaleProductImages();
     await refreshDueInstagramToken();
   } catch (err) {
     console.error('Scheduler tick error:', err.message);

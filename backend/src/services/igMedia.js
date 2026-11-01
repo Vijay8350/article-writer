@@ -1,7 +1,7 @@
 import axios from 'axios';
 import sharp from 'sharp';
 import { randomBytes } from 'crypto';
-import { mkdir, writeFile, unlink } from 'fs/promises';
+import { mkdir, writeFile, unlink, readFile } from 'fs/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import config from '../config/env.js';
@@ -49,7 +49,8 @@ export async function geminiKeyFor(workspaceId) {
 }
 
 // The backend that makes and inspects this workspace's images:
-// { provider, generate(prompt, references) → 1080² JPEG, score(jpeg, intended, dna) → verdict, check() }.
+// { provider, generate(prompt, references, { format }) → finished JPEG,
+//   inspect(prompt, jpegs) → verdict, score(jpeg, intended, dna) → verdict, check() }.
 // IG_IMAGE_PROVIDER=auto takes the first one that's set up: codex → openai → gemini.
 export async function imageBackend(workspaceId) {
   const want = config.images.provider;
@@ -57,24 +58,41 @@ export async function imageBackend(workspaceId) {
     : (await openai.codexConfigured()) ? 'codex'
       : openai.openaiConfigured() ? 'openai' : 'gemini';
 
-  if (pick === 'codex' || pick === 'openai') {
-    const backend = pick === 'codex' ? openai.codexBackend : openai.openaiBackend;
-    return {
-      provider: pick,
-      generate: async (prompt, references = []) => toInstagramJpeg(await backend.generate(prompt, references)),
-      score: (jpeg, intended, dna) => backend.score(jpeg, intended, dna),
-      check: () => backend.check(),
-    };
-  }
   const key = () => geminiKeyFor(workspaceId);
-  return {
-    provider: 'gemini',
-    generate: async (prompt, references = []) => generateImage(prompt, await key(), references),
-    score: async (jpeg, intended, dna) => scoreImage(jpeg, intended, dna, await key()),
+  const engine = pick === 'gemini' ? {
+    generate: async (prompt, references, size, aspect) => generateImage(prompt, await key(), references, { aspect }),
+    inspect: async (prompt, jpegs) => inspectImage(prompt, jpegs, await key()),
     check: async () => {
       try { return await checkGeminiModels(await key()); } catch (err) { return { ok: false, detail: err.message }; }
     },
+  } : (pick === 'codex' ? openai.codexBackend : openai.openaiBackend);
+
+  return {
+    provider: pick,
+    generate: async (prompt, references = [], { format = 'square' } = {}) => {
+      const { size, aspect, finish } = IMAGE_FORMATS[format];
+      return finish(await engine.generate(prompt, references, size, aspect));
+    },
+    inspect: (prompt, jpegs) => engine.inspect(prompt, jpegs),
+    score: (jpeg, intended, dna) => engine.inspect(buildVisionPrompt(intended, dna), [jpeg]),
+    check: () => engine.check(),
   };
+}
+
+// Generate → inspect, up to `attempts` times, telling the model what was wrong with
+// the last try. Returns the final attempt either way; the caller decides what a fail means.
+export async function generateUntilPassed(images, { prompt, gatePrompt, references = [], format, attempts = 1 }) {
+  const originals = references.map((r) => Buffer.from(r.data, 'base64'));
+  let jpeg = null;
+  let verdict = null;
+  let tried = 0;
+  while (tried < attempts && !verdict?.pass) {
+    tried++;
+    const fixes = verdict?.reasons?.length ? `\n\nThe previous attempt was rejected. Fix these problems: ${verdict.reasons.join('; ')}` : '';
+    jpeg = await images.generate(`${prompt}${fixes}`, references, { format });
+    verdict = await images.inspect(gatePrompt, [jpeg, ...originals]);
+  }
+  return { jpeg, verdict, attempts: tried };
 }
 
 // First base64 image anywhere in a response, whichever API shape it uses
@@ -105,10 +123,25 @@ export function toInstagramJpeg(bytes) {
     .toBuffer();
 }
 
-// Generate the post image. Tries the Interactions API (asks for a square JPEG),
-// then falls back to generateContent for keys/models that predate it.
-// `references` are optional style images: [{ data: base64, mimeType }].
-export async function generateImage(prompt, apiKey, references = []) {
+// Blog images: a 3:2 JPEG sized for article columns, small enough to load fast.
+export function toArticleJpeg(bytes) {
+  return sharp(bytes)
+    .rotate()
+    .resize(1200, 800, { fit: 'cover' })
+    .flatten({ background: '#ffffff' })
+    .jpeg({ quality: 82, mozjpeg: true })
+    .toBuffer();
+}
+
+const IMAGE_FORMATS = {
+  square: { size: '1024x1024', aspect: '1:1', finish: toInstagramJpeg },
+  landscape: { size: '1536x1024', aspect: '3:2', finish: toArticleJpeg },
+};
+
+// Generate an image with Gemini. Tries the Interactions API (asks for the aspect
+// ratio directly), then falls back to generateContent for keys/models that predate it.
+// `references` are optional style images: [{ data: base64, mimeType }]. Returns raw bytes.
+export async function generateImage(prompt, apiKey, references = [], { aspect = '1:1' } = {}) {
   const headers = { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' };
   let firstErr;
   try {
@@ -118,10 +151,10 @@ export async function generateImage(prompt, apiKey, references = []) {
     const { data } = await geminiHttp.post('/interactions', {
       model: config.gemini.imageModel,
       input,
-      response_format: { type: 'image', mime_type: 'image/jpeg', aspect_ratio: '1:1' },
+      response_format: { type: 'image', mime_type: 'image/jpeg', aspect_ratio: aspect },
     }, { headers });
     const img = findImage(data);
-    if (img) return toInstagramJpeg(Buffer.from(img.b64, 'base64'));
+    if (img) return Buffer.from(img.b64, 'base64');
     firstErr = new Error('Gemini image: no image in the response');
   } catch (err) {
     // Only an unsupported endpoint/shape falls through; a bad key or quota error won't change.
@@ -138,23 +171,22 @@ export async function generateImage(prompt, apiKey, references = []) {
     }, { headers });
     const img = findImage(data?.candidates);
     if (!img) throw new Error('Gemini image: no image in the response');
-    return toInstagramJpeg(Buffer.from(img.b64, 'base64'));
+    return Buffer.from(img.b64, 'base64');
   } catch (err) {
     const second = err.response ? geminiError(err, 'image') : err;
     throw new Error(`${second.message} (Interactions API: ${firstErr.message})`.slice(0, 400));
   }
 }
 
-// The quality gate: Gemini reads the text actually rendered and scores it against
-// what was intended. Text fidelity dominates; uncertain → fail.
-export async function scoreImage(jpeg, intended, dna, apiKey) {
+// The quality gate: Gemini inspects the image(s) against the prompt's checklist.
+export async function inspectImage(prompt, jpegs, apiKey) {
   try {
     const { data } = await geminiHttp.post(`/models/${config.gemini.visionModel}:generateContent`, {
       contents: [{
         role: 'user',
         parts: [
-          { text: buildVisionPrompt(intended, dna) },
-          { inlineData: { mimeType: 'image/jpeg', data: jpeg.toString('base64') } },
+          { text: prompt },
+          ...jpegs.map((jpeg) => ({ inlineData: { mimeType: 'image/jpeg', data: jpeg.toString('base64') } })),
         ],
       }],
       generationConfig: { responseMimeType: 'application/json' },
@@ -187,14 +219,14 @@ export async function checkGeminiModels(apiKey) {
 
 const refHttp = axios.create({ ...safeAxiosConfig, timeout: 15000, maxRedirects: 3, maxContentLength: 6 * 1024 * 1024, responseType: 'arraybuffer' });
 
-// Up to 3 reference images as small JPEGs for Gemini; unreadable ones are skipped.
-export async function loadReferenceImages(urls) {
+// Up to 3 reference images as small JPEGs for the image model; unreadable ones are skipped.
+export async function loadReferenceImages(urls, { maxSize = 768 } = {}) {
   const out = [];
   for (const url of (urls || []).slice(0, 3)) {
     try {
       const res = await refHttp.get(url);
       if (!/^image\//.test(String(res.headers['content-type'] || ''))) continue;
-      const jpeg = await sharp(Buffer.from(res.data)).rotate().resize(768, 768, { fit: 'inside' }).jpeg({ quality: 80 }).toBuffer();
+      const jpeg = await sharp(Buffer.from(res.data)).rotate().resize(maxSize, maxSize, { fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
       out.push({ data: jpeg.toString('base64'), mimeType: 'image/jpeg' });
     } catch { /* best-effort: a bad reference never blocks a post */ }
   }
@@ -217,6 +249,16 @@ export async function deleteImage(file) {
 
 // Public URL Instagram downloads the image from.
 export const publicImageUrl = (file) => `${config.publicBaseUrl}/api/media/ig/${file}`;
+
+// Base64 of an image this app hosts, or null for any other URL (so Shopify can be
+// handed the bytes directly instead of having to download them from us).
+export async function readHostedImage(url) {
+  const prefix = `${config.publicBaseUrl}/api/media/ig/`;
+  if (!String(url || '').startsWith(prefix)) return null;
+  const file = url.slice(prefix.length);
+  if (!FILE_RE.test(file)) return null;
+  return readFile(resolve(MEDIA_DIR, file), 'base64').catch(() => null);
+}
 
 // Instagram can't download from a private address, so publishing needs a public base URL.
 export function publicUrlProblem() {

@@ -77,9 +77,13 @@ FACEBOOK_APP_SECRET=...
 #   codex  : the Codex CLI's ChatGPT sign-in. On the server: `sudo npm i -g @openai/codex`,
 #            then `codex login --device-auth` as the user PM2 runs as (ubuntu) and finish the
 #            sign-in in a browser. Tokens live in ~/.codex/auth.json (override: CODEX_AUTH_FILE)
-#            and are refreshed automatically. Billed to that ChatGPT plan's Codex limits; OpenAI
+#            and are refreshed automatically (the CLI can be uninstalled after sign-in; the app never
+#            runs it, it only reads that file). Billed to that ChatGPT plan's Codex limits; OpenAI
 #            documents no API contract for this, so it may stop working — then use openai.
 #   openai : OPENAI_API_KEY (public Images + Responses APIs, pay per image).
+#   Article images use the same backend: the hero is uploaded to Shopify, inline images are
+#   served from PUBLIC_BASE_URL/api/media/ig (the Shopify token has no write_files scope),
+#   so keep backend/media/ across deploys and never prune files that live articles link to.
 # IG_IMAGE_PROVIDER=auto
 # IG_IMAGE_QUALITY=medium                  # low | medium | high
 # OPENAI_API_KEY=

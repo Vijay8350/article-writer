@@ -1,5 +1,6 @@
 import axios from 'axios';
 import config from '../config/env.js';
+import { aiImageInstructions } from '../lib/articleImagePrompts.js';
 
 function geminiUrl(apiKey) {
   const key = apiKey || config.gemini.apiKey;
@@ -199,8 +200,11 @@ Always include the contextual product link in the figcaption. Always include non
 
 AVAILABLE INLINE IMAGES:
 ${inlineSection}`
-    : `No matching product images available. Insert 2-3 placeholders between sections instead:
+    : ctx.aiImageSlots
+      ? 'No product images to embed.'
+      : `No matching product images available. Insert 2-3 placeholders between sections instead:
 <div class="article-image-placeholder" data-prompt="DETAILED_IMAGE_DESCRIPTION"><p>[Image: SHORT_CAPTION]</p></div>`}
+${ctx.aiImageSlots ? `\n${aiImageInstructions(ctx.aiImageSlots)}\n` : ''}
 
 === OUTPUT FORMAT ===
 Return ONLY valid JSON (no markdown fences, no preamble):

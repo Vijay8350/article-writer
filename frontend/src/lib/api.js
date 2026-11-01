@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const api = axios.create({ baseURL: '/api', timeout: 300000 }); // 5 minutes for long article generation
+const api = axios.create({ baseURL: '/api', timeout: 600000 }); // 10 minutes: articles with AI images take a while
 
 const TOKEN_KEY = 'aw_token';
 const WS_KEY = 'aw_workspace_id';
@@ -124,6 +124,16 @@ export const deleteInstagramAutomation = (id) => api.delete(`/instagram/automati
 export const previewInstagramPost = (id) => api.post(`/instagram/automations/${id}/preview`).then(r => r.data);
 export const postInstagramNow = (id) => api.post(`/instagram/automations/${id}/post-now`).then(r => r.data);
 export const getInstagramPosts = (id) => api.get(`/instagram/automations/${id}/posts`).then(r => r.data);
+
+// ─── AI product images ──────────────────────────────────────
+export const getProductImageStatus = () => api.get('/product-images/status').then(r => r.data);
+export const getStoreProducts = (site) => api.get('/product-images/products', { params: { site } }).then(r => r.data);
+export const getProductImages = () => api.get('/product-images').then(r => r.data);
+export const createProductImage = (data) => api.post('/product-images', data).then(r => r.data);
+export const regenerateProductImage = (id, data) => api.post(`/product-images/${id}/regenerate`, data).then(r => r.data);
+export const updateProductImage = (id, data) => api.patch(`/product-images/${id}`, data).then(r => r.data);
+export const publishProductImage = (id, data) => api.post(`/product-images/${id}/publish`, data).then(r => r.data);
+export const deleteProductImage = (id) => api.delete(`/product-images/${id}`).then(r => r.data);
 export const startFacebookLogin = () => api.post('/meta/oauth/start').then(r => r.data);
 
 // ─── Dashboard ──────────────────────────────────────────────

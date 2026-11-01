@@ -1,7 +1,6 @@
 import { readFile, writeFile, rename, stat } from 'fs/promises';
 import { randomBytes } from 'crypto';
 import config from '../config/env.js';
-import { buildVisionPrompt } from '../lib/igPrompts.js';
 import { parseVerdict } from '../lib/igSchemas.js';
 
 // OpenAI image backends for Instagram Studio — the same two stages Gemini covers
@@ -20,9 +19,11 @@ const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'; // Codex CLI's public OA
 const CODEX_UA = 'codex_cli_rs/0.140.0 (article-writer)';
 const IMAGE_TIMEOUT = 180_000;
 const VISION_TIMEOUT = 90_000;
-const SIZE = '1024x1024';
+const RATE_LIMIT_WAIT = 20_000; // one retry after a per-minute limit; a spent quota is not retried
+const SQUARE = '1024x1024';
 
 const userError = (message) => Object.assign(new Error(message), { status: 400 });
+const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
 // ─── Codex (ChatGPT sign-in) credentials ────────────────────────────────────
 
@@ -116,11 +117,22 @@ async function httpError(res, who) {
 
 async function codexFetch(path, body, { accept = 'application/json', timeout = IMAGE_TIMEOUT } = {}) {
   let creds = await codexCredentials();
-  for (let attempt = 0; ; attempt++) {
+  let refreshed = false;
+  let waited = false;
+  for (;;) {
     const res = await fetch(`${CODEX_BASE}${path}`, {
       method: 'POST', headers: codexHeaders(creds, accept), body: JSON.stringify(body), signal: AbortSignal.timeout(timeout),
     });
-    if (res.status === 401 && attempt === 0) { creds = await codexCredentials({ force: true }); continue; }
+    if (res.status === 401 && !refreshed) {
+      refreshed = true;
+      creds = await codexCredentials({ force: true });
+      continue;
+    }
+    if (res.status === 429 && !waited && !/insufficient_quota|usage_limit/.test(await res.clone().text())) {
+      waited = true;
+      await sleep(RATE_LIMIT_WAIT);
+      continue;
+    }
     if (!res.ok) throw await httpError(res, 'Codex');
     return res;
   }
@@ -145,27 +157,27 @@ function pickPng(json, who) {
 const dataUrl = (ref) => `data:${ref.mimeType};base64,${ref.data}`;
 
 // `references` are optional style images [{ data: base64, mimeType }] → the edits endpoint.
-async function codexGenerate(prompt, references = []) {
-  const base = { model: config.images.codex.imageModel, prompt, size: SIZE, quality: config.images.quality, background: 'opaque' };
+async function codexGenerate(prompt, references = [], size = SQUARE) {
+  const base = { model: config.images.codex.imageModel, prompt, size, quality: config.images.quality, background: 'opaque' };
   const res = references.length
     ? await codexFetch('/images/edits', { ...base, images: references.map((r) => ({ image_url: dataUrl(r) })) })
     : await codexFetch('/images/generations', base);
   return pickPng(await res.json(), 'Codex');
 }
 
-async function openaiGenerate(prompt, references = []) {
+async function openaiGenerate(prompt, references = [], size = SQUARE) {
   const { imageModel } = config.images.openai;
   if (!references.length) {
     const res = await openaiFetch('/images/generations', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: imageModel, prompt, size: SIZE, quality: config.images.quality, n: 1 }),
+      body: JSON.stringify({ model: imageModel, prompt, size, quality: config.images.quality, n: 1 }),
     });
     return pickPng(await res.json(), 'OpenAI');
   }
   const form = new FormData();
   form.set('model', imageModel);
   form.set('prompt', prompt);
-  form.set('size', SIZE);
+  form.set('size', size);
   form.set('quality', config.images.quality);
   for (const r of references) form.append('image[]', new Blob([Buffer.from(r.data, 'base64')], { type: r.mimeType }), 'reference.jpg');
   const res = await openaiFetch('/images/edits', { method: 'POST', body: form });
@@ -174,11 +186,11 @@ async function openaiGenerate(prompt, references = []) {
 
 // ─── Stage 4: vision quality gate ───────────────────────────────────────────
 
-const visionInput = (jpeg, intended, dna) => [{
+const visionInput = (prompt, jpegs) => [{
   role: 'user',
   content: [
-    { type: 'input_text', text: `${buildVisionPrompt(intended, dna)}\n\nReply with the JSON object only.` },
-    { type: 'input_image', image_url: `data:image/jpeg;base64,${jpeg.toString('base64')}` },
+    { type: 'input_text', text: `${prompt}\n\nReply with the JSON object only.` },
+    ...jpegs.map((jpeg) => ({ type: 'input_image', image_url: `data:image/jpeg;base64,${jpeg.toString('base64')}` })),
   ],
 }];
 
@@ -213,17 +225,17 @@ async function readSseText(res) {
   return full || delta;
 }
 
-async function codexScore(jpeg, intended, dna) {
+async function codexInspect(prompt, jpegs) {
   const res = await codexFetch('/responses', {
-    model: config.images.codex.visionModel, stream: true, store: false, input: visionInput(jpeg, intended, dna),
+    model: config.images.codex.visionModel, stream: true, store: false, input: visionInput(prompt, jpegs),
   }, { accept: 'text/event-stream', timeout: VISION_TIMEOUT });
   return verdictFromText(await readSseText(res), 'Codex');
 }
 
-async function openaiScore(jpeg, intended, dna) {
+async function openaiInspect(prompt, jpegs) {
   const res = await openaiFetch('/responses', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, timeout: VISION_TIMEOUT,
-    body: JSON.stringify({ model: config.images.openai.visionModel, store: false, input: visionInput(jpeg, intended, dna) }),
+    body: JSON.stringify({ model: config.images.openai.visionModel, store: false, input: visionInput(prompt, jpegs) }),
   });
   return verdictFromText(outputText(await res.json()), 'OpenAI');
 }
@@ -249,5 +261,5 @@ async function checkOpenai() {
 export const codexConfigured = () => stat(config.images.codex.authFile).then(() => true, () => false);
 export const openaiConfigured = () => Boolean(config.images.openai.apiKey);
 
-export const codexBackend = { provider: 'codex', generate: codexGenerate, score: codexScore, check: checkCodex };
-export const openaiBackend = { provider: 'openai', generate: openaiGenerate, score: openaiScore, check: checkOpenai };
+export const codexBackend = { provider: 'codex', generate: codexGenerate, inspect: codexInspect, check: checkCodex };
+export const openaiBackend = { provider: 'openai', generate: openaiGenerate, inspect: openaiInspect, check: checkOpenai };

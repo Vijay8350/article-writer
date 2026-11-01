@@ -1,5 +1,6 @@
 import axios from 'axios';
 import config from '../config/env.js';
+import { aiImageInstructions } from '../lib/articleImagePrompts.js';
 
 const DEEPSEEK_URL = config.deepseek.baseUrl;
 
@@ -130,7 +131,9 @@ function buildPrompt(userPrompt, ctx) {
 <figure><img src="IMG_URL" alt="ALT" loading="lazy" width="800" height="800"><figcaption><a href="/products/HANDLE">TITLE</a></figcaption></figure>
 Use the exact IMG_URL (never invent URLs). Always non-empty alt. Place at natural section breaks (not in the intro, never two in a row).
 ${imgs.map(i => `- IMG_URL: ${i.src || i.imageUrl} | PRODUCT: "${i.title}" → /products/${i.handle} | ALT: ${i.alt}`).join('\n')}`
-    : `INLINE IMAGES — none available; add 2-3 placeholders: <div class="article-image-placeholder" data-prompt="DETAIL"><p>[Image: CAPTION]</p></div>`;
+    : ctx.aiImageSlots
+      ? 'INLINE PRODUCT IMAGES: none to embed.'
+      : `INLINE IMAGES — none available; add 2-3 placeholders: <div class="article-image-placeholder" data-prompt="DETAIL"><p>[Image: CAPTION]</p></div>`;
 
   const primaryKeyword = ctx.primaryKeyword || userPrompt;
   const secondary = Array.isArray(ctx.secondaryKeywords) && ctx.secondaryKeywords.length
@@ -172,7 +175,7 @@ ${wordCount >= 1200 ? `2) "In this article" TOC with anchor links to each H2 (sl
 ${featuredBlock}
 
 ${imageBlock}
-
+${ctx.aiImageSlots ? `\n${aiImageInstructions(ctx.aiImageSlots)}\n` : ''}
 WRITING STYLE:
 - Contractions: you'll, it's, don't, we've, that's
 - Personal opinions: "Honestly...", "Here's what most people miss...", "What I've found is..."

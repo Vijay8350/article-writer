@@ -116,7 +116,7 @@ export function calculateSeoScore(article) {
   // ─── Images (20) ──────────────────────────────────────────
   const hasFeatured = !!article.featuredImage?.src;
   push('Featured image', hasFeatured ? 'pass' : 'fail', hasFeatured ? 8 : 0,
-    hasFeatured ? 'Hero image set from your store' : 'No matching product image for the hero — Shopify article will publish without one');
+    hasFeatured ? 'Hero image set' : 'No hero image — the Shopify article will publish without one');
 
   const inlineCount = countImgs(body);
   if (inlineCount >= 2) push('Inline images', 'pass', 6, `${inlineCount} images embedded`);

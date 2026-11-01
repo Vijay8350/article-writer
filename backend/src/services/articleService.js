@@ -1,6 +1,8 @@
 import * as shopifyService from './shopify.js';
 import { resolveAi } from './ai.js';
 import { selectRelevantImages, pickFeaturedImage } from './imageMatcher.js';
+import { planArticleImages, addAiImages, productImageLimit, stripImagePlaceholders } from './articleImages.js';
+import { readHostedImage } from './igMedia.js';
 import * as stores from '../repositories/stores.js';
 import * as dnaRepo from '../repositories/dna.js';
 import * as usage from './usage.js';
@@ -74,7 +76,7 @@ function buildFAQPageLd(faqs) {
 }
 
 // ─── Core generation ────────────────────────────────────────────────────────
-export async function generateArticleForWorkspace(workspaceId, { topic, wordCount, aiModel, primaryKeyword, secondaryKeywords }, actor) {
+export async function generateArticleForWorkspace(workspaceId, { topic, wordCount, aiModel, primaryKeyword, secondaryKeywords, imageMode }, actor) {
   await usage.assertCanGenerate(workspaceId);
 
   const { dna } = await loadWorkspaceContext(workspaceId);
@@ -84,11 +86,15 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
     throw e;
   }
 
+  const imagePlan = await planArticleImages(workspaceId, imageMode);
+
   // Featured image first (the hero), then inline images excluding that product.
-  const featuredImage = pickFeaturedImage(topic, dna.products || []);
+  // With ChatGPT images on, the store photo hero is only the fallback.
+  const productHero = pickFeaturedImage(topic, dna.products || []);
   const inlineImages = selectRelevantImages(topic, dna.products || [], {
-    max: 4,
-    excludeHandles: featuredImage ? [featuredImage.productHandle] : [],
+    max: productImageLimit(imagePlan.mode),
+    excludeHandles: productHero ? [productHero.productHandle] : [],
+    relevantOnly: imagePlan.slots > 0,
   });
 
   const businessContext = {
@@ -100,9 +106,10 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
     products: dna.products,
     collections: dna.collections,
     existingArticles: dna.articles,
-    featuredImage,
+    featuredImage: productHero,
     inlineImages,
     selectedImages: inlineImages, // back-compat with older prompt code paths
+    aiImageSlots: imagePlan.slots,
     primaryKeyword: primaryKeyword || topic,
     secondaryKeywords: Array.isArray(secondaryKeywords) ? secondaryKeywords : [],
     brandSummary: dna.brand?.summary,
@@ -115,6 +122,10 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
 
   await usage.incrementUsage(workspaceId);
   if (actor) activity.log(actor, 'generate', article.title, workspaceId);
+
+  const aiImages = imagePlan.backend ? await addAiImages({ plan: imagePlan, article, topic, dna }) : null;
+  if (aiImages) article.bodyHtml = aiImages.bodyHtml;
+  const featuredImage = aiImages?.hero || productHero;
 
   // Build authoritative JSON-LD server-side from the response + featured image.
   const datePublished = new Date().toISOString();
@@ -132,16 +143,23 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
   ].filter(Boolean);
 
   const seoScore = calculateSeoScore({ ...article, featuredImage });
+  const warnings = [
+    imagePlan.warning,
+    ...(aiImages?.warnings || []),
+    !featuredImage && 'No image for the featured/hero slot — article will publish without a main image.',
+  ].filter(Boolean);
   return {
     ...article,
     featuredImage,
     insertedImages: inlineImages,
+    aiImages: aiImages?.images || [],
+    imageMode: imagePlan.mode,
     jsonLd,
     faqExtracted: faqs.length,
     seoScore,
     aiModel: ai.provider,
     wordCount: countWords(article.bodyHtml),
-    publishWarning: !featuredImage ? 'No matching product image for the featured/hero slot — article will publish without a main image.' : undefined,
+    publishWarning: warnings.join(' ') || undefined,
   };
 }
 
@@ -164,15 +182,22 @@ export async function enhanceArticleForWorkspace(workspaceId, { article, instruc
   return { ...enhanced, seoScore: calculateSeoScore(enhanced), wordCount: countWords(enhanced.bodyHtml) };
 }
 
-export async function generateAndPublishForWorkspace(workspaceId, { topic, wordCount, aiModel, blogId, primaryKeyword, secondaryKeywords }, actor) {
+export async function generateAndPublishForWorkspace(workspaceId, { topic, wordCount, aiModel, blogId, primaryKeyword, secondaryKeywords, imageMode }, actor) {
   if (!blogId) {
     const e = new Error('A blog must be selected to publish.');
     e.status = 400;
     throw e;
   }
-  const generated = await generateArticleForWorkspace(workspaceId, { topic, wordCount, aiModel, primaryKeyword, secondaryKeywords }, actor);
+  const generated = await generateArticleForWorkspace(workspaceId, { topic, wordCount, aiModel, primaryKeyword, secondaryKeywords, imageMode }, actor);
   const created = await publishArticleForWorkspace(workspaceId, blogId, generated, actor);
   return { generated, created };
+}
+
+// The Shopify hero. Images this app made are uploaded as bytes, which puts them on
+// Shopify's CDN and doesn't depend on Shopify being able to reach this server.
+async function shopifyHero({ src, alt }) {
+  const attachment = await readHostedImage(src);
+  return attachment ? { attachment, alt } : { src, alt };
 }
 
 export async function publishArticleForWorkspace(workspaceId, blogId, article, actor) {
@@ -188,12 +213,12 @@ export async function publishArticleForWorkspace(workspaceId, blogId, article, a
   const heroImage = article.image
     ? article.image
     : article.featuredImage
-    ? { src: article.featuredImage.src, alt: article.featuredImage.alt }
+    ? await shopifyHero(article.featuredImage)
     : undefined;
 
   const created = await shopifyService.createArticle(creds, blogId, {
     title: article.title,
-    bodyHtml: article.bodyHtml,
+    bodyHtml: stripImagePlaceholders(article.bodyHtml),
     tags: article.tags,
     summary: article.summary,
     handle: article.handle,

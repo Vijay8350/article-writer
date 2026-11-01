@@ -181,11 +181,12 @@ export async function createAutomation(workspaceId, createdBy, a) {
   const { rows } = await query(
     `INSERT INTO instagram_automations
        (workspace_id, account_id, site_url, site_name, currency, post_time, timezone,
-        caption_instructions, hashtags, created_by, next_run_at)
-     VALUES ($1, $2, $3, $4, $5, $6::time, $7::text, $8, $9, $10, ${nextRunSql('$7::text', '$6::time')})
+        caption_instructions, hashtags, created_by, image_mode, image_style, image_notes, next_run_at)
+     VALUES ($1, $2, $3, $4, $5, $6::time, $7::text, $8, $9, $10, $11, $12, $13, ${nextRunSql('$7::text', '$6::time')})
      RETURNING id`,
     [workspaceId, a.accountId, a.siteUrl, a.siteName || null, a.currency || null, a.postTime, a.timezone,
-     a.captionInstructions || null, a.hashtags || null, createdBy || null]
+     a.captionInstructions || null, a.hashtags || null, createdBy || null,
+     a.imageMode || 'photo', a.imageStyle || null, a.imageNotes || null]
   );
   return getAutomation(workspaceId, rows[0].id);
 }
@@ -197,6 +198,9 @@ const EDITABLE = {
   captionInstructions: 'caption_instructions',
   hashtags: 'hashtags',
   status: 'status',
+  imageMode: 'image_mode',
+  imageStyle: 'image_style',
+  imageNotes: 'image_notes',
 };
 
 // Any schedule change (time, zone, resume) re-derives next_run_at from the new settings.
@@ -278,25 +282,30 @@ export async function logPost(automation, p) {
   const { rows } = await query(
     `INSERT INTO instagram_posts
        (automation_id, workspace_id, trigger, product_id, product_title, product_url,
-        image_count, caption, status, ig_media_id, permalink, error)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        image_count, caption, status, ig_media_id, permalink, error, image_source)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      RETURNING *`,
     [automation.id, automation.workspace_id, p.trigger, p.productId || null, p.productTitle || null,
      p.productUrl || null, p.imageCount || null, p.caption || null, p.status, p.igMediaId || null,
-     p.permalink || null, p.error ? String(p.error).slice(0, 1000) : null]
+     p.permalink || null, p.error ? String(p.error).slice(0, 1000) : null, p.imageSource || null]
   );
   return rows[0];
 }
 
 // Rotation ledger: every post from this website to this Instagram account across
-// ALL jobs (so two daily jobs never pick the same product), oldest first.
+// ALL jobs, plus AI images posted by hand (so nothing repeats), oldest first.
 export async function productHistory(automation) {
   const { rows } = await query(
     `SELECT p.product_id, p.status, p.created_at
        FROM instagram_posts p
        JOIN instagram_automations a ON a.id = p.automation_id
       WHERE a.workspace_id = $1 AND a.site_url = $2 AND a.account_id = $3 AND p.product_id IS NOT NULL
-      ORDER BY p.created_at`,
+     UNION ALL
+     SELECT i.product_id, 'published', i.published_at
+       FROM ig_product_images i
+      WHERE i.workspace_id = $1 AND i.site_url = $2 AND i.account_id = $3
+        AND i.status = 'published' AND i.automation_id IS NULL
+      ORDER BY created_at`,
     [automation.workspace_id, automation.site_url, automation.account_id]
   );
   return rows;

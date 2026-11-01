@@ -6,10 +6,13 @@ import * as aiKeys from '../repositories/aiKeys.js';
 // model to call. Anything the workspace hasn't set falls back to DEFAULTS.
 export const PROVIDERS = ['gemini', 'deepseek'];
 export const TASKS = ['article', 'enhance', 'businessDna'];
+// Article images: mixed = ChatGPT + store photos, ai = ChatGPT only, products = store photos only.
+export const ARTICLE_IMAGE_MODES = ['mixed', 'ai', 'products'];
 
 const DEFAULTS = {
   providers: { article: 'gemini', enhance: 'gemini', businessDna: 'gemini' },
   deepseekModel: deepseek.DEFAULT_MODEL,
+  articleImages: 'mixed',
 };
 
 const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
@@ -19,7 +22,11 @@ export function withDefaults(saved = {}) {
   for (const task of TASKS) {
     if (PROVIDERS.includes(saved.providers?.[task])) providers[task] = saved.providers[task];
   }
-  return { providers, deepseekModel: saved.deepseekModel || DEFAULTS.deepseekModel };
+  return {
+    providers,
+    deepseekModel: saved.deepseekModel || DEFAULTS.deepseekModel,
+    articleImages: ARTICLE_IMAGE_MODES.includes(saved.articleImages) ? saved.articleImages : DEFAULTS.articleImages,
+  };
 }
 
 // Validates a settings payload from the client; throws a 400 on bad input.
@@ -33,7 +40,9 @@ export function normalizeSettings(input = {}) {
   }
   const model = String(input.deepseekModel ?? '').trim();
   if (model && !/^[\w.:/-]{1,80}$/.test(model)) throw badRequest('Invalid DeepSeek model name');
-  return { providers, ...(model ? { deepseekModel: model } : {}) };
+  const { articleImages } = input;
+  if (articleImages !== undefined && !ARTICLE_IMAGE_MODES.includes(articleImages)) throw badRequest('Unknown article image option');
+  return { providers, ...(model ? { deepseekModel: model } : {}), ...(articleImages ? { articleImages } : {}) };
 }
 
 // Picks the provider for `task` (an explicit per-request choice wins over the

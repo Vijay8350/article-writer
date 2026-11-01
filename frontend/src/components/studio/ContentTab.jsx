@@ -152,7 +152,7 @@ export default function ContentTab({ accountId, canManage, maxAttempts }) {
             </div>
             <label className="flex items-center gap-8 mb-16" style={{ fontSize: 14, cursor: 'pointer' }}>
               <input type="checkbox" checked={withImage} onChange={(e) => setWithImage(e.target.checked)} style={{ accentColor: 'var(--accent-primary)' }} />
-              Also create the image now (Gemini, then a quality check — up to {maxAttempts} attempts)
+              Also create the image now, then run a quality check (up to {maxAttempts} attempts)
             </label>
             <button className="btn btn-primary" type="submit" disabled={busy === 'generate'}>
               {busy === 'generate'
