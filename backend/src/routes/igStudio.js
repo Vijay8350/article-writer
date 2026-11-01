@@ -6,7 +6,8 @@ import * as repo from '../repositories/igStudio.js';
 import * as igRepo from '../repositories/instagram.js';
 import * as studio from '../services/igStudio.js';
 import * as media from '../services/igMedia.js';
-import { runCommentCycle, sendCommentReply } from '../services/igComments.js';
+import { runCommentCycle, sendCommentReply, REPLY_TO } from '../services/igComments.js';
+import { getInsights, PERIODS } from '../services/igInsights.js';
 import { normalizeWebsiteUrl } from '../services/websiteCrawl.js';
 import { buildCampaignPrompt } from '../lib/igPrompts.js';
 import { setCommentHidden, deleteComment } from '../services/instagram.js';
@@ -325,15 +326,54 @@ router.get('/comments', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+router.get('/comments/overview', async (req, res, next) => {
+  try {
+    const accountId = UUID_RE.test(req.query.accountId || '') ? req.query.accountId : null;
+    const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+    const tz = req.query.tz && isValidTimezone(req.query.tz) ? req.query.tz : 'Asia/Kolkata';
+    ok(res, await repo.commentOverview(req.workspace.id, accountId, days, tz));
+  } catch (err) { next(err); }
+});
+
+// Keyword auto-replies: [{ keywords: [..] | "a, b", reply }] → normalized, or { error }.
+function parseKeywordRules(input) {
+  if (input === undefined) return { rules: undefined };
+  if (!Array.isArray(input)) return { error: 'Keyword replies must be a list.' };
+  const rules = [];
+  for (const [i, r] of input.entries()) {
+    const keywords = [...new Set((Array.isArray(r?.keywords) ? r.keywords : String(r?.keywords || '').split(','))
+      .map((k) => String(k).trim().toLowerCase()).filter(Boolean))];
+    const reply = String(r?.reply || '').trim();
+    if (!keywords.length && !reply) continue; // blank row
+    if (!keywords.length || !reply) return { error: `Keyword reply ${i + 1} needs both keywords and a reply.` };
+    if (keywords.length > 10 || keywords.some((k) => k.length > 40)) return { error: `Keyword reply ${i + 1}: up to 10 keywords of at most 40 characters.` };
+    if (reply.length > 500) return { error: `Keyword reply ${i + 1}: the reply can be at most 500 characters.` };
+    rules.push({ keywords, reply });
+  }
+  if (rules.length > 20) return { error: 'At most 20 keyword replies.' };
+  return { rules };
+}
+
 router.put('/accounts/:accountId/comment-settings', manage, async (req, res, next) => {
   try {
     const acc = await account(req, res);
     if (!acc) return;
-    const { replyMode = 'review', autoHide = true, dailyReplyLimit = 30 } = req.body || {};
+    const { replyMode = 'review', autoHide = true, dailyReplyLimit = 30, replyTo, replyInstructions, keywordRules } = req.body || {};
     if (!['off', 'review', 'auto'].includes(replyMode)) return bad(res, 'Pick a reply mode.');
     const limit = Math.round(Number(dailyReplyLimit));
     if (!Number.isFinite(limit) || limit < 0 || limit > 200) return bad(res, 'Daily reply limit must be between 0 and 200.');
-    ok(res, await repo.upsertCommentSettings(req.workspace.id, acc.id, { replyMode, autoHide: Boolean(autoHide), dailyReplyLimit: limit }), 'Comment settings saved');
+    if (replyTo !== undefined && (!Array.isArray(replyTo) || replyTo.some((v) => !REPLY_TO.includes(v)))) {
+      return bad(res, `Reply to must be a list of: ${REPLY_TO.join(', ')}.`);
+    }
+    if (replyInstructions != null && String(replyInstructions).length > 1000) return bad(res, 'Reply instructions can be at most 1000 characters.');
+    const { rules, error } = parseKeywordRules(keywordRules);
+    if (error) return bad(res, error);
+    ok(res, await repo.upsertCommentSettings(req.workspace.id, acc.id, {
+      replyMode, autoHide: Boolean(autoHide), dailyReplyLimit: limit,
+      replyTo: replyTo && [...new Set(replyTo)],
+      replyInstructions: replyInstructions === undefined ? undefined : String(replyInstructions ?? '').trim() || null,
+      keywordRules: rules,
+    }), 'Comment settings saved');
   } catch (err) { next(err); }
 });
 
@@ -459,6 +499,17 @@ router.post('/campaigns/:id/generate', async (req, res) => {
 });
 
 // ─── Analytics + activity ───────────────────────────────────────────────────
+
+// Live account insights from Instagram (cached 10 min; ?fresh=1 bypasses).
+router.get('/accounts/:accountId/insights', async (req, res) => {
+  try {
+    const acc = await account(req, res);
+    if (!acc) return;
+    const days = PERIODS.includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+    const data = await getInsights(await igRepo.getAccountWithToken(acc.id), days, { fresh: Boolean(req.query.fresh) });
+    ok(res, { account: { id: acc.id, username: acc.username }, ...data });
+  } catch (err) { fail(res, err); }
+});
 
 router.get('/accounts/:accountId/analytics', async (req, res, next) => {
   try {

@@ -12,7 +12,10 @@ export function detectTokenType(accessToken) {
   return String(accessToken).startsWith('EAA') ? 'facebook' : 'instagram';
 }
 
-async function graph(tokenType, accessToken, method, path, params = {}) {
+// A dropped connection or timeout, with no answer from Instagram.
+const TRANSIENT = new Set(['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'EPIPE', 'EAI_AGAIN']);
+
+async function graph(tokenType, accessToken, method, path, params = {}, attempt = 0) {
   // POST params go form-encoded in the body — a 2,200-char caption is too long for a query string.
   const payload = { ...params, access_token: accessToken };
   const isGet = method === 'get' || method === 'delete';
@@ -22,10 +25,18 @@ async function graph(tokenType, accessToken, method, path, params = {}) {
       url: `${HOSTS[tokenType]}/${config.instagram.apiVersion}${path}`,
       params: isGet ? payload : undefined,
       data: isGet ? undefined : new URLSearchParams(payload),
-      timeout: 60000,
+      timeout: method === 'get' ? 30000 : 60000,
     });
     return data;
   } catch (error) {
+    // Reads are safe to repeat, so retry one dropped connection. Writes (publish,
+    // reply, hide, delete) never retry: Instagram may have applied the first one.
+    if (method === 'get' && !error.response && TRANSIENT.has(error.code) && attempt === 0) {
+      return graph(tokenType, accessToken, method, path, params, 1);
+    }
+    if (!error.response && TRANSIENT.has(error.code)) {
+      throw Object.assign(new Error(`Couldn't reach Instagram (${error.code}). Check the internet connection and try again.`), { network: true });
+    }
     const e = error.response?.data?.error;
     const msg = !e ? error.message
       : e.code === 190 ? `Instagram: access token is invalid or expired — reconnect the account (${e.message})`
@@ -116,36 +127,42 @@ async function getWithFallback(account, path, [rich, basic], extra = {}) {
 const isPermissionError = (err) => err.igCode === 10 || (err.igCode >= 200 && err.igCode < 300);
 const skipped = (label, key) => ({ key, label, ok: null, detail: 'Skipped: the token is not working' });
 
+// Full public profile: counts, bio, picture (the picture URL expires after a few days).
+export async function fetchFullProfile(account) {
+  const p = await getWithFallback(account, accountNode(account), PROFILE_FIELDS[account.token_type]);
+  return {
+    username: p.username,
+    name: p.name || null,
+    accountType: p.account_type || null,
+    biography: p.biography || null,
+    website: p.website || null,
+    profilePictureUrl: p.profile_picture_url || null,
+    followersCount: p.followers_count ?? null,
+    followsCount: p.follows_count ?? null,
+    mediaCount: p.media_count ?? null,
+  };
+}
+
 // Probes what the connected token can actually do: read the profile, read posts,
-// publish (with today's quota) and manage comments (needed for comment auto-reply).
-// Never throws. `tokenError` is set only when the token itself is dead.
+// publish (with today's quota), manage comments (needed for comment auto-reply)
+// and read insights. Never throws. `tokenError` is set only when the token itself is dead.
 export async function checkAccountStatus(account) {
-  const node = account.token_type === 'instagram' ? '/me' : `/${account.ig_user_id}`;
+  const node = accountNode(account);
   const checks = [];
   let profile = null;
   let posts = [];
   let tokenError = null;
 
   try {
-    const p = await getWithFallback(account, node, PROFILE_FIELDS[account.token_type]);
-    profile = {
-      username: p.username,
-      name: p.name || null,
-      accountType: p.account_type || null,
-      biography: p.biography || null,
-      website: p.website || null,
-      profilePictureUrl: p.profile_picture_url || null,
-      followersCount: p.followers_count ?? null,
-      followsCount: p.follows_count ?? null,
-      mediaCount: p.media_count ?? null,
-    };
-    checks.push({ key: 'token', label: 'Access token & profile', ok: true, detail: `Signed in as @${p.username}` });
+    profile = await fetchFullProfile(account);
+    checks.push({ key: 'token', label: 'Access token & profile', ok: true, detail: `Signed in as @${profile.username}` });
   } catch (err) {
     tokenError = err.message;
     checks.push({ key: 'token', label: 'Access token & profile', ok: false, detail: err.message });
     return {
       profile, posts, tokenError, checkedAt: new Date().toISOString(),
-      checks: [...checks, skipped('Read posts', 'media'), skipped('Publish posts', 'publish'), skipped('Manage comments (auto-reply)', 'comments')],
+      checks: [...checks, skipped('Read posts', 'media'), skipped('Publish posts', 'publish'),
+        skipped('Manage comments (auto-reply)', 'comments'), skipped('Read insights', 'insights')],
     };
   }
 
@@ -188,6 +205,16 @@ export async function checkAccountStatus(account) {
       checks.push({ key: 'comments', label: 'Manage comments (auto-reply)', ok: false,
         detail: isPermissionError(err) ? 'Permission not granted: add instagram_business_manage_comments (or instagram_manage_comments) and reconnect' : err.message });
     }
+  }
+
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    await graph(account.token_type, account.accessToken, 'get', `${node}/insights`,
+      { metric: 'reach', period: 'day', metric_type: 'total_value', since: now - 86400, until: now });
+    checks.push({ key: 'insights', label: 'Read insights', ok: true, detail: 'Account and post insights available' });
+  } catch (err) {
+    checks.push({ key: 'insights', label: 'Read insights', ok: false,
+      detail: isPermissionError(err) ? 'Permission not granted: add instagram_business_manage_insights (or instagram_manage_insights) and reconnect' : err.message });
   }
 
   return { profile, posts, checks, tokenError, checkedAt: new Date().toISOString() };
@@ -244,6 +271,132 @@ export async function fetchMediaInsights(account, mediaId) {
 }
 
 // Top-level comments left since `since` on the account's most recent posts (no reply threads).
+// ─── Account insights (the Insights page) ────────────────────────────────────
+// Verified against Graph API v25: "impressions" is retired (use views), and
+// engaged-audience demographics need a minimum audience, so callers treat every
+// group except the totals as optional.
+
+const TOTAL_METRICS = ['views', 'reach', 'accounts_engaged', 'total_interactions', 'likes', 'comments', 'saves', 'shares',
+  'replies', 'reposts', 'profile_links_taps', 'website_clicks', 'profile_views'];
+const CORE_TOTAL_METRICS = ['views', 'reach', 'accounts_engaged', 'total_interactions', 'likes', 'comments', 'saves', 'shares'];
+
+const metricValue = (m) => m.total_value?.value ?? (m.values || []).reduce((sum, v) => sum + (Number(v.value) || 0), 0);
+const insights = (account, params) => call(account, 'get', `${accountNode(account)}/insights`, params);
+const breakdownRows = (res) => (res.data?.[0]?.total_value?.breakdowns?.[0]?.results || [])
+  .map((r) => ({ key: r.dimension_values?.[0] ?? 'Unknown', value: Number(r.value) || 0 }))
+  .sort((a, b) => b.value - a.value);
+
+export { isPermissionError };
+
+// Period totals (unix seconds). If Meta has retired one of the extra metrics,
+// fall back to the core set rather than failing the whole page.
+export async function fetchAccountTotals(account, since, until) {
+  const params = (metrics) => ({ metric: metrics.join(','), period: 'day', metric_type: 'total_value', since, until });
+  let res;
+  try {
+    res = await insights(account, params(TOTAL_METRICS));
+  } catch (err) {
+    if (err.igCode !== 100) throw err;
+    res = await insights(account, params(CORE_TOTAL_METRICS));
+  }
+  return Object.fromEntries((res.data || []).map((m) => [m.name, metricValue(m)]));
+}
+
+// reach × media_product_type (POST, REEL, STORY, AD…), follows_and_unfollows × follow_type.
+export async function fetchBreakdown(account, metric, dimension, since, until) {
+  return breakdownRows(await insights(account, { metric, period: 'day', metric_type: 'total_value', breakdown: dimension, since, until }));
+}
+
+// One value per day. Meta stamps each value with the END of its day, so the
+// value belongs to the day before end_time. Ranges are capped at 30 days.
+export async function fetchDailySeries(account, metric, since, until) {
+  const res = await insights(account, { metric, period: 'day', since, until });
+  return (res.data?.[0]?.values || []).map((v) => ({
+    date: new Date(Date.parse(v.end_time) - 86400000).toISOString().slice(0, 10),
+    value: Number(v.value) || 0,
+  }));
+}
+
+// Follower demographics by country | city | age | gender (needs 100+ followers).
+export async function fetchFollowerDemographics(account, dimension) {
+  return breakdownRows(await insights(account, {
+    metric: 'follower_demographics', period: 'lifetime', metric_type: 'total_value', timeframe: 'this_month', breakdown: dimension,
+  }));
+}
+
+// UTC offset (hours) of a time zone at a moment, e.g. America/Los_Angeles → -7 in summer.
+function tzOffsetHours(timeZone, date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  }).formatToParts(date);
+  const get = (type) => Number(parts.find((p) => p.type === type).value);
+  return Math.round((Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute')) - date.getTime()) / 3600000);
+}
+
+// Followers online per hour of day, re-indexed from Meta's Pacific-time hours to
+// UTC hours (index 0 = 00:00 UTC) so the browser can show its own local time.
+// The newest ~2 days come back empty, so look back a week for the latest full day.
+export async function fetchOnlineFollowers(account) {
+  const until = Math.floor(Date.now() / 1000);
+  const res = await insights(account, { metric: 'online_followers', period: 'lifetime', since: until - 7 * 86400, until });
+  const latest = [...(res.data?.[0]?.values || [])].reverse().find((v) => v.value && Object.keys(v.value).length);
+  if (!latest) return null;
+  const offset = tzOffsetHours('America/Los_Angeles', new Date(latest.end_time));
+  const utc = new Array(24).fill(0);
+  for (let pt = 0; pt < 24; pt++) utc[(((pt - offset) % 24) + 24) % 24] = Number(latest.value[pt]) || 0;
+  return utc;
+}
+
+const POST_FIELDS = ['id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count',
+  'id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count'];
+const POST_METRICS = 'reach,saved,shares,total_interactions,views';
+
+const postKind = (m) => (m.media_product_type === 'REELS' ? 'Reel'
+  : m.media_type === 'CAROUSEL_ALBUM' ? 'Carousel' : m.media_type === 'VIDEO' ? 'Video' : 'Photo');
+
+const metricsOf = (insightsData) => Object.fromEntries((insightsData || [])
+  .map((x) => [x.name, x.values?.[0]?.value ?? x.total_value?.value ?? null]));
+
+const shapePost = (m, metrics) => ({
+  id: m.id,
+  kind: postKind(m),
+  caption: m.caption ? String(m.caption).slice(0, 300) : '',
+  imageUrl: m.media_type === 'VIDEO' ? m.thumbnail_url || null : m.media_url || null,
+  permalink: m.permalink || null,
+  timestamp: m.timestamp || null,
+  likes: m.like_count ?? null,
+  comments: m.comments_count ?? null,
+  views: metrics.views ?? null,
+  reach: metrics.reach ?? null,
+  saves: metrics.saved ?? null,
+  shares: metrics.shares ?? null,
+  interactions: metrics.total_interactions ?? null,
+});
+
+// Recent posts with their lifetime insights. One request normally does it (the
+// insights edge expanded inline, ~4s for 25 posts); if Instagram refuses the
+// expansion (one bad post fails the whole call), fall back to one insights
+// request per post, 5 at a time — a post whose insights can't be read (e.g.
+// posted before the account turned professional) still lists with its counts.
+export async function fetchPostsWithInsights(account, limit = 25) {
+  const path = `${accountNode(account)}/media`;
+  const params = { limit: Math.min(limit, 50) };
+  try {
+    const res = await call(account, 'get', path, { ...params, fields: `${POST_FIELDS[0]},insights.metric(${POST_METRICS})` });
+    return (res.data || []).map((m) => shapePost(m, metricsOf(m.insights?.data)));
+  } catch { /* per-post fallback below */ }
+
+  const media = (await getWithFallback(account, path, POST_FIELDS, params)).data || [];
+  const out = [];
+  for (let i = 0; i < media.length; i += 5) {
+    out.push(...await Promise.all(media.slice(i, i + 5).map(async (m) => {
+      const d = await call(account, 'get', `/${m.id}/insights`, { metric: POST_METRICS }).catch(() => null);
+      return shapePost(m, metricsOf(d?.data));
+    })));
+  }
+  return out;
+}
+
 export async function fetchRecentComments(account, { since, mediaLimit = 10, perMedia = 50 }) {
   const media = await fetchMedia(account, mediaLimit);
   const withComments = media.filter((m) => (m.comments ?? 1) > 0);

@@ -17,6 +17,7 @@ import invitationsRouter from './routes/invitations.js';
 import adminRouter from './routes/admin.js';
 import instagramRouter from './routes/instagram.js';
 import igStudioRouter from './routes/igStudio.js';
+import dashboardRouter from './routes/dashboard.js';
 import metaRouter from './routes/meta.js';
 import { MEDIA_DIR } from './services/igMedia.js';
 import { startScheduler } from './workers/scheduler.js';
@@ -56,6 +57,7 @@ app.use('/api/members', membersRouter);
 app.use('/api/invitations', invitationsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/instagram', instagramRouter);
+app.use('/api/dashboard', dashboardRouter);
 
 // Global error handler
 app.use((err, req, res, next) => {

@@ -12,6 +12,7 @@ import InstagramScheduler from './pages/InstagramScheduler';
 import InstagramStudio from './pages/InstagramStudio';
 import InstagramCampaigns from './pages/InstagramCampaigns';
 import InstagramComments from './pages/InstagramComments';
+import InstagramInsights from './pages/InstagramInsights';
 import DataDeletion from './pages/DataDeletion';
 import PlanUsage from './pages/PlanUsage';
 import Admin from './pages/Admin';
@@ -86,6 +87,7 @@ export default function App() {
         <Route path="/instagram-studio/:accountId/:tab" element={<InstagramStudio />} />
         <Route path="/instagram-campaigns" element={<InstagramCampaigns />} />
         <Route path="/instagram-comments" element={<InstagramComments />} />
+        <Route path="/instagram-insights" element={<InstagramInsights />} />
         <Route path="/plan" element={<PlanUsage />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/settings" element={<Settings />} />

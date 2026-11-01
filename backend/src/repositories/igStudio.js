@@ -390,16 +390,68 @@ export async function getCommentSettings(workspaceId, accountId) {
   return rows[0] || null;
 }
 
-export async function upsertCommentSettings(workspaceId, accountId, { replyMode, autoHide, dailyReplyLimit }) {
+// replyTo / replyInstructions / keywordRules left undefined keep their saved
+// value (or the column default on first save).
+export async function upsertCommentSettings(workspaceId, accountId, { replyMode, autoHide, dailyReplyLimit, replyTo, replyInstructions, keywordRules }) {
   const { rows } = await query(
-    `INSERT INTO ig_comment_settings (account_id, workspace_id, reply_mode, auto_hide, daily_reply_limit)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO ig_comment_settings (account_id, workspace_id, reply_mode, auto_hide, daily_reply_limit,
+                                      reply_to, reply_instructions, keyword_rules)
+     VALUES ($1, $2, $3, $4, $5, COALESCE($6::text[], '{question,positive,neutral}'), $7, COALESCE($8::jsonb, '[]'::jsonb))
      ON CONFLICT (account_id) DO UPDATE SET reply_mode = EXCLUDED.reply_mode, auto_hide = EXCLUDED.auto_hide,
-       daily_reply_limit = EXCLUDED.daily_reply_limit, updated_at = now()
+       daily_reply_limit = EXCLUDED.daily_reply_limit,
+       reply_to = COALESCE($6::text[], ig_comment_settings.reply_to),
+       reply_instructions = CASE WHEN $9 THEN $7 ELSE ig_comment_settings.reply_instructions END,
+       keyword_rules = COALESCE($8::jsonb, ig_comment_settings.keyword_rules),
+       updated_at = now()
      RETURNING *`,
-    [accountId, workspaceId, replyMode, autoHide, dailyReplyLimit]
+    [accountId, workspaceId, replyMode, autoHide, dailyReplyLimit, replyTo ?? null,
+      replyInstructions ?? null, keywordRules ? JSON.stringify(keywordRules) : null, replyInstructions !== undefined]
   );
   return rows[0];
+}
+
+// Comment overview for the last `days` days (one account or all), bucketed by day in `tz`.
+export async function commentOverview(workspaceId, accountId, days, tz) {
+  const params = [workspaceId, accountId || null, days];
+  const scope = `FROM ig_comments WHERE workspace_id = $1 AND ($2::uuid IS NULL OR account_id = $2)
+                   AND COALESCE(commented_at, created_at) > now() - make_interval(days => $3)`;
+  const [totals, daily, commenters, posts, categories] = await Promise.all([
+    query(
+      `SELECT count(*)::int AS total,
+              count(*) FILTER (WHERE verdict = 'positive')::int AS positive,
+              count(*) FILTER (WHERE verdict = 'question')::int AS question,
+              count(*) FILTER (WHERE verdict = 'neutral')::int AS neutral,
+              count(*) FILTER (WHERE verdict = 'bad')::int AS bad,
+              count(*) FILTER (WHERE verdict IS NULL)::int AS unreviewed,
+              count(*) FILTER (WHERE status = 'replied')::int AS replied,
+              count(*) FILTER (WHERE status = 'replied' AND reply_source = 'ai')::int AS replied_ai,
+              count(*) FILTER (WHERE status = 'replied' AND reply_source = 'rule')::int AS replied_rule,
+              count(*) FILTER (WHERE status = 'replied' AND (reply_source = 'manual' OR reply_source IS NULL))::int AS replied_manual,
+              count(*) FILTER (WHERE status IN ('draft', 'error'))::int AS needs_reply,
+              count(*) FILTER (WHERE status = 'flagged')::int AS flagged,
+              count(*) FILTER (WHERE hidden)::int AS hidden,
+              count(*) FILTER (WHERE status = 'deleted')::int AS deleted,
+              round(avg(extract(epoch FROM replied_at - commented_at))
+                FILTER (WHERE status = 'replied' AND replied_at IS NOT NULL AND commented_at IS NOT NULL))::int AS avg_reply_seconds
+         ${scope}`, params),
+    query(
+      `SELECT to_char((COALESCE(commented_at, created_at) AT TIME ZONE $4)::date, 'YYYY-MM-DD') AS day,
+              count(*)::int AS comments, count(*) FILTER (WHERE status = 'replied')::int AS replied
+         ${scope} GROUP BY 1 ORDER BY 1`, [...params, tz]),
+    query(`SELECT author, count(*)::int AS n ${scope} AND author IS NOT NULL GROUP BY author ORDER BY n DESC, author LIMIT 5`, params),
+    query(
+      `SELECT ig_media_id, max(media_permalink) AS permalink, max(media_caption) AS caption, count(*)::int AS n
+         ${scope} GROUP BY ig_media_id ORDER BY n DESC LIMIT 5`, params),
+    query(`SELECT COALESCE(category, 'other') AS category, count(*)::int AS n ${scope} AND verdict = 'bad' GROUP BY 1 ORDER BY n DESC`, params),
+  ]);
+  return {
+    days,
+    totals: totals.rows[0],
+    daily: daily.rows,
+    topCommenters: commenters.rows,
+    topPosts: posts.rows,
+    badCategories: categories.rows,
+  };
 }
 
 // One monitored account whose last sweep is ≥15 minutes old; leased by stamping last_checked_at.

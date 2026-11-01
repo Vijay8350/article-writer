@@ -141,10 +141,10 @@ class DeepSeekJson {
 
   // A verdict per comment and a safe reply draft for non-bad ones. Only ids that
   // were asked about come back, once each.
-  async reviewComments(comments, dna, business = null) {
+  async reviewComments(comments, dna, business = null, instructions = null) {
     if (!comments.length) return [];
     const results = await this.chatValidated(
-      [{ role: 'system', content: P.buildCommentReviewSystemPrompt(dna, business) },
+      [{ role: 'system', content: P.buildCommentReviewSystemPrompt(dna, business, instructions) },
         { role: 'user', content: P.buildCommentReviewUserPrompt(comments) }],
       0.4,
       S.parseCommentReview,

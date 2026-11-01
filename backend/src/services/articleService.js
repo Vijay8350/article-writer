@@ -114,7 +114,7 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
   const article = await ai.service.generateArticle(topic, businessContext, ai.apiKey, ai.model);
 
   await usage.incrementUsage(workspaceId);
-  if (actor) activity.log(actor, 'generate', article.title);
+  if (actor) activity.log(actor, 'generate', article.title, workspaceId);
 
   // Build authoritative JSON-LD server-side from the response + featured image.
   const datePublished = new Date().toISOString();
@@ -203,6 +203,6 @@ export async function publishArticleForWorkspace(workspaceId, blogId, article, a
     seoDescription: article.seoDescription,
     image: heroImage,
   });
-  if (actor) activity.log(actor, article.published === false ? 'save_draft' : 'publish', article.title);
+  if (actor) activity.log(actor, article.published === false ? 'save_draft' : 'publish', article.title, workspaceId);
   return created;
 }

@@ -16,17 +16,33 @@ const AUTO_REPLY_CONFIDENCE = 0.7; // send automatically only when this sure of 
 
 const errText = (e) => (e instanceof Error ? e.message : String(e)).slice(0, 300);
 
+export const REPLY_TO = ['question', 'positive', 'neutral'];
+
+// The first keyword rule whose keyword appears in the comment as a whole word or
+// phrase (case-insensitive, any script — "price" matches "Price?" but not "priceless").
+export function matchKeywordRule(text, rules) {
+  const hay = String(text || '');
+  for (const rule of rules || []) {
+    for (const kw of rule.keywords || []) {
+      const escaped = String(kw).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (escaped && new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, 'iu').test(hay)) return rule;
+    }
+  }
+  return null;
+}
+
 // Post a reply exactly once: the row is claimed first (new/draft/error →
 // replying), so concurrent runs can't both send; if the process dies after
 // Instagram accepts the reply, the row stays "replying" and is never re-sent.
-export async function sendCommentReply(account, row, text) {
+// `source` records who wrote what was sent: ai | rule (auto-reply) or manual.
+export async function sendCommentReply(account, row, text, source = 'manual') {
   const message = String(text || '').trim().slice(0, 1000);
   if (!message) return { ok: false, error: 'The reply is empty.' };
   const claimed = await repo.claimReply(row.id, message);
   if (!claimed) return { ok: false, error: 'This comment was already handled.' };
   try {
     const replyId = await replyToComment(account, row.ig_comment_id, message);
-    await repo.updateComment(row.id, { status: 'replied', reply_ig_id: replyId, replied_at: new Date(), error: null });
+    await repo.updateComment(row.id, { status: 'replied', reply_ig_id: replyId, replied_at: new Date(), reply_source: source, error: null });
     return { ok: true };
   } catch (err) {
     await repo.updateComment(row.id, { status: 'error', error: errText(err) });
@@ -60,11 +76,14 @@ export async function runCommentCycle(workspaceId, accountId, settings, { maxRev
       repo.repliedLast24h(accountId),
     ]);
     let budget = Math.max(0, settings.daily_reply_limit - repliedToday);
+    const replyTo = settings.reply_to?.length ? settings.reply_to : REPLY_TO;
+    const rules = Array.isArray(settings.keyword_rules) ? settings.keyword_rules : [];
 
     for (let i = 0; i < rows.length; i += REVIEW_BATCH) {
       const batch = rows.slice(i, i + REVIEW_BATCH);
       const reviews = await ai.reviewComments(
         batch.map((r) => ({ id: r.id, author: r.author, text: r.text, post: r.media_caption })), dna, business,
+        settings.reply_instructions,
       );
       const byId = new Map(reviews.map((r) => [r.id, r]));
 
@@ -98,12 +117,17 @@ export async function runCommentCycle(workspaceId, accountId, settings, { maxRev
           continue;
         }
 
-        // 3b) Fine → reply per mode (auto only within the daily limit and when confident).
-        const canAuto = settings.reply_mode === 'auto' && review.reply && budget > 0 && review.confidence >= AUTO_REPLY_CONFIDENCE;
-        const status = review.reply && settings.reply_mode !== 'off' ? 'draft' : 'done';
-        await repo.updateComment(row.id, { ...verdict, status: canAuto ? 'new' : status });
+        // 3b) Fine → a keyword rule's fixed reply wins; otherwise the AI's reply if
+        // this kind of comment is one the owner wants answered. Sent per mode (auto
+        // only within the daily limit, and for AI text only when it's confident).
+        const rule = matchKeywordRule(row.text, rules);
+        const replyText = rule ? rule.reply : replyTo.includes(review.verdict) ? review.reply : null;
+        const confident = Boolean(rule) || review.confidence >= AUTO_REPLY_CONFIDENCE;
+        const canAuto = settings.reply_mode === 'auto' && replyText && budget > 0 && confident;
+        const status = replyText && settings.reply_mode !== 'off' ? 'draft' : 'done';
+        await repo.updateComment(row.id, { ...verdict, reply_text: replyText, status: canAuto ? 'new' : status });
         if (canAuto) {
-          const sent = await sendCommentReply(account, row, review.reply);
+          const sent = await sendCommentReply(account, row, replyText, rule ? 'rule' : 'ai');
           if (sent.ok) {
             budget--;
             result.replied++;

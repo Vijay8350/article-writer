@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, Link } from 'react-router-dom';
-import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2, Instagram, AlarmClock, MessageCircle, Sparkles, Megaphone } from 'lucide-react';
+import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2, Instagram, AlarmClock, MessageCircle, Sparkles, Megaphone, BarChart3 } from 'lucide-react';
 import { getSettings } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -25,6 +25,7 @@ const navSections = [
     title: 'Instagram',
     items: [
       { path: '/instagram', icon: Instagram, label: 'Accounts' },
+      { path: '/instagram-insights', icon: BarChart3, label: 'Insights' },
       { path: '/instagram-studio', icon: Sparkles, label: 'Studio' },
       { path: '/instagram-campaigns', icon: Megaphone, label: 'Campaigns' },
       { path: '/instagram-comments', icon: MessageCircle, label: 'Comments' },

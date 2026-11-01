@@ -126,6 +126,9 @@ export const postInstagramNow = (id) => api.post(`/instagram/automations/${id}/p
 export const getInstagramPosts = (id) => api.get(`/instagram/automations/${id}/posts`).then(r => r.data);
 export const startFacebookLogin = () => api.post('/meta/oauth/start').then(r => r.data);
 
+// ─── Dashboard ──────────────────────────────────────────────
+export const getDashboard = () => api.get('/dashboard').then(r => r.data);
+
 // ─── Instagram Studio (AI posts, DNA, prompts, campaigns, comments) ─
 const igAcc = (accountId) => `/ig/accounts/${accountId}`;
 export const getStudioStatus = (fresh) => api.get('/ig/status', { params: fresh ? { fresh: 1 } : {} }).then(r => r.data);
@@ -153,6 +156,9 @@ export const setIgCampaignStatus = (id, status) => api.patch(`/ig/campaigns/${id
 export const deleteIgCampaign = (id) => api.delete(`/ig/campaigns/${id}`).then(r => r.data);
 export const generateIgCampaignPost = (id) => api.post(`/ig/campaigns/${id}/generate`).then(r => r.data);
 export const getIgComments = (params) => api.get('/ig/comments', { params }).then(r => r.data);
+export const getIgCommentOverview = (params) => api.get('/ig/comments/overview', { params }).then(r => r.data);
+export const getIgInsights = (accountId, days, fresh) =>
+  api.get(`${igAcc(accountId)}/insights`, { params: { days, ...(fresh ? { fresh: 1 } : {}) } }).then(r => r.data);
 export const saveIgCommentSettings = (accountId, data) => api.put(`${igAcc(accountId)}/comment-settings`, data).then(r => r.data);
 export const checkIgCommentsNow = (accountId) => api.post(`${igAcc(accountId)}/comments/check`).then(r => r.data);
 export const replyIgComment = (id, text) => api.post(`/ig/comments/${id}/reply`, { text }).then(r => r.data);

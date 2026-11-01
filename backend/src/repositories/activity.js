@@ -1,11 +1,13 @@
 import { query } from '../db/index.js';
 
 // Best-effort activity logging — never let a logging failure break the request.
-export async function log(userId, action, detail) {
+// Pass workspaceId for tenant actions (article generate/publish) so the
+// Dashboard can count them per workspace.
+export async function log(userId, action, detail, workspaceId = null) {
   try {
     await query(
-      'INSERT INTO activity_log (user_id, action, detail) VALUES ($1, $2, $3)',
-      [userId || null, action, detail ? String(detail).slice(0, 500) : null]
+      'INSERT INTO activity_log (user_id, action, detail, workspace_id) VALUES ($1, $2, $3, $4)',
+      [userId || null, action, detail ? String(detail).slice(0, 500) : null, workspaceId]
     );
   } catch (e) {
     console.warn('activity log failed:', e.message);

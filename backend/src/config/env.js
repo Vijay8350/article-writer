@@ -49,7 +49,7 @@ const config = {
     appId: process.env.FACEBOOK_APP_ID || '',
     appSecret: process.env.FACEBOOK_APP_SECRET || '',
     // Comma-separated override, e.g. to drop a permission the Meta app hasn't been granted yet.
-    scopes: (process.env.FACEBOOK_SCOPES || 'instagram_basic,instagram_content_publish,instagram_manage_comments,pages_show_list,pages_read_engagement,business_management')
+    scopes: (process.env.FACEBOOK_SCOPES || 'instagram_basic,instagram_content_publish,instagram_manage_comments,instagram_manage_insights,pages_show_list,pages_read_engagement,business_management')
       .split(',').map((s) => s.trim()).filter(Boolean),
   },
 
