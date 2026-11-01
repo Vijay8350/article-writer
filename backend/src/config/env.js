@@ -81,7 +81,9 @@ const config = {
     codex: {
       authFile: process.env.CODEX_AUTH_FILE || resolve(process.env.CODEX_HOME || resolve(homedir(), '.codex'), 'auth.json'),
       imageModel: process.env.CODEX_IMAGE_MODEL || 'gpt-image-2',
-      visionModel: process.env.CODEX_VISION_MODEL || 'gpt-5.5',
+      // ChatGPT-account Codex only serves its own model family (gpt-6-luna / gpt-6.1-sol / …);
+      // luna is the fast one and reads rendered text reliably.
+      visionModel: process.env.CODEX_VISION_MODEL || 'gpt-6-luna',
     },
     openai: {
       apiKey: process.env.OPENAI_API_KEY || '',

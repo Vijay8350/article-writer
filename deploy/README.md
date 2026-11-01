@@ -84,7 +84,8 @@ FACEBOOK_APP_SECRET=...
 # IG_IMAGE_QUALITY=medium                  # low | medium | high
 # OPENAI_API_KEY=
 # Optional: CODEX_IMAGE_MODEL / OPENAI_IMAGE_MODEL (default gpt-image-2),
-#           CODEX_VISION_MODEL / OPENAI_VISION_MODEL (default gpt-5.5)
+#           CODEX_VISION_MODEL (default gpt-6-luna — ChatGPT-account Codex only serves its own
+#           gpt-6*/gpt-5.6* family), OPENAI_VISION_MODEL (default gpt-5.5)
 ```
 
 > **Production (since Nov 2026):** `https://app.jsyxi.com` on EC2 `3.110.185.60` (ap-south-1, 908 MB RAM,
