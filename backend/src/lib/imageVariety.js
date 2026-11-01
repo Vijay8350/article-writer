@@ -4,20 +4,20 @@
 
 export const SQUARE_LAYOUTS = [
   {
-    key: 'corner-right', card: { left: 392, top: 392, size: 648 }, zone: 'top third',
-    text: 'Put the headline across the top third, and stack the price badge and call to action in the left column below it.',
+    key: 'corner-right', card: { left: 440, top: 440, size: 600 }, zone: 'top third',
+    text: 'Put the headline across the top third. Stack the price badge and call to action in the left column below it, sized to sit fully inside the left 36% of the image, with a clear gap before the photo zone.',
   },
   {
-    key: 'corner-left', card: { left: 40, top: 392, size: 648 }, zone: 'top third',
-    text: 'Put the headline across the top third, and stack the price badge and call to action in the right column below it.',
+    key: 'corner-left', card: { left: 40, top: 440, size: 600 }, zone: 'top third',
+    text: 'Put the headline across the top third. Stack the price badge and call to action in the right column below it, sized to sit fully inside the right 36% of the image, with a clear gap after the photo zone.',
   },
   {
-    key: 'top-right', card: { left: 392, top: 40, size: 648 }, zone: 'bottom third',
-    text: 'Put the headline across the bottom third, and stack the price badge and brand name in the left column above it, with the call to action beside the headline.',
+    key: 'top-right', card: { left: 440, top: 40, size: 600 }, zone: 'bottom third',
+    text: 'Put the headline across the bottom third, with the call to action beside it. Stack the price badge and brand name in the left column above it, sized to sit fully inside the left 36% of the image, with a clear gap before the photo zone.',
   },
   {
-    key: 'top-left', card: { left: 40, top: 40, size: 648 }, zone: 'bottom third',
-    text: 'Put the headline across the bottom third, and stack the price badge and brand name in the right column above it, with the call to action beside the headline.',
+    key: 'top-left', card: { left: 40, top: 40, size: 600 }, zone: 'bottom third',
+    text: 'Put the headline across the bottom third, with the call to action beside it. Stack the price badge and brand name in the right column above it, sized to sit fully inside the right 36% of the image, with a clear gap after the photo zone.',
   },
   {
     key: 'center-low', card: { left: 240, top: 310, size: 590 }, zone: 'top quarter',
