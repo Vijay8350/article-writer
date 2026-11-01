@@ -16,6 +16,7 @@ const INLINE_SLOTS = { mixed: 2, ai: 3 }; // AI images in the body, on top of th
 const PRODUCT_IMAGES = { products: 4, mixed: 2, ai: 0 }; // store photos the writer may embed
 const PARALLEL = 3; // keeps the whole step inside one web request
 const ATTEMPTS = 2;
+const BANNER_ATTEMPTS = 3; // exact text and layout take more tries than a plain photo
 
 const PLACEHOLDER_RE = /<div[^>]*class=["'][^"']*article-image-placeholder[^"']*["'][^>]*>[\s\S]*?<\/div>/gi;
 const NO_IMAGE_SECTION_RE = /faq|frequently asked|conclusion|final thoughts|wrapping up/i;
@@ -111,7 +112,7 @@ export async function addAiImages({ plan, article, topic, dna, brief }) {
       compareTo: [],
       finish: hasCard ? (art) => placeRealPhoto(art, realPhoto, 'landscape') : null,
       format: 'landscape',
-      attempts: ATTEMPTS,
+      attempts: banner ? BANNER_ATTEMPTS : ATTEMPTS,
     });
     if (!verdict.pass) throw new Error(`failed the quality check (${verdict.reasons.join('; ') || `score ${verdict.score}`})`);
     return { url: publicImageUrl(await saveImage(jpeg)) };
@@ -133,7 +134,7 @@ export async function addAiImages({ plan, article, topic, dna, brief }) {
   });
 
   const warnings = problems.length
-    ? [`${problems.length} of ${jobs.length} ChatGPT images could not be added: ${problems[0]}`.slice(0, 300)]
+    ? [`${problems.length} of ${jobs.length} ChatGPT images could not be added: ${problems.join(' ')}`.slice(0, 500)]
     : [];
   return { bodyHtml: stripImagePlaceholders(html), hero, images, warnings };
 }

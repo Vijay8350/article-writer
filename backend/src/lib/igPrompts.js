@@ -135,6 +135,7 @@ export function buildImagePrompt(dna, imageIdea, content, { hasReferences = fals
     campaign ? campaignBrief(campaign) : '',
     campaign ? 'Use that brief for the look and theme. The only words on the image are the ones listed below.' : '',
     hasCard ? RESERVED_CARD : '',
+    hasCard ? 'Keep every word in the top third of the image, on one or two lines, ending well above the zone.' : '',
     campaign ? NO_PRODUCT_DRAWN : '',
     slide ? `This is slide ${slide.index} of ${slide.total} in one swipeable carousel. The last attached image is slide 1: use the same palette, typography and layout family so they read as one series.` : '',
     imageIdea ? `Scene/style direction: ${imageIdea}.` : '',

@@ -35,6 +35,7 @@ export function buildArticleBannerPrompt({ headline, scene, storeName, niche, ha
     'Make it look like a professional campaign banner from a premium brand: one clear focal image, a clean area for the headline, a bold hierarchy, a limited colour palette and generous margins.',
     `Visual: ${scene}`,
     hasCard ? RESERVED_CARD : '',
+    hasCard ? 'Keep the headline inside the left 40% of the image, stacked over several short lines and vertically centred, ending well before the zone.' : '',
     NO_PRODUCT_DRAWN,
     instructions ? `Campaign instructions (follow these first): ${instructions}` : '',
     `Render this headline once, large and high-contrast, spelled EXACTLY as written: "${headline}"`,
