@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Dna, RefreshCw, Loader2, Store, Instagram } from 'lucide-react';
 import {
-  getBusinessDna, fetchBusinessDna, fetchSocialBusinessDna, clearBusinessDna, getInstagramAccounts,
+  getBusinessDna, fetchBusinessDna, fetchSocialBusinessDna, clearBusinessDna, getInstagramAccounts, syncCollections,
 } from '../lib/api';
 import toast from 'react-hot-toast';
 
@@ -29,6 +29,7 @@ export default function BusinessDna() {
   const [dna, setDna] = useState(null);
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
+  const [syncingCollections, setSyncingCollections] = useState(false);
 
   const [source, setSource] = useState('shopify');
   const [websiteUrl, setWebsiteUrl] = useState('');
@@ -51,6 +52,19 @@ export default function BusinessDna() {
       setLoading(false);
     });
   }, []);
+
+  // Only the collections change: the rest of the Business DNA stays as it was built.
+  const handleSyncCollections = async () => {
+    setSyncingCollections(true);
+    try {
+      const res = await syncCollections();
+      setDna((d) => ({ ...d, collections: res.data.collections, collectionsSyncedAt: res.data.syncedAt }));
+      toast.success(res.message);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Sync failed');
+    }
+    setSyncingCollections(false);
+  };
 
   const handleFetch = async () => {
     if (source === 'social' && !websiteUrl.trim() && !igAccountId) {
@@ -389,7 +403,12 @@ export default function BusinessDna() {
             </div>
 
             <div className="card slide-up">
-              <div className="card-header"><h3>📂 Collections ({dna.collections?.length || 0})</h3></div>
+              <div className="card-header">
+                <h3>📂 Collections ({dna.collections?.length || 0})</h3>
+                <button className="btn btn-ghost btn-sm" onClick={handleSyncCollections} disabled={syncingCollections} title="Get the latest collections from Shopify">
+                  {syncingCollections ? <Loader2 size={14} className="spinning" /> : <RefreshCw size={14} />} Sync
+                </button>
+              </div>
               <div className="card-body" style={{ maxHeight: 300, overflowY: 'auto' }}>
                 {dna.collections?.map(c => (
                   <div key={c.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border-secondary)', fontSize: 14 }}>

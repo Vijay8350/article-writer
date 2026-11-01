@@ -239,35 +239,28 @@ export async function getProducts(creds, limit = 250) {
 }
 
 // ─── Collections ────────────────────────────────────────────
-export async function getCollections(creds) {
+async function allPages(creds, resource) {
+  const items = [];
+  let url = `${baseUrl(creds)}/${resource}.json?limit=250`;
+  while (url) {
+    const res = await axios.get(url, { headers: headers(creds), timeout: 15000 });
+    items.push(...(res.data[resource] || []));
+    url = res.headers.link?.match(/<([^>]+)>;\s*rel="next"/)?.[1] || null;
+  }
+  return items;
+}
+
+// A full DNA build carries on without a list it can't read. `strict` makes a failure
+// throw instead, so a sync can't mistake an error for an empty store.
+export async function getCollections(creds, { strict = false } = {}) {
   ensure(creds);
-
-  const [customRes, smartRes] = await Promise.all([
-    axios.get(`${baseUrl(creds)}/custom_collections.json?limit=250`, {
-      headers: headers(creds),
-      timeout: 15000,
-    }).catch(() => ({ data: { custom_collections: [] } })),
-    axios.get(`${baseUrl(creds)}/smart_collections.json?limit=250`, {
-      headers: headers(creds),
-      timeout: 15000,
-    }).catch(() => ({ data: { smart_collections: [] } })),
-  ]);
-
-  const custom = (customRes.data.custom_collections || []).map(c => ({
-    id: c.id,
-    title: c.title,
-    handle: c.handle,
-    type: 'custom',
-  }));
-
-  const smart = (smartRes.data.smart_collections || []).map(c => ({
-    id: c.id,
-    title: c.title,
-    handle: c.handle,
-    type: 'smart',
-  }));
-
-  return [...custom, ...smart];
+  const read = (resource) => allPages(creds, resource).catch((err) => {
+    if (strict) throw err;
+    return [];
+  });
+  const [custom, smart] = await Promise.all([read('custom_collections'), read('smart_collections')]);
+  const shape = (type) => (c) => ({ id: c.id, title: c.title, handle: c.handle, type });
+  return [...custom.map(shape('custom')), ...smart.map(shape('smart'))];
 }
 
 // ─── Pages ──────────────────────────────────────────────────

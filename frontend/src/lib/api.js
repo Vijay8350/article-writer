@@ -77,6 +77,7 @@ export const getDeepseekModels = () => api.get('/settings/deepseek-models').then
 export const getBusinessDna = () => api.get('/business-dna').then(r => r.data);
 export const fetchBusinessDna = () => api.post('/business-dna/fetch').then(r => r.data);
 export const clearBusinessDna = () => api.delete('/business-dna').then(r => r.data);
+export const syncCollections = () => api.post('/business-dna/sync-collections').then(r => r.data);
 export const fetchSocialBusinessDna = (data) => api.post('/business-dna/fetch-social', data).then(r => r.data);
 
 // ─── Articles ───────────────────────────────────────────────

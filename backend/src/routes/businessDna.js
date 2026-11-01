@@ -92,6 +92,42 @@ router.post('/fetch', requireWorkspaceRole('owner', 'admin', 'member'), async (r
   } catch (error) { next(error); }
 });
 
+// Pulls the store's current collections without rebuilding anything else. If Shopify can't
+// be read, the saved list is left alone: a failed sync must never empty it.
+router.post('/sync-collections', requireWorkspaceRole('owner', 'admin', 'member'), async (req, res, next) => {
+  try {
+    const creds = await stores.getDefaultStore(req.workspace.id);
+    if (!creds) return res.status(400).json({ success: false, error: 'No Shopify store connected for this workspace.' });
+    const current = await dnaRepo.getDna(req.workspace.id);
+    if (!current) return res.status(400).json({ success: false, error: 'Fetch your Business DNA first.' });
+
+    let collections;
+    try {
+      collections = await getCollections(creds, { strict: true });
+    } catch (err) {
+      const denied = [401, 403].includes(err.response?.status);
+      return res.status(denied ? 400 : 502).json({
+        success: false,
+        error: denied ? "Your Shopify token can't read collections. Check its read_products permission." : "Couldn't reach Shopify, so your collections were not changed. Please try again.",
+      });
+    }
+
+    const handles = (list) => new Set((list || []).map((c) => c.handle));
+    const before = handles(current.collections);
+    const now = handles(collections);
+    const added = collections.filter((c) => !before.has(c.handle)).map((c) => c.title);
+    const removed = (current.collections || []).filter((c) => !now.has(c.handle)).map((c) => c.title);
+
+    const syncedAt = await dnaRepo.saveCollections(req.workspace.id, collections);
+    const changes = [added.length && `${added.length} new`, removed.length && `${removed.length} removed`].filter(Boolean);
+    res.json({
+      success: true,
+      data: { collections, syncedAt, added, removed },
+      message: changes.length ? `Collections synced: ${changes.join(', ')}` : `Collections are up to date (${collections.length})`,
+    });
+  } catch (error) { next(error); }
+});
+
 // Alternative source: build the DNA from a connected Instagram account and/or the public website.
 router.post('/fetch-social', requireWorkspaceRole('owner', 'admin', 'member'), async (req, res, next) => {
   try {

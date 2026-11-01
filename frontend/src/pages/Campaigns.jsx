@@ -3,7 +3,7 @@ import { Rocket, Plus, Play, Pause, Trash2, RefreshCw, Loader2, ChevronDown, Che
 import toast from 'react-hot-toast';
 import {
   getCampaigns, createCampaign, updateCampaign, setCampaignStatus, deleteCampaign, runCampaignNow,
-  getCampaignArticles, getBusinessDna, getSettings,
+  getCampaignArticles, getBusinessDna, getSettings, syncCollections,
 } from '../lib/api';
 import { ScheduleWindow, ImagesPerPost } from '../components/ScheduleFields';
 import { toDateTimeInput, toDateInput, fromDateTimeInput, endOfDay, scheduleText } from '../lib/dates';
@@ -136,6 +136,8 @@ export default function Campaigns() {
   const [form, setForm] = useState(BLANK_FORM);
   const [editing, setEditing] = useState(null); // { id, ...form } of the campaign being edited
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [hasDna, setHasDna] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -145,6 +147,7 @@ export default function Campaigns() {
   useEffect(() => {
     load();
     getBusinessDna().then(res => {
+      setHasDna(Boolean(res.data));
       if (res.data?.collections?.length) {
         setCollections(res.data.collections);
         setForm(f => ({ ...f, collectionTitle: res.data.collections[0].title }));
@@ -159,6 +162,20 @@ export default function Campaigns() {
       if (preferred) setForm(f => ({ ...f, aiModel: preferred }));
     }).catch(() => {});
   }, []);
+
+  // Brings in the store's latest collections. What's already picked stays picked.
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await syncCollections();
+      setCollections(res.data.collections);
+      setForm(f => (f.collectionTitle ? f : { ...f, collectionTitle: res.data.collections[0]?.title || '' }));
+      toast.success(res.message);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Sync failed');
+    }
+    setSyncing(false);
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -236,11 +253,20 @@ export default function Campaigns() {
 
       {/* Create */}
       <div className="card mb-24" style={{ maxWidth: 900 }}>
-        <div className="card-header"><h2>➕ New Campaign</h2></div>
+        <div className="card-header">
+          <h2>➕ New Campaign</h2>
+          {hasDna && (
+            <button className="btn btn-ghost btn-sm" onClick={handleSync} disabled={syncing} title="Get the latest collections from Shopify">
+              {syncing ? <Loader2 size={14} className="spinning" /> : <RefreshCw size={14} />} Sync collections
+            </button>
+          )}
+        </div>
         <div className="card-body">
           {collections.length === 0 ? (
             <div className="form-helper">
-              No collections found. Fetch your <a href="/business-dna">Business DNA</a> first so categories are available.
+              {hasDna
+                ? 'No collections found. Add one in Shopify, then use Sync collections.'
+                : <>No collections found. Fetch your <a href="/business-dna">Business DNA</a> first so categories are available.</>}
             </div>
           ) : (
             <form onSubmit={handleCreate}>
