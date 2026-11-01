@@ -42,9 +42,19 @@ function issue(page, type, detail) {
   };
 }
 
+const ENTITIES = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>', nbsp: ' ', ndash: '–', mdash: '—', rsquo: '’', lsquo: '‘', hellip: '…' };
+
+function decodeEntities(text) {
+  return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (full, code) => {
+    if (code[0] !== '#') return ENTITIES[code.toLowerCase()] ?? full;
+    const point = /^#x/i.test(code) ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);
+    return point <= 0x10ffff ? String.fromCodePoint(point) : full;
+  }).replace(/\s+/g, ' ').trim();
+}
+
 // Reads the parts of a live page that matter, without keeping the page in memory.
 export function readPage(html) {
-  const decode = (s) => s.replace(/&amp;/g, '&').replace(/&#39;|&#x27;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+  const decode = decodeEntities;
   const meta = (name) => {
     const tag = html.match(new RegExp(`<meta[^>]+name=["']${name}["'][^>]*>`, 'i'))?.[0];
     return tag?.match(/content=["']([^"']*)["']/i)?.[1];
@@ -67,9 +77,9 @@ function isInternal(href, hosts) {
   return Boolean(host) && hosts.has(bareHost(host));
 }
 
-// Links in `html` to pages of this store that no longer exist. Links to other sites are
-// never judged, because they can't be checked against the store's own list.
-export function deadLinks(html, live) {
+// Links in `html` to pages missing from the store's own list. Links to other sites are
+// never judged. A missing handle isn't proof: Shopify may redirect it to a page that works.
+export function suspectLinks(html, live) {
   const dead = new Set();
   for (const [, href] of String(html || '').matchAll(/<a\b[^>]*href="([^"]+)"/gi)) {
     if (!isInternal(href, live.hosts)) continue;
@@ -82,6 +92,9 @@ export function deadLinks(html, live) {
   }
   return [...dead];
 }
+
+// `live.gone` holds the suspects the public site really answered with "not found".
+export const deadLinks = (html, live) => suspectLinks(html, live).filter((href) => live.gone.has(href));
 
 export const liveHosts = (...domains) => new Set(domains.filter(Boolean).map(bareHost));
 

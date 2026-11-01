@@ -12,6 +12,7 @@ import { ISSUE_TYPES, SEVERITY_ORDER, deadLinks } from '../lib/seoRules.js';
 const RECHANGE_DAYS = 14; // a changed page rests this long before it can change again
 const MAX_ARTICLE_REWRITES = 1; // per run: these are the biggest changes the automation makes
 const MIN_SEO_DESCRIPTION = 90;
+const META_TOKENS = 1500; // the model reasons before it answers, and that counts too
 const IMAGE_PAUSE_MS = 400; // Shopify allows about two admin calls a second
 const CLAIMS_RE = /free (?:shipping|delivery)|\d+\s*% off|guarantee\w*|warranty|lowest price|best price|cash on delivery|\bcod\b|hypoallergenic|waterproof|anti[- ]tarnish/gi;
 
@@ -38,7 +39,7 @@ FACTS: ${page.facts || 'none beyond the name'}
 ${queries?.length ? `PEOPLE FIND THIS PAGE BY SEARCHING: ${queries.join(', ')}` : ''}
 
 Rules:
-- seoTitle: 45-60 characters. Lead with what the page is, in the words a shopper would search.${storeName ? ` Finish with " | ${storeName}" only if it fits.` : ''}
+- seoTitle: 45-60 characters. Lead with what the page is, in the words a shopper would search.${storeName ? ` End with " | ${storeName}", counted in the 60.` : ''}
 - seoDescription: 130-155 characters. Say plainly what the page offers and why it's worth the click.
 - Use only the facts above. Never invent discounts, free shipping, materials, guarantees or stock claims.
 - No emojis, no capital-letter shouting, no quotation marks.
@@ -48,7 +49,7 @@ Return ONLY JSON: {"seoTitle":"","seoDescription":""}`;
 
 async function writeMeta(workspaceId, page, context) {
   const ai = await resolveAi(workspaceId, 'article', 'deepseek');
-  const raw = await deepseek.complete(metaPrompt(page, context), ai.apiKey, { temperature: 0.4, maxTokens: 400, model: ai.model });
+  const raw = await deepseek.complete(metaPrompt(page, context), ai.apiKey, { temperature: 0.4, maxTokens: META_TOKENS, model: ai.model });
   const parsed = parseMeta(raw);
   const { seoTitle, seoDescription } = tidySeoFields({ title: page.name, handle: 'x', seoTitle: parsed.seoTitle, seoDescription: parsed.seoDescription });
   if (!seoTitle || seoDescription.length < MIN_SEO_DESCRIPTION) throw new Error('The AI returned metadata that was too short to use.');

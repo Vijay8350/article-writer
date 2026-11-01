@@ -7,7 +7,7 @@ import * as gsc from './searchConsole.js';
 import { applyFixes } from './seoFixes.js';
 import { mapLimit } from './igMedia.js';
 import { safeAxiosConfig } from '../lib/safeHttp.js';
-import { detectIssues, siteScore, readPage, liveHosts } from '../lib/seoRules.js';
+import { detectIssues, siteScore, readPage, liveHosts, suspectLinks } from '../lib/seoRules.js';
 import { calculateAeoScore } from '../lib/seo.js';
 import { stripTags } from '../lib/articleStructure.js';
 
@@ -60,7 +60,9 @@ async function loadInventory(creds, domain) {
     collections: new Set(liveCollections.map((c) => c.handle)),
     articles: new Set(articles.map((a) => a.handle)),
     hosts: liveHosts(domain, creds.storeUrl?.replace(/^https?:\/\//, '').replace(/\/.*$/, '')),
+    gone: new Set(),
   };
+  await confirmDeadLinks(pages, live, base);
   return { pages, live };
 }
 
@@ -72,6 +74,17 @@ async function fetchPage(url) {
     if (!temporary || attempt === CRAWL_ATTEMPTS) return res;
     await pause(RETRY_PAUSE_MS * attempt);
   }
+}
+
+// Only a real "not found" counts. A redirect still takes the reader somewhere, and a fix
+// removes the link, so anything less certain is left alone.
+async function confirmDeadLinks(pages, live, base) {
+  const suspects = [...new Set(pages.flatMap((page) => suspectLinks(page.body, live)))];
+  await mapLimit(suspects, CRAWL_PARALLEL, async (href) => {
+    const { status } = await fetchPage(new URL(href, base).toString());
+    if (status === 404 || status === 410) live.gone.add(href);
+    await pause(CRAWL_PAUSE_MS);
+  });
 }
 
 // Being refused says nothing about a page, so those are skipped rather than called broken,
