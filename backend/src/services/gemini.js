@@ -1,6 +1,7 @@
 import axios from 'axios';
 import config from '../config/env.js';
 import { aiImageInstructions } from '../lib/articleImagePrompts.js';
+import { escapeControlChars, unreadableArticle } from '../lib/articleJson.js';
 
 function geminiUrl(apiKey) {
   const key = apiKey || config.gemini.apiKey;
@@ -284,32 +285,23 @@ function parseArticleResponse(rawText) {
     // Try to extract JSON from the response
     try {
       const jsonMatch = rawText.match(/\{[\s\S]*"bodyHtml"[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
+      const parsed = jsonMatch ? JSON.parse(escapeControlChars(jsonMatch[0])) : null;
+      if (parsed?.title && parsed.bodyHtml) {
         return {
-          title: parsed.title || 'Generated Article',
+          title: parsed.title,
           handle: parsed.handle || '',
-          bodyHtml: parsed.bodyHtml || '',
+          bodyHtml: parsed.bodyHtml,
           summary: parsed.summary || '',
           tags: parsed.tags || '',
-          seoTitle: parsed.seoTitle || '',
+          seoTitle: parsed.seoTitle || parsed.title,
           seoDescription: parsed.seoDescription || '',
           imagePrompts: parsed.imagePrompts || [],
           primaryKeyword: parsed.primaryKeyword || '',
         };
       }
-    } catch (e2) { /* fallback below */ }
+    } catch (e2) { /* unreadable: handled below */ }
 
-    return {
-      title: 'Generated Article',
-      handle: 'generated-article',
-      bodyHtml: rawText,
-      summary: '',
-      tags: '',
-      seoTitle: '',
-      seoDescription: '',
-      imagePrompts: [],
-    };
+    throw unreadableArticle('Gemini');
   }
 }
 

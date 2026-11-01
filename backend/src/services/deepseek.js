@@ -1,6 +1,7 @@
 import axios from 'axios';
 import config from '../config/env.js';
 import { aiImageInstructions } from '../lib/articleImagePrompts.js';
+import { escapeControlChars, unreadableArticle } from '../lib/articleJson.js';
 
 const DEEPSEEK_URL = config.deepseek.baseUrl;
 
@@ -217,32 +218,23 @@ function parseResponse(raw) {
     // Try to extract JSON
     try {
       const jsonMatch = raw.match(/\{[\s\S]*"bodyHtml"[\s\S]*\}/);
-      if (jsonMatch) {
-        const p = JSON.parse(jsonMatch[0]);
+      const p = jsonMatch ? JSON.parse(escapeControlChars(jsonMatch[0])) : null;
+      if (p?.title && p.bodyHtml) {
         return {
-          title: p.title || 'Generated Article',
+          title: p.title,
           handle: p.handle || '',
-          bodyHtml: p.bodyHtml || '',
+          bodyHtml: p.bodyHtml,
           summary: p.summary || '',
           tags: p.tags || '',
-          seoTitle: p.seoTitle || '',
+          seoTitle: p.seoTitle || p.title,
           seoDescription: p.seoDescription || '',
           imagePrompts: p.imagePrompts || [],
           primaryKeyword: p.primaryKeyword || ''
         };
       }
-    } catch { /* fallback below */ }
+    } catch { /* unreadable: handled below */ }
 
-    return {
-      title: 'Generated Article',
-      handle: '',
-      bodyHtml: raw,
-      summary: '',
-      tags: '',
-      seoTitle: '',
-      seoDescription: '',
-      imagePrompts: []
-    };
+    throw unreadableArticle('DeepSeek');
   }
 }
 
