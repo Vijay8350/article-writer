@@ -97,11 +97,13 @@ const MAX_SLIDE_LINES = 2; // on each slide after a carousel's cover
 // slides after it. Banners stay readable, so text beyond their limit stays off the image.
 // A slide left without text is purely visual.
 export function splitSlides({ headline, lines = [] }, count, { banner = false } = {}) {
-  if (count <= 1) return [{ headline, lines: banner ? lines.slice(0, MAX_BANNER_LINES) : lines }];
+  // The writer sometimes labels its lines "Slide 2:", which must never reach the image.
+  const text = lines.map((line) => line.replace(/^\s*slide\s*\d+\s*[:.\-–—]\s*/i, '')).filter(Boolean);
+  if (count <= 1) return [{ headline, lines: banner ? text.slice(0, MAX_BANNER_LINES) : text }];
   const slideCount = count - 1;
-  const perSlide = Math.ceil(lines.length / slideCount) || 1;
+  const perSlide = Math.ceil(text.length / slideCount) || 1;
   const size = banner ? Math.min(perSlide, MAX_SLIDE_LINES) : perSlide;
-  const slides = Array.from({ length: slideCount }, (_, i) => ({ headline: '', lines: lines.slice(i * size, (i + 1) * size) }));
+  const slides = Array.from({ length: slideCount }, (_, i) => ({ headline: '', lines: text.slice(i * size, (i + 1) * size) }));
   return [{ headline, lines: [] }, ...slides];
 }
 
@@ -260,7 +262,7 @@ Be conservative — when uncertain, FAIL. Respond ONLY with JSON:
 export function buildCampaignPrompt({ name, handle, topic, goal, tone, perDay, days, hasRefs, instructions, imagesPerPost = 1 }) {
   return `Campaign "${name || 'Untitled'}" for @${handle} — theme: ${topic || 'account DNA pillars'}. Goal: ${String(goal).toLowerCase()}. Tone: ${String(tone).toLowerCase()}. Cadence: ${perDay} post(s) per day ${days ? `for ${days} days` : 'with no end date'}, at the account's scheduled slots.${
     imagesPerPost > 1 ? ` Each post is a carousel of ${imagesPerPost} images, with up to ${MAX_SLIDE_LINES} supporting lines on each slide after the cover.` : ''
-  } On-image text must stay short: write at most ${imagesPerPost > 1 ? (imagesPerPost - 1) * MAX_SLIDE_LINES : MAX_BANNER_LINES} supporting lines, the most important first.${
+  } On-image text must stay short: write at most ${imagesPerPost > 1 ? (imagesPerPost - 1) * MAX_SLIDE_LINES : MAX_BANNER_LINES} supporting lines, the most important first, as plain sentences with no slide numbers or labels.${
     instructions ? ` Instructions from the owner (follow these first): ${instructions}.` : ''
   } Never invent a discount, price, offer or deadline the owner did not state.${
     hasRefs ? " Visual direction: follow the campaign reference images for palette, texture and composition, blended with the account's visual identity." : ''
