@@ -10,6 +10,7 @@ import { assertCanGenerateIgPost, incrementIgUsage } from './usage.js';
 import {
   buildProductImagePrompt, buildBannerVisionPrompt, resolveProductStyle, extraSlideStyles, productBannerCopy, bannerCopyLines,
 } from '../lib/igPrompts.js';
+import { pickVariant, describeVariant, layoutsAfter } from '../lib/imageVariety.js';
 
 // A product on a store's website → a designed image → Instagram. The model only designs
 // around an empty card: the store's real photo is placed on it afterwards, so the
@@ -36,32 +37,35 @@ async function findProduct(siteUrl, productId) {
   return product;
 }
 
-function bannerCopy(product, row) {
+function bannerCopy(product, row, design) {
   const was = Number(product.compareAtPrice);
+  const price = storefront.formatPrice(product.price, row.currency);
   return productBannerCopy(product, {
-    price: storefront.formatPrice(product.price, row.currency),
+    price: price ? design.priceText(price) : null,
     discount: was > Number(product.price) ? `${Math.round((1 - product.price / was) * 100)}% OFF` : null,
     storeName: row.site_name,
+    cta: design.cta,
   });
 }
 
 // The slides after the cover: the store's other photos of the product on new
 // backgrounds. One that fails its check is left out.
-async function renderExtraSlides({ images, row, product, photos, template, cover, coverStyle }) {
+async function renderExtraSlides({ images, row, product, photos, cover, coverStyle, variant, design }) {
   const count = row.images_per_post - 1;
   if (count < 1) return { files: [], skipped: 0 };
   const styles = extraSlideStyles(coverStyle.key);
+  const layouts = layoutsAfter(variant.layout, count);
   const coverRef = { data: cover.toString('base64'), mimeType: 'image/jpeg' };
-  const results = await media.mapLimit(Array.from({ length: count }), SLIDE_PARALLEL, async (_, i) => {
+  const results = await media.mapLimit(layouts, SLIDE_PARALLEL, async (layout, i) => {
     const photo = photos[(i + 1) % photos.length];
     const { jpeg, verdict } = await media.generateUntilPassed(images, {
       prompt: buildProductImagePrompt(product, {
-        storeName: row.site_name, style: styles[i % styles.length], slide: { index: i + 2, total: count + 1 },
+        storeName: row.site_name, style: styles[i % styles.length], slide: { index: i + 2, total: count + 1 }, design,
       }),
       gatePrompt: buildBannerVisionPrompt({ hasCard: true }),
-      references: [template, coverRef],
+      references: [await media.layoutTemplate(layout), coverRef],
       compareTo: [],
-      finish: (art) => media.placeRealPhoto(art, photo, 'square'),
+      finish: (art) => media.placeRealPhoto(art, photo, layout, variant.frame),
       format: 'square',
       attempts: config.instagram.maxRegenAttempts,
     });
@@ -79,21 +83,25 @@ async function render(workspaceId, row, product) {
   const photos = await media.loadReferenceImages(product.images.slice(0, row.images_per_post), { maxSize: 1024, limit: row.images_per_post });
   if (!photos.length) throw new Error(`Couldn't download the photo of "${product.title}".`);
 
-  const template = await media.layoutTemplate('square');
+  // A new look each time, recorded first so a job right behind this one can't pick the same.
+  const variant = pickVariant(await repo.recentDesigns(workspaceId, row.account_id));
+  await repo.update(row.id, { variant });
+  const design = describeVariant(variant);
+
   const style = resolveProductStyle(row.style);
-  const copy = style.banner ? bannerCopy(product, row) : null;
+  const copy = style.banner ? bannerCopy(product, row, design) : null;
   const { jpeg, verdict, attempts } = await media.generateUntilPassed(images, {
-    prompt: buildProductImagePrompt(product, { storeName: row.site_name, style, notes: row.notes, copy }),
+    prompt: buildProductImagePrompt(product, { storeName: row.site_name, style, notes: row.notes, copy, design }),
     gatePrompt: buildBannerVisionPrompt({ texts: copy ? bannerCopyLines(copy) : [], brief: row.notes, hasCard: true }),
-    references: [template],
+    references: [await media.layoutTemplate(variant.layout)],
     compareTo: [],
-    finish: (art) => media.placeRealPhoto(art, photos[0], 'square'),
+    finish: (art) => media.placeRealPhoto(art, photos[0], variant.layout, variant.frame),
     format: 'square',
     attempts: config.instagram.maxRegenAttempts,
   });
 
   const extras = verdict.pass
-    ? await renderExtraSlides({ images, row, product, photos, template, cover: jpeg, coverStyle: style })
+    ? await renderExtraSlides({ images, row, product, photos, cover: jpeg, coverStyle: style, variant, design })
     : { files: [], skipped: 0 };
   const file = await media.saveImage(jpeg); // the last attempt is kept either way, so a failure can be reviewed
   await Promise.all(allFiles(row).map(media.deleteImage));

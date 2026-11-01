@@ -227,7 +227,7 @@ function CreateTab({ status, accounts, canManage }) {
                   ))}
                   <button type="button" className={`chip ${style === 'auto' ? 'active' : ''}`} onClick={() => setStyle('auto')}>Surprise me</button>
                 </div>
-                <div className="form-helper">Styles change the background and layout. Your product photo is never redrawn.</div>
+                <div className="form-helper">Every post gets a fresh layout, design and wording, so your feed never looks repeated. Your product photo is never redrawn.</div>
               </div>
 
               <div className="form-group">

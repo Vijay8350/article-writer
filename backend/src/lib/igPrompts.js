@@ -119,9 +119,10 @@ export function campaignBrief(campaign) {
 }
 
 // Stage 3: the image prompt — visual identity + image-idea prompt + exact text to render.
-// A campaign post is a designed banner; `slide` marks a later slide of a carousel, and
-// `hasCard` reserves the first attached layout's card for the real product photo.
-export function buildImagePrompt(dna, imageIdea, content, { hasReferences = false, campaign = null, slide = null, hasCard = false } = {}) {
+// A campaign post is a designed banner; `slide` marks a later slide of a carousel,
+// `hasCard` reserves the first attached layout's card for the real product photo, and
+// `design` is this post's look, which later slides inherit from the cover instead.
+export function buildImagePrompt(dna, imageIdea, content, { hasReferences = false, campaign = null, slide = null, hasCard = false, design = null } = {}) {
   const vi = dna?.visual_identity || {};
   const style = [
     vi.mood && `mood: ${vi.mood}`,
@@ -133,11 +134,13 @@ export function buildImagePrompt(dna, imageIdea, content, { hasReferences = fals
   const textBlock = [content.headline, ...(content.lines || [])].filter(Boolean).map((t) => `"${t}"`).join('\n');
   return [
     campaign ? 'Design a square (1080x1080), attractive Instagram campaign banner.' : 'Create a square (1080x1080) Instagram quote graphic.',
+    design ? `Design: ${design.concept.direction}.` : '',
+    design && !hasCard ? `Composition: ${design.composition.direction}.` : '',
     ...(campaign ? BANNER_RULES : []),
     campaign ? campaignBrief(campaign) : '',
     campaign ? 'Use that brief for the look and theme. The only words on the image are the ones listed below.' : '',
     hasCard ? RESERVED_CARD : '',
-    hasCard ? 'Keep every word in the top third of the image, on one or two lines, ending well above the zone.' : '',
+    hasCard ? `Keep every word in the ${design.layout.zone} of the image, on one or two lines, well clear of the zone.` : '',
     campaign ? NO_PRODUCT_DRAWN : '',
     slide ? `This is slide ${slide.index} of ${slide.total} in one swipeable carousel. The last attached image is slide 1: use the same palette, typography and layout family so they read as one series.` : '',
     imageIdea ? `Scene/style direction: ${imageIdea}.` : '',
@@ -161,11 +164,11 @@ const BANNER_RULES = [
 
 // The model never draws a product. It designs around a reserved card, and the store's
 // real photo is placed on that card afterwards, so the design can't change.
-const RESERVED_CARD = 'The attached layout image is only a guide: replace all of its grey. Its lighter rounded square marks a clear zone, and a real product photo is placed over that zone afterwards. Do not draw a card, box, frame, panel or any shape there: simply let the background continue through it, with nothing important inside. Put all text and badges well outside that zone, in the space above it and to its left.';
+const RESERVED_CARD = 'The attached layout image is only a guide: replace all of its grey. Its lighter rounded square marks a clear zone, and a real product photo is placed over that zone afterwards. Do not draw a card, box, frame, panel or any shape there: simply let the background continue through it, with nothing important inside. Put all text and badges well outside that zone.';
 const NO_PRODUCT_DRAWN = 'Do NOT draw the product, or any jewellery, merchandise or item for sale, anywhere in the image. Use only backgrounds, colour, light, texture and graphic shapes.';
 
 export const PRODUCT_IMAGE_STYLES = [
-  { key: 'banner', label: 'Promo banner', banner: true, direction: 'a rich, premium backdrop in colours that flatter the product, with the headline across the top and a bold price badge on the left' },
+  { key: 'banner', label: 'Promo banner', banner: true },
   { key: 'lifestyle', label: 'Soft lifestyle', direction: 'a softly blurred, aspirational home or outdoor setting its buyer would recognise, with no people' },
   { key: 'studio', label: 'Clean studio', direction: 'a seamless softly graded studio backdrop with controlled lighting' },
   { key: 'flatlay', label: 'Styled surface', direction: 'a beautiful textured surface such as marble, linen or silk, with a few tasteful non-product props' },
@@ -187,20 +190,21 @@ export const extraSlideStyles = (coverKey) =>
   PRODUCT_IMAGE_STYLES.filter((s) => !s.banner && s.key !== 'festive' && s.key !== coverKey);
 
 // What a promo banner says: short enough to read at phone size and to render exactly.
-export function productBannerCopy(product, { price, discount, storeName }) {
+export function productBannerCopy(product, { price, discount, storeName, cta }) {
   const headline = product.title.split(/\s+(?:for|with|by)\s+|\s[-–|]\s|,/i)[0].split(/\s+/).slice(0, 6).join(' ');
-  return { headline, price, discount, cta: 'Shop now', storeName };
+  return { headline, price, discount, cta, storeName };
 }
 
 export const bannerCopyLines = (copy) => [copy.headline, copy.price, copy.discount, copy.cta, copy.storeName].filter(Boolean);
 
-export function buildProductImagePrompt(product, { storeName, style, notes, copy, slide } = {}) {
+export function buildProductImagePrompt(product, { storeName, style, notes, copy, slide, design } = {}) {
   return [
     `Design a square, attractive Instagram ${copy ? 'promo banner' : 'image'}${storeName ? ` for ${storeName}` : ''}, for this product: ${product.title}.`,
     ...BANNER_RULES,
     RESERVED_CARD,
     NO_PRODUCT_DRAWN,
-    `Background: ${style.direction}.`,
+    `Design: ${style.direction || design.concept.direction}. Choose colours that flatter this product.`,
+    copy ? `Layout: ${design.layout.text}` : '',
     slide ? `This is slide ${slide.index} of ${slide.total} in one swipeable carousel. The last attached image is slide 1: match its colour palette and mood, without copying its text.` : '',
     notes ? `Instructions from the store owner (follow these first): ${notes}.` : '',
     ...(copy ? [

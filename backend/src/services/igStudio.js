@@ -2,6 +2,8 @@ import config from '../config/env.js';
 import * as repo from '../repositories/igStudio.js';
 import * as igRepo from '../repositories/instagram.js';
 import * as dnaRepo from '../repositories/dna.js';
+import { recentDesigns } from '../repositories/productImages.js';
+import { pickVariant, describeVariant } from '../lib/imageVariety.js';
 import { bestProductMatch } from './imageMatcher.js';
 import { getTextAi } from './igAi.js';
 import * as media from './igMedia.js';
@@ -109,12 +111,15 @@ export async function generatePostImage(workspaceId, postId) {
     const styleReferences = campaign?.reference_images?.length ? await media.loadReferenceImages(campaign.reference_images) : [];
     const product = await campaignProduct(workspaceId, campaign);
     const hasCard = Boolean(product);
-    const references = [...(hasCard ? [await media.layoutTemplate('square')] : []), ...styleReferences];
+    const variant = pickVariant(await recentDesigns(workspaceId, accountId));
+    await repo.updatePost(post.id, { variant });
+    const design = describeVariant(variant);
+    const references = [...(hasCard ? [await media.layoutTemplate(variant.layout)] : []), ...styleReferences];
     const brief = campaign ? campaignBrief(campaign) : '';
     const slides = splitSlides({ headline: post.headline || '', lines: post.lines || [] }, campaign?.images_per_post || 1, { banner: Boolean(campaign) });
     const intended = slides[0];
     const idea = imgPrompt?.prompt_text || null;
-    const prompt = buildImagePrompt(dna, idea, intended, { hasReferences: styleReferences.length > 0, campaign, hasCard });
+    const prompt = buildImagePrompt(dna, idea, intended, { hasReferences: styleReferences.length > 0, campaign, hasCard, design });
 
     let jpeg = null;
     let verdict = null;
@@ -122,7 +127,7 @@ export async function generatePostImage(workspaceId, postId) {
     while (attempts < config.instagram.maxRegenAttempts) {
       attempts++;
       jpeg = await images.generate(prompt, references);
-      if (hasCard) jpeg = await media.placeRealPhoto(jpeg, product.photo, 'square');
+      if (hasCard) jpeg = await media.placeRealPhoto(jpeg, product.photo, variant.layout, variant.frame);
       verdict = await images.score(jpeg, intended, dna, { brief, hasCard });
       await repo.log({
         workspaceId, accountId, postId,

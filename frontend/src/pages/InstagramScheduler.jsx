@@ -90,7 +90,7 @@ export function JobFields({ value, onChange, accounts, styles = [] }) {
             {styles.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
             <option value="auto">A different style each day</option>
           </select>
-          <div className="form-helper">Styles change the background and layout. Your product photo is never redrawn.</div>
+          <div className="form-helper">Every post gets a fresh layout, design and wording. Your product photo is never redrawn.</div>
         </div>
         <ImagesPerPost value={value.imagesPerPost} onChange={(imagesPerPost) => onChange({ ...value, imagesPerPost })} />
         <ScheduleWindow startsAt={value.startsAt} endsAt={value.endsAt} onChange={(change) => onChange({ ...value, ...change })} />

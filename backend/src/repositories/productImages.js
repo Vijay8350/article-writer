@@ -5,8 +5,9 @@ import { query } from '../db/index.js';
 
 const EDITABLE = new Set([
   'account_id', 'style', 'notes', 'image_file', 'extra_image_files', 'images_per_post', 'caption', 'status',
-  'qa_score', 'qa_reasons', 'attempts', 'ig_media_id', 'permalink', 'error', 'published_at',
+  'qa_score', 'qa_reasons', 'attempts', 'ig_media_id', 'permalink', 'error', 'published_at', 'variant',
 ]);
+const JSON_COLUMNS = new Set(['qa_reasons', 'variant']);
 
 export async function create(workspaceId, createdBy, r) {
   const { rows } = await query(
@@ -55,14 +56,29 @@ export async function update(id, patch) {
   const params = [id];
   for (const [col, value] of Object.entries(patch)) {
     if (!EDITABLE.has(col) || value === undefined) continue;
-    params.push(col === 'qa_reasons' ? JSON.stringify(value || []) : value);
-    sets.push(`${col} = $${params.length}${col === 'qa_reasons' ? '::jsonb' : ''}`);
+    params.push(JSON_COLUMNS.has(col) ? JSON.stringify(value || []) : value);
+    sets.push(`${col} = $${params.length}${JSON_COLUMNS.has(col) ? '::jsonb' : ''}`);
   }
   const { rows } = await query(
     `UPDATE ig_product_images SET ${[...sets, 'updated_at = now()'].join(', ')} WHERE id = $1 RETURNING *`,
     params
   );
   return rows[0] || null;
+}
+
+// The designs an account used most recently, newest first, across product images and
+// Studio posts. Without an account yet, the whole workspace counts.
+export async function recentDesigns(workspaceId, accountId, limit = 12) {
+  const { rows } = await query(
+    `SELECT variant, created_at FROM ig_product_images
+      WHERE workspace_id = $1 AND ($2::uuid IS NULL OR account_id = $2) AND variant <> '{}'
+     UNION ALL
+     SELECT variant, created_at FROM ig_generated_posts
+      WHERE workspace_id = $1 AND ($2::uuid IS NULL OR account_id = $2) AND variant <> '{}'
+     ORDER BY created_at DESC LIMIT $3`,
+    [workspaceId, accountId || null, limit]
+  );
+  return rows.map((r) => r.variant);
 }
 
 export async function remove(workspaceId, id) {

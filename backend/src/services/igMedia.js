@@ -10,6 +10,7 @@ import { safeAxiosConfig } from '../lib/safeHttp.js';
 import { buildVisionPrompt } from '../lib/igPrompts.js';
 import { parseVerdict } from '../lib/igSchemas.js';
 import * as openai from './openaiImages.js';
+import { cardLayout, describeVariant } from '../lib/imageVariety.js';
 
 // Image generation (the quote text baked into the artwork) + the vision quality
 // gate + local storage for the finished JPEGs. Gemini lives here; the Codex /
@@ -157,26 +158,22 @@ export function toArticleJpeg(bytes) {
 // the product. They only ever design around a reserved card: the store's own photo
 // is placed on it afterwards, so its design cannot change.
 
-const CARD_LAYOUTS = {
-  square: { width: 1080, height: 1080, card: { left: 392, top: 392, size: 648 } },
-  landscape: { width: 1200, height: 800, card: { left: 560, top: 100, size: 600 } },
-};
-const CARD_RADIUS = 32;
 const CARD_PADDING = 24;
-const SHADOW_SPREAD = 44;
+const CARD_OUTLINE = 6;
+const SHADOW_DROP = 10;
 const PLAIN_BACKDROP = 235; // every channel at least this bright counts as a plain light background
 
 // The layout the model is shown: a guide marking the zone it must leave clear. Drawn as
 // a soft tone, not a white card, or it paints a card of its own behind the real one.
-export async function layoutTemplate(format = 'square') {
-  const { width, height, card } = CARD_LAYOUTS[format];
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#6e6e6e"/><rect x="${card.left}" y="${card.top}" width="${card.size}" height="${card.size}" rx="${CARD_RADIUS}" fill="#9c9c9c"/></svg>`;
+export async function layoutTemplate(layoutKey) {
+  const { width, height, card } = cardLayout(layoutKey);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#6e6e6e"/><rect x="${card.left}" y="${card.top}" width="${card.size}" height="${card.size}" rx="32" fill="#9c9c9c"/></svg>`;
   const jpeg = await sharp(Buffer.from(svg)).jpeg({ quality: 90 }).toBuffer();
   return { data: jpeg.toString('base64'), mimeType: 'image/jpeg' };
 }
 
-const roundedRect = (size, fill) => Buffer.from(
-  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" rx="${CARD_RADIUS}" fill="${fill}"/></svg>`
+const roundedRect = (size, fill, radius) => Buffer.from(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><rect width="${size}" height="${size}" rx="${radius}" fill="${fill}"/></svg>`
 );
 
 // The colour behind the product, so the card blends with the photo's own background.
@@ -188,8 +185,9 @@ async function photoBackdrop(image) {
 // Places the store's photo on the card. It is only scaled to fit, never redrawn. A photo
 // on a plain light background sits on a matching card, with its empty margin trimmed so
 // the product fills it. Any other photo fills the card edge to edge.
-export async function placeRealPhoto(art, photo, format = 'square') {
-  const { card } = CARD_LAYOUTS[format];
+export async function placeRealPhoto(art, photo, layoutKey, frameKey) {
+  const { width, height, card } = cardLayout(layoutKey);
+  const { radius, outline } = describeVariant({ frame: frameKey }).frame;
   const source = Buffer.from(photo.data, 'base64');
   const { r, g, b } = await photoBackdrop(source);
   const plain = Math.min(r, g, b) >= PLAIN_BACKDROP;
@@ -197,18 +195,24 @@ export async function placeRealPhoto(art, photo, format = 'square') {
   const inner = card.size - padding * 2;
   const fitted = plain ? await sharp(source).trim({ threshold: 14 }).toBuffer().catch(() => source) : source;
   const scaled = await sharp(fitted).resize(inner, inner, { fit: 'contain', background: { r, g, b } }).ensureAlpha().png().toBuffer();
-  const picture = plain ? scaled : await sharp(scaled).composite([{ input: roundedRect(inner, '#fff'), blend: 'dest-in' }]).png().toBuffer();
+  const picture = plain ? scaled : await sharp(scaled).composite([{ input: roundedRect(inner, '#fff', radius), blend: 'dest-in' }]).png().toBuffer();
 
-  const shadowSize = card.size + SHADOW_SPREAD * 2;
-  const shadow = await sharp({ create: { width: shadowSize, height: shadowSize, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
-    .composite([{ input: await sharp(roundedRect(card.size, 'rgba(0,0,0,0.38)')).png().toBuffer(), left: SHADOW_SPREAD, top: SHADOW_SPREAD }])
+  // Drawn on a full-size canvas, so a card near the edge just loses the shadow that falls off it.
+  const shadow = await sharp({ create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: await sharp(roundedRect(card.size, 'rgba(0,0,0,0.38)', radius)).png().toBuffer(), left: card.left, top: card.top + SHADOW_DROP }])
     .png().toBuffer();
   const softShadow = await sharp(shadow).blur(20).png().toBuffer();
+  const outlineSize = card.size + CARD_OUTLINE * 2;
 
   return sharp(art)
     .composite([
-      { input: softShadow, left: card.left - SHADOW_SPREAD, top: card.top - SHADOW_SPREAD + 10 },
-      { input: roundedRect(card.size, `rgb(${r},${g},${b})`), left: card.left, top: card.top },
+      { input: softShadow, left: 0, top: 0 },
+      ...(outline ? [{
+        input: roundedRect(outlineSize, 'rgba(255,255,255,0.9)', radius + CARD_OUTLINE),
+        left: card.left - CARD_OUTLINE,
+        top: card.top - CARD_OUTLINE,
+      }] : []),
+      { input: roundedRect(card.size, `rgb(${r},${g},${b})`, radius), left: card.left, top: card.top },
       { input: picture, left: card.left + padding, top: card.top + padding },
     ])
     .jpeg({ quality: 92, mozjpeg: true })

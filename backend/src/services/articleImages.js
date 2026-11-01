@@ -84,7 +84,7 @@ export async function addAiImages({ plan, article, topic, dna, brief }) {
   // a card, and every other image shows only the setting around it.
   const match = bestProductMatch(topic, dna.products || []);
   const [realPhoto] = match ? await loadReferenceImages([match.image], { maxSize: 1024 }) : [];
-  const template = realPhoto ? await layoutTemplate('landscape') : null;
+  const template = realPhoto ? await layoutTemplate('landscape') : null; // articles keep one layout: this is a page banner, not a feed
   const jobs = [
     {
       hero: true,
