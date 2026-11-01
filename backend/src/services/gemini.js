@@ -205,6 +205,7 @@ ${inlineSection}`
       : `No matching product images available. Insert 2-3 placeholders between sections instead:
 <div class="article-image-placeholder" data-prompt="DETAILED_IMAGE_DESCRIPTION"><p>[Image: SHORT_CAPTION]</p></div>`}
 ${ctx.aiImageSlots ? `\n${aiImageInstructions(ctx.aiImageSlots)}\n` : ''}
+${ctx.campaignInstructions ? `CAMPAIGN INSTRUCTIONS (follow these first): ${ctx.campaignInstructions}\n` : ''}
 
 === OUTPUT FORMAT ===
 Return ONLY valid JSON (no markdown fences, no preamble):

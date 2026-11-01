@@ -181,12 +181,14 @@ export async function createAutomation(workspaceId, createdBy, a) {
   const { rows } = await query(
     `INSERT INTO instagram_automations
        (workspace_id, account_id, site_url, site_name, currency, post_time, timezone,
-        caption_instructions, hashtags, created_by, image_mode, image_style, image_notes, next_run_at)
-     VALUES ($1, $2, $3, $4, $5, $6::time, $7::text, $8, $9, $10, $11, $12, $13, ${nextRunSql('$7::text', '$6::time')})
+        caption_instructions, hashtags, created_by, image_style, image_notes, name, images_per_post,
+        starts_at, ends_at, next_run_at)
+     VALUES ($1, $2, $3, $4, $5, $6::time, $7::text, $8, $9, $10, $11, $12, $13, $14, $15, $16,
+             ${nextRunSql('$7::text', '$6::time')})
      RETURNING id`,
     [workspaceId, a.accountId, a.siteUrl, a.siteName || null, a.currency || null, a.postTime, a.timezone,
      a.captionInstructions || null, a.hashtags || null, createdBy || null,
-     a.imageMode || 'photo', a.imageStyle || null, a.imageNotes || null]
+     a.imageStyle || 'banner', a.imageNotes || null, a.name || null, a.imagesPerPost || 1, a.startsAt || null, a.endsAt || null]
   );
   return getAutomation(workspaceId, rows[0].id);
 }
@@ -198,9 +200,12 @@ const EDITABLE = {
   captionInstructions: 'caption_instructions',
   hashtags: 'hashtags',
   status: 'status',
-  imageMode: 'image_mode',
   imageStyle: 'image_style',
   imageNotes: 'image_notes',
+  name: 'name',
+  imagesPerPost: 'images_per_post',
+  startsAt: 'starts_at',
+  endsAt: 'ends_at',
 };
 
 // Any schedule change (time, zone, resume) re-derives next_run_at from the new settings.
@@ -237,6 +242,8 @@ export async function claimDue() {
         SELECT a.id FROM instagram_automations a
           JOIN workspaces w ON w.id = a.workspace_id
          WHERE a.status = 'active' AND a.next_run_at <= now()
+           AND (a.starts_at IS NULL OR a.starts_at <= now())
+           AND (a.ends_at IS NULL OR a.ends_at > now())
            AND (a.locked_until IS NULL OR a.locked_until < now())
            AND w.status <> 'suspended'
          ORDER BY a.next_run_at LIMIT 1
@@ -256,6 +263,11 @@ export async function claimById(workspaceId, id) {
     [id, workspaceId]
   );
   return rows[0] || null;
+}
+
+// Jobs past their end date stop until someone extends and resumes them.
+export async function finishExpiredAutomations() {
+  await query(`UPDATE instagram_automations SET status = 'done' WHERE status = 'active' AND ends_at IS NOT NULL AND ends_at <= now()`);
 }
 
 // Release the lease. Scheduled runs advance the schedule: success → next daily

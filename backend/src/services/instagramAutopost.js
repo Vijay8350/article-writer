@@ -3,8 +3,7 @@ import { resolveAi } from './ai.js';
 import * as storefront from './storefront.js';
 import * as instagram from './instagram.js';
 import { buildCaption } from './productCaption.js';
-import { renderForAutomation, markPosted } from './productImages.js';
-import { publicImageUrl } from './igMedia.js';
+import { renderForAutomation, markPosted, imageUrlsOf } from './productImages.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -52,20 +51,7 @@ export async function previewAutomation(automation) {
     product: { id: product.id, title: product.title, url: product.url, price: product.price },
     caption,
     imageUrls,
-    format: imageUrls.length > 1 ? 'carousel' : 'single',
-    imageMode: automation.image_mode,
   };
-}
-
-// AI jobs draw a fresh image. If that can't happen today the store's own photos
-// go out instead, and the post history says why.
-async function aiImageFor(automation, prepared) {
-  try {
-    const row = await renderForAutomation(automation, prepared.product, prepared.caption);
-    return { row, imageUrls: [publicImageUrl(row.image_file)] };
-  } catch (err) {
-    return { note: `AI image skipped, posted the store photos instead: ${err.message}` };
-  }
 }
 
 // Runs one LEASED automation end-to-end; always logs the outcome and releases the lease.
@@ -75,14 +61,15 @@ export async function runAutomation(automation, trigger) {
   try {
     prepared = await prepare(automation);
     const account = await repo.getAccountWithToken(automation.account_id);
-    const ai = automation.image_mode === 'ai' ? await aiImageFor(automation, prepared) : {};
-    const imageUrls = ai.imageUrls || prepared.imageUrls;
+    // The store's photos are the raw material: only the finished images get posted.
+    const image = await renderForAutomation(automation, prepared.product, prepared.caption);
+    const imageUrls = imageUrlsOf(image);
     const { mediaId, permalink } = await instagram.publishPost(account, imageUrls, prepared.caption);
     ok = true;
-    if (ai.row) await markPosted(ai.row, { mediaId, permalink });
+    await markPosted(image, { mediaId, permalink });
     return await repo.logPost(automation, {
-      trigger, ...productFields({ ...prepared, imageUrls }), imageSource: ai.row ? 'ai' : 'photo',
-      status: 'published', igMediaId: mediaId, permalink, error: ai.note,
+      trigger, ...productFields({ ...prepared, imageUrls }), imageSource: 'ai',
+      status: 'published', igMediaId: mediaId, permalink, error: image.error,
     });
   } catch (err) {
     return await repo.logPost(automation, {

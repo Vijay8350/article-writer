@@ -176,6 +176,7 @@ ${featuredBlock}
 
 ${imageBlock}
 ${ctx.aiImageSlots ? `\n${aiImageInstructions(ctx.aiImageSlots)}\n` : ''}
+${ctx.campaignInstructions ? `CAMPAIGN INSTRUCTIONS (follow these first): ${ctx.campaignInstructions}\n` : ''}
 WRITING STYLE:
 - Contractions: you'll, it's, don't, we've, that's
 - Personal opinions: "Honestly...", "Here's what most people miss...", "What I've found is..."

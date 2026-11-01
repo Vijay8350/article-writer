@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireWorkspace } from '../middleware/workspace.js';
 import * as campaigns from '../repositories/campaigns.js';
 import * as stores from '../repositories/stores.js';
+import { parseWindow, clampImages } from '../lib/campaignSchedule.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
@@ -13,15 +14,20 @@ const PUBLISH_MODES = ['live', 'draft'];
 // Shared by create and edit: { fields } or { error }.
 function parseCampaign(body) {
   const { name, collectionHandle, collectionTitle, cadence, articlesPerRun,
-    wordCount, aiModel, blogId, publishMode } = body || {};
+    wordCount, aiModel, blogId, publishMode, instructions, imagesPerPost } = body || {};
 
   if (!collectionTitle) return { error: 'A category/collection is required' };
   if (!blogId) return { error: 'A target blog is required' };
   if (cadence && !CADENCES.includes(cadence)) return { error: 'Invalid cadence' };
   if (publishMode && !PUBLISH_MODES.includes(publishMode)) return { error: 'Invalid publish mode' };
+  let window;
+  try { window = parseWindow(body); } catch (err) { return { error: err.message }; }
 
   return {
     fields: {
+      ...window,
+      instructions: String(instructions || '').trim().slice(0, 2000),
+      imagesPerPost: clampImages(imagesPerPost, 3),
       name: String(name || '').trim() || collectionTitle, collectionHandle, collectionTitle,
       cadence: cadence || 'manual',
       articlesPerRun: Math.min(Math.max(parseInt(articlesPerRun) || 1, 1), 20),
@@ -81,8 +87,12 @@ router.delete('/:id', async (req, res, next) => {
 
 router.post('/:id/run-now', async (req, res, next) => {
   try {
+    const current = await campaigns.getOwned(req.workspace.id, req.params.id);
+    if (!current) return res.status(404).json({ success: false, error: 'Campaign not found' });
+    if (current.ends_at && new Date(current.ends_at) <= new Date()) {
+      return res.status(400).json({ success: false, error: 'This campaign has reached its end date. Edit it to extend it.' });
+    }
     const row = await campaigns.triggerNow(req.workspace.id, req.params.id);
-    if (!row) return res.status(404).json({ success: false, error: 'Campaign not found' });
     res.json({ success: true, message: `Queued ${row.articles_per_run} article(s).`, data: row });
   } catch (error) { next(error); }
 });

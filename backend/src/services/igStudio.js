@@ -4,7 +4,7 @@ import * as igRepo from '../repositories/instagram.js';
 import { getTextAi } from './igAi.js';
 import * as media from './igMedia.js';
 import { publishPost } from './instagram.js';
-import { buildImagePrompt } from '../lib/igPrompts.js';
+import { buildImagePrompt, buildVisionPrompt, splitSlides, campaignBrief } from '../lib/igPrompts.js';
 import { normalizeHash } from '../lib/igSchemas.js';
 import { assertCanGenerateIgPost, incrementIgUsage } from './usage.js';
 
@@ -19,6 +19,7 @@ const MAX_CAPTION = 2200;
 const MAX_HASHTAGS = 30;
 const SLOT_WINDOW_MIN = 15; // a slot can start up to this late (server restart, busy tick)
 
+const SLIDE_PARALLEL = 3; // extra carousel images drawn at once
 const errText = (e) => (e instanceof Error ? e.message : String(e)).slice(0, 500);
 const badRequest = (message) => Object.assign(new Error(message), { status: 400 });
 
@@ -56,6 +57,31 @@ export async function generatePostText(workspaceId, accountId, { promptText, sou
 
 // ─── Stage 3 + 4: image → quality gate (regenerate, fail closed) ─────────────
 
+// The slides after the cover, drawn from the cover so they read as one series. A slide
+// that can't pass the gate is left out; the post goes out with the slides that did.
+async function renderExtraSlides({ images, cover, slides, dna, idea, campaign, brief, log }) {
+  const reference = { data: cover.toString('base64'), mimeType: 'image/jpeg' };
+  const extras = slides.slice(1);
+  const results = await media.mapLimit(extras, SLIDE_PARALLEL, async (slide, i) => {
+    const { jpeg, verdict } = await media.generateUntilPassed(images, {
+      prompt: buildImagePrompt(dna, idea, slide, { hasReferences: true, campaign, slide: { index: i + 2, total: slides.length } }),
+      gatePrompt: buildVisionPrompt(slide, dna, brief),
+      references: [reference],
+      compareTo: [],
+      format: 'square',
+      attempts: config.instagram.maxRegenAttempts,
+    });
+    if (!verdict.pass) throw new Error(verdict.reasons.join('; ') || `score ${verdict.score}`);
+    return media.saveImage(jpeg);
+  });
+  const files = results.filter((r) => typeof r === 'string');
+  if (files.length < extras.length) {
+    const reason = results.find((r) => r?.error)?.error.message;
+    await log(`${extras.length - files.length} of ${extras.length} extra images were left out: ${reason}`);
+  }
+  return files;
+}
+
 export async function generatePostImage(workspaceId, postId) {
   const post = await repo.claimPost(workspaceId, postId, ['draft', 'qa_failed', 'ready'], 'generating');
   if (!post) throw badRequest('This post is busy or already published.');
@@ -68,8 +94,11 @@ export async function generatePostImage(workspaceId, postId) {
       post.campaign_id ? repo.getCampaign(workspaceId, post.campaign_id) : null,
     ]);
     const references = campaign?.reference_images?.length ? await media.loadReferenceImages(campaign.reference_images) : [];
-    const intended = { headline: post.headline || '', lines: post.lines || [] };
-    const prompt = buildImagePrompt(dna, imgPrompt?.prompt_text || null, intended, { hasReferences: references.length > 0 });
+    const brief = campaign ? campaignBrief(campaign) : '';
+    const slides = splitSlides({ headline: post.headline || '', lines: post.lines || [] }, campaign?.images_per_post || 1);
+    const intended = slides[0];
+    const idea = imgPrompt?.prompt_text || null;
+    const prompt = buildImagePrompt(dna, idea, intended, { hasReferences: references.length > 0, campaign });
 
     let jpeg = null;
     let verdict = null;
@@ -77,7 +106,7 @@ export async function generatePostImage(workspaceId, postId) {
     while (attempts < config.instagram.maxRegenAttempts) {
       attempts++;
       jpeg = await images.generate(prompt, references);
-      verdict = await images.score(jpeg, intended, dna);
+      verdict = await images.score(jpeg, intended, dna, brief);
       await repo.log({
         workspaceId, accountId, postId,
         stage: 'quality_gate',
@@ -89,14 +118,22 @@ export async function generatePostImage(workspaceId, postId) {
     }
     if (imgPrompt) await repo.bumpPrompt(imgPrompt.id);
 
+    const extraFiles = verdict.pass && slides.length > 1
+      ? await renderExtraSlides({
+        images, cover: jpeg, slides, dna, idea, campaign, brief,
+        log: (message) => repo.log({ workspaceId, accountId, postId, stage: 'quality_gate', level: 'warn', message }),
+      })
+      : [];
+
     // The last attempt is kept either way, so a failed one can be reviewed.
     const file = await media.saveImage(jpeg);
-    await media.deleteImage(post.image_file);
+    await Promise.all([post.image_file, ...(post.extra_image_files || [])].map(media.deleteImage));
     if (!verdict.pass) {
       await repo.log({ workspaceId, accountId, postId, stage: 'quality_gate', level: 'warn', message: `Quality gate failed after ${attempts} attempts — not publishable` });
     }
     return repo.updatePost(post.id, {
       image_file: file,
+      extra_image_files: extraFiles,
       status: verdict.pass ? 'ready' : 'qa_failed',
       qa_score: verdict.score,
       qa_reasons: verdict.reasons,
@@ -134,7 +171,8 @@ export async function publishGeneratedPost(workspaceId, postId) {
     }
     const account = await igRepo.getAccountWithToken(accountId);
     if (!account) throw badRequest('The Instagram account is no longer connected.');
-    const { mediaId, permalink } = await publishPost(account, [media.publicImageUrl(post.image_file)], buildCaption(post));
+    const imageUrls = [post.image_file, ...(post.extra_image_files || [])].map(media.publicImageUrl);
+    const { mediaId, permalink } = await publishPost(account, imageUrls, buildCaption(post));
     const done = await repo.updatePost(post.id, { status: 'published', ig_media_id: mediaId, permalink, published_at: new Date(), error: null });
     await repo.log({ workspaceId, accountId, postId, stage: 'publish', message: `Published to @${account.username}`, context: { mediaId, permalink } });
     return done;

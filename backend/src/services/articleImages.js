@@ -1,8 +1,9 @@
 import * as aiKeys from '../repositories/aiKeys.js';
 import { withDefaults } from './ai.js';
 import { bestProductMatch } from './imageMatcher.js';
-import { imageBackend, generateUntilPassed, loadReferenceImages, saveImage, publicImageUrl } from './igMedia.js';
-import { buildArticleImagePrompt, buildArticleVisionPrompt } from '../lib/articleImagePrompts.js';
+import { imageBackend, generateUntilPassed, loadReferenceImages, saveImage, publicImageUrl, mapLimit } from './igMedia.js';
+import { buildArticleImagePrompt, buildArticleBannerPrompt, buildArticleVisionPrompt } from '../lib/articleImagePrompts.js';
+import { buildBannerVisionPrompt } from '../lib/igPrompts.js';
 
 // ChatGPT images inside articles. The writer leaves placeholders with a scene
 // description; each becomes a real image here, plus one hero. An image that can't
@@ -27,15 +28,16 @@ export const stripImagePlaceholders = (html) => String(html || '').replace(PLACE
 export const productImageLimit = (mode) => PRODUCT_IMAGES[mode] ?? PRODUCT_IMAGES.products;
 
 // How this article gets its images. Falls back to store photos when no image
-// engine is working, so generation never fails because of it.
-export async function planArticleImages(workspaceId, requested) {
+// engine is working, so generation never fails because of it. A campaign's
+// `imageCount` is the total: the hero plus that many minus one inline.
+export async function planArticleImages(workspaceId, requested, { imageCount } = {}) {
   const { articleImages } = withDefaults(await aiKeys.getSettings(workspaceId));
   const mode = PRODUCT_IMAGES[requested] !== undefined ? requested : articleImages;
   if (mode === 'products') return { mode, backend: null, slots: 0 };
   const backend = await imageBackend(workspaceId);
   const check = await backend.check();
   if (!check.ok) return { mode: 'products', backend: null, slots: 0, warning: `ChatGPT images were skipped: ${check.detail}` };
-  return { mode, backend, slots: INLINE_SLOTS[mode] };
+  return { mode, backend, slots: imageCount ? imageCount - 1 : INLINE_SLOTS[mode] };
 }
 
 function findSlots(html) {
@@ -64,21 +66,12 @@ function addMissingSlots(html, missing) {
 const figure = ({ url, alt, caption }) =>
   `<figure><img src="${url}" alt="${escapeAttr(alt)}" loading="lazy" width="1200" height="800" style="max-width:100%;height:auto">${caption ? `<figcaption>${escapeAttr(caption)}</figcaption>` : ''}</figure>`;
 
-async function mapLimit(items, limit, fn) {
-  const results = new Array(items.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i]).catch((error) => ({ error }));
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
-}
+// A short headline for a banner: the title before any subtitle.
+const bannerHeadline = (title) => String(title || '').split(/\s[-–|]\s|:\s/)[0].trim();
 
-// Draws the hero and inline images and returns the finished body.
-export async function addAiImages({ plan, article, topic, dna }) {
+// Draws the hero and inline images and returns the finished body. A campaign's
+// `brief` turns the hero into a designed banner and steers every image.
+export async function addAiImages({ plan, article, topic, dna, brief }) {
   let html = article.bodyHtml || '';
   const found = findSlots(html);
   if (found.length < plan.slots) html = addMissingSlots(html, plan.slots - found.length);
@@ -99,10 +92,18 @@ export async function addAiImages({ plan, article, topic, dna }) {
 
   const storeName = dna.shop?.name;
   const niche = dna.analysis?.niche;
+  const instructions = brief?.instructions;
+  const withProduct = references.length > 0;
+  const headline = bannerHeadline(article.title);
   const results = await mapLimit(jobs, PARALLEL, async (job) => {
+    const banner = job.hero && brief;
     const { jpeg, verdict } = await generateUntilPassed(plan.backend, {
-      prompt: buildArticleImagePrompt({ scene: job.scene, storeName, niche, withProduct: references.length > 0 }),
-      gatePrompt: buildArticleVisionPrompt(job.scene),
+      prompt: banner
+        ? buildArticleBannerPrompt({ headline, scene: job.scene, storeName, niche, withProduct, instructions })
+        : buildArticleImagePrompt({ scene: job.scene, storeName, niche, withProduct, instructions }),
+      gatePrompt: banner
+        ? buildBannerVisionPrompt({ texts: [headline], brief: instructions, productTitle: match?.title })
+        : buildArticleVisionPrompt(job.scene),
       references,
       format: 'landscape',
       attempts: ATTEMPTS,

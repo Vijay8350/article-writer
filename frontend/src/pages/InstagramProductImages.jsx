@@ -10,7 +10,10 @@ import {
   createInstagramAutomation, updateInstagramAutomation, deleteInstagramAutomation, postInstagramNow,
 } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { JobFields, emptyJob, fmtNext } from './InstagramScheduler';
+import { JobFields, emptyJob, jobPayload, fmtNext } from './InstagramScheduler';
+import { ImagesPerPost } from '../components/ScheduleFields';
+import { ExtraImages } from '../components/studio/shared';
+import { scheduleText } from '../lib/dates';
 
 const STATUS = {
   generating: ['badge-warning', 'Making image…'],
@@ -52,6 +55,7 @@ function ImageCard({ item, accounts, styles, busy, canManage, onRegenerate, onPu
           {item.status === 'generating' ? <><Loader2 size={22} className="spinning" /> Making the image and checking it…</> : <><ImagePlus size={22} /> No image</>}
         </div>
       )}
+      {item.extra_urls?.length > 0 && <ExtraImages urls={item.extra_urls} />}
       <div className="ig-post-body">
         <div className="flex justify-between gap-8" style={{ alignItems: 'flex-start' }}>
           <strong style={{ fontSize: 14, lineHeight: 1.3, overflowWrap: 'anywhere' }}>
@@ -118,8 +122,9 @@ function CreateTab({ status, accounts, canManage }) {
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(null);
-  const [style, setStyle] = useState('');
+  const [style, setStyle] = useState('banner');
   const [notes, setNotes] = useState('');
+  const [imagesPerPost, setImagesPerPost] = useState(1);
   const [images, setImages] = useState(null);
   const [busy, setBusy] = useState(null); // 'products' | 'generate' | { id, action }
 
@@ -176,7 +181,7 @@ function CreateTab({ status, accounts, canManage }) {
   const handleGenerate = () => {
     setTimeout(refresh, 2500); // shows the new card while the request runs
     return act('generate', () => createProductImage({
-      siteUrl: store.url, productId: selected.id, style: style || undefined, notes: notes.trim() || undefined, accountId: accounts[0]?.id,
+      siteUrl: store.url, productId: selected.id, style, notes: notes.trim() || undefined, accountId: accounts[0]?.id, imagesPerPost: Number(imagesPerPost) || 1,
     }));
   };
 
@@ -217,18 +222,22 @@ function CreateTab({ status, accounts, canManage }) {
               <div className="form-group">
                 <label className="form-label">2. Pick a style</label>
                 <div className="chips">
-                  <button type="button" className={`chip ${style === '' ? 'active' : ''}`} onClick={() => setStyle('')}>Surprise me</button>
                   {status.styles.map((s) => (
                     <button key={s.key} type="button" className={`chip ${style === s.key ? 'active' : ''}`} onClick={() => setStyle(s.key)}>{s.label}</button>
                   ))}
+                  <button type="button" className={`chip ${style === 'auto' ? 'active' : ''}`} onClick={() => setStyle('auto')}>Surprise me</button>
                 </div>
+                <div className="form-helper">Promo banner shows the product with its name and price.</div>
               </div>
 
               <div className="form-group">
-                <label className="form-label">3. Direction for the image (optional)</label>
+                <label className="form-label">3. Instructions for the image (optional)</label>
                 <input className="form-input" value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={500}
-                  placeholder="e.g. Diwali table setting, warm marigold tones" />
+                  placeholder="e.g. Diwali theme, warm marigold tones, mention free shipping" />
               </div>
+
+              <ImagesPerPost value={imagesPerPost} onChange={setImagesPerPost} label="4. Images in this post"
+                help="The first is the cover. The rest show the product in other scenes, as a swipeable carousel." />
 
               <button className="btn btn-primary" type="button" onClick={handleGenerate} disabled={!selected || !status.images.ok || busy === 'generate'}>
                 {busy === 'generate'
@@ -236,8 +245,8 @@ function CreateTab({ status, accounts, canManage }) {
                   : <><ImagePlus size={16} /> {selected ? `Generate image of ${selected.title.slice(0, 40)}` : 'Pick a product first'}</>}
               </button>
               <div className="form-helper">
-                The real product photo guides the image, and the result is compared against it before it can be posted.
-                This usually takes one to two minutes, and each image counts toward your plan's Instagram posts.
+                Your store photo is only the starting point: it's turned into a designed image, then checked against the
+                real product before it can be posted. This usually takes one to three minutes.
               </div>
             </>
           )}
@@ -286,7 +295,7 @@ function AutoPostTab({ status, accounts, canManage }) {
   const load = useCallback(async () => {
     try {
       const res = await getInstagramAutomations();
-      setJobs((res.data || []).filter((j) => j.image_mode === 'ai'));
+      setJobs(res.data || []);
     } catch (err) {
       toast.error(errMsg(err, 'Failed to load jobs'));
       setJobs([]);
@@ -302,13 +311,13 @@ function AutoPostTab({ status, accounts, canManage }) {
     setBusy(null);
   };
 
-  const newForm = () => setForm({ ...emptyJob(accounts), siteUrl: status.defaultSite || '', imageMode: 'ai' });
+  const newForm = () => setForm({ ...emptyJob(accounts), siteUrl: status.defaultSite || '' });
 
   const handleCreate = (e) => {
     e.preventDefault();
     if (!form.siteUrl.trim()) return toast.error('Enter the website address');
     return run('create', async () => {
-      const res = await createInstagramAutomation({ ...form, siteUrl: form.siteUrl.trim(), imageMode: 'ai', imageStyle: form.imageStyle || undefined });
+      const res = await createInstagramAutomation({ ...jobPayload(form), siteUrl: form.siteUrl.trim() });
       setForm(null);
       return res;
     });
@@ -339,9 +348,9 @@ function AutoPostTab({ status, accounts, canManage }) {
                 <input className="form-input" value={form.siteUrl} onChange={(e) => setForm({ ...form, siteUrl: e.target.value })} placeholder="yourstore.com" />
                 <div className="form-helper">Each day the job takes the next in-stock product in rotation, so nothing repeats until the whole catalogue has been posted.</div>
               </div>
-              <JobFields value={form} onChange={setForm} accounts={accounts} styles={status.styles} aiOnly />
+              <JobFields value={form} onChange={setForm} accounts={accounts} styles={status.styles} />
               <div className="form-helper mb-16">
-                If an image can't be made or fails the quality check, the job posts the store's real photos that day, and the post history says why.
+                Nothing goes out unchecked. If an image fails the quality check, nothing posts, and the job tries again in an hour with the next product.
               </div>
               <button className="btn btn-primary w-full" type="submit" disabled={busy === 'create'}>
                 {busy === 'create' ? <><Loader2 size={16} className="spinning" /> Checking website...</> : <><Plus size={16} /> Start daily posts</>}
@@ -370,21 +379,22 @@ function AutoPostTab({ status, accounts, canManage }) {
                   <div style={{ minWidth: 0, flex: '1 1 280px' }}>
                     <div className="flex items-center gap-8" style={{ flexWrap: 'wrap' }}>
                       <strong>{j.post_time}</strong>
-                      <span>{j.site_name || j.site_url.replace(/^https?:\/\//, '')}</span>
+                      <span>{j.name || j.site_name || j.site_url.replace(/^https?:\/\//, '')}</span>
                       <span style={{ color: 'var(--text-muted)' }}>→ @{j.username}</span>
                       <span className={`badge ${j.status === 'active' ? 'badge-success' : 'badge-warning'}`}>{j.status}</span>
                     </div>
                     <div style={muted}>
-                      {status.styles.find((s) => s.key === j.image_style)?.label || 'Mixed styles'} · {j.published_count} posted
+                      {status.styles.find((s) => s.key === j.image_style)?.label || 'Mixed styles'} · {j.images_per_post} image{j.images_per_post === 1 ? '' : 's'} per post · {j.published_count} posted
                       {j.status === 'active' && j.next_run_at ? ` · next: ${fmtNext(j.next_run_at)}` : ''}
                     </div>
+                    <div style={muted}>{scheduleText(j)}</div>
                     {j.last_status === 'failed' && j.last_error && <div style={danger}>{j.last_error}</div>}
                   </div>
                   {canManage && (
                     <div className="flex gap-8">
                       <button className="btn btn-primary btn-sm" disabled={!!busy} title="Post the next product now"
                         onClick={() => {
-                          if (!window.confirm(`Generate an image and post the next product to @${j.username} now?`)) return;
+                          if (!window.confirm(`Generate the images and post the next product to @${j.username} now?`)) return;
                           run(`post:${j.id}`, () => postInstagramNow(j.id));
                         }}>
                         {busy === `post:${j.id}` ? <Loader2 size={14} className="spinning" /> : <Send size={14} />} Post now

@@ -7,8 +7,10 @@ import { runDueAutopilot } from '../services/igStudio.js';
 import { runDueResearch } from '../services/igResearch.js';
 import { runDueCommentSweep } from '../services/igComments.js';
 import { runDueAnalytics } from '../services/igAnalytics.js';
-import { releaseStalePosts } from '../repositories/igStudio.js';
+import { releaseStalePosts, finishExpiredCampaigns } from '../repositories/igStudio.js';
 import { releaseStale as releaseStaleProductImages } from '../repositories/productImages.js';
+import { finishExpired as finishExpiredBlogCampaigns } from '../repositories/campaigns.js';
+import { finishExpiredAutomations } from '../repositories/instagram.js';
 
 // Runs inside the SINGLE PM2 fork process. This is the ONLY reason it's safe
 // from double-firing — do NOT enable PM2 cluster mode / instances>1 without
@@ -66,6 +68,9 @@ async function tick() {
     // Instagram Login token alive (they expire after 60 days).
     await releaseStalePosts();
     await releaseStaleProductImages();
+    await finishExpiredCampaigns();
+    await finishExpiredBlogCampaigns();
+    await finishExpiredAutomations();
     await refreshDueInstagramToken();
   } catch (err) {
     console.error('Scheduler tick error:', err.message);

@@ -4,20 +4,20 @@ import { query } from '../db/index.js';
 // (compare-and-set) so a double click can't generate or post the same image twice.
 
 const EDITABLE = new Set([
-  'account_id', 'style', 'notes', 'image_file', 'caption', 'status', 'qa_score', 'qa_reasons',
-  'attempts', 'ig_media_id', 'permalink', 'error', 'published_at',
+  'account_id', 'style', 'notes', 'image_file', 'extra_image_files', 'images_per_post', 'caption', 'status',
+  'qa_score', 'qa_reasons', 'attempts', 'ig_media_id', 'permalink', 'error', 'published_at',
 ]);
 
 export async function create(workspaceId, createdBy, r) {
   const { rows } = await query(
     `INSERT INTO ig_product_images
        (workspace_id, account_id, automation_id, site_url, site_name, currency, product_id, product_title,
-        product_url, source_image, style, notes, caption, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        product_url, source_image, style, notes, caption, created_by, images_per_post)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [workspaceId, r.accountId || null, r.automationId || null, r.siteUrl, r.siteName || null, r.currency || null,
      r.productId, r.productTitle || null, r.productUrl || null, r.sourceImage || null, r.style || null,
-     r.notes || null, r.caption || null, createdBy || null]
+     r.notes || null, r.caption || null, createdBy || null, r.imagesPerPost || 1]
   );
   return rows[0];
 }
@@ -69,7 +69,7 @@ export async function remove(workspaceId, id) {
   const { rows } = await query(
     `DELETE FROM ig_product_images
       WHERE id = $1 AND workspace_id = $2 AND status NOT IN ('generating', 'publishing')
-      RETURNING image_file`,
+      RETURNING image_file, extra_image_files`,
     [id, workspaceId]
   );
   return rows[0] || null;

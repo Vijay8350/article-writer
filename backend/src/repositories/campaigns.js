@@ -1,35 +1,44 @@
 import { query } from '../db/index.js';
+import { firstRun } from '../lib/campaignSchedule.js';
 
 export async function create(workspaceId, createdBy, c) {
   const { rows } = await query(
     `INSERT INTO campaigns
        (workspace_id, created_by, name, collection_handle, collection_title, cadence, articles_per_run,
-        word_count, ai_model, blog_id, publish_mode, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'active')
+        word_count, ai_model, blog_id, publish_mode, instructions, images_per_post, starts_at, ends_at,
+        next_run_at, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'active')
      RETURNING *`,
     [workspaceId, createdBy || null, c.name, c.collectionHandle || null, c.collectionTitle, c.cadence,
-     c.articlesPerRun, c.wordCount, c.aiModel, c.blogId || null, c.publishMode]
+     c.articlesPerRun, c.wordCount, c.aiModel, c.blogId || null, c.publishMode, c.instructions || null,
+     c.imagesPerPost, c.startsAt, c.endsAt, firstRun(c)]
   );
   return rows[0];
 }
 
-// Saves edited settings. A run in progress finishes as planned; otherwise a change
-// of cadence re-plans the next run, one period from now (or none for manual).
+// Saves edited settings. A run in progress finishes as planned; otherwise changing
+// the cadence or start re-plans the next run. An end date in the past finishes the
+// campaign, and a finished one that gets extended comes back paused.
 export async function update(workspaceId, id, c) {
   const { rows } = await query(
     `UPDATE campaigns
         SET name = $3, collection_handle = $4, collection_title = $5, articles_per_run = $7,
             word_count = $8, ai_model = $9, blog_id = $10, publish_mode = $11,
+            instructions = $12, images_per_post = $13, starts_at = $14::timestamptz, ends_at = $15::timestamptz,
             next_run_at = CASE
-              WHEN cadence = $6::text OR run_remaining > 0 THEN next_run_at
-              WHEN $6::text = 'daily' THEN now() + interval '1 day'
-              WHEN $6::text = 'monthly' THEN now() + interval '1 month'
-              ELSE NULL END,
+              WHEN run_remaining > 0 THEN next_run_at
+              WHEN cadence = $6::text AND next_run_at IS NOT NULL
+               AND starts_at IS NOT DISTINCT FROM $14::timestamptz THEN next_run_at
+              ELSE $16::timestamptz END,
+            status = CASE WHEN $15::timestamptz <= now() THEN 'done'
+                          WHEN status = 'done' THEN 'paused'
+                          ELSE status END,
             cadence = $6::text
       WHERE id = $1 AND workspace_id = $2
       RETURNING *`,
     [id, workspaceId, c.name, c.collectionHandle || null, c.collectionTitle, c.cadence,
-     c.articlesPerRun, c.wordCount, c.aiModel, c.blogId || null, c.publishMode]
+     c.articlesPerRun, c.wordCount, c.aiModel, c.blogId || null, c.publishMode, c.instructions || null,
+     c.imagesPerPost, c.startsAt, c.endsAt, firstRun(c)]
   );
   return rows[0] || null;
 }
@@ -86,10 +95,19 @@ export async function findDue() {
   const { rows } = await query(
     `SELECT * FROM campaigns
       WHERE status = 'active' AND next_run_at IS NOT NULL AND next_run_at <= now()
+        AND (ends_at IS NULL OR ends_at > now())
       ORDER BY next_run_at ASC
       LIMIT 1`
   );
   return rows[0] || null;
+}
+
+// Campaigns past their end date stop for good until someone extends them.
+export async function finishExpired() {
+  await query(
+    `UPDATE campaigns SET status = 'done', next_run_at = NULL, run_remaining = 0
+      WHERE status = 'active' AND ends_at IS NOT NULL AND ends_at <= now()`
+  );
 }
 
 export async function updateRunState(id, { runRemaining, nextRunAt }) {

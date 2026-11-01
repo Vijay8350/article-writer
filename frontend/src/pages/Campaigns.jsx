@@ -5,6 +5,10 @@ import {
   getCampaigns, createCampaign, updateCampaign, setCampaignStatus, deleteCampaign, runCampaignNow,
   getCampaignArticles, getBusinessDna, getSettings,
 } from '../lib/api';
+import { ScheduleWindow, ImagesPerPost } from '../components/ScheduleFields';
+import { toDateTimeInput, toDateInput, fromDateTimeInput, endOfDay, scheduleText } from '../lib/dates';
+
+const STATUS_BADGE = { active: 'badge-success', paused: 'badge-warning', done: 'badge-purple' };
 
 const ARTICLE_BADGE = {
   published: 'badge-success',
@@ -15,13 +19,14 @@ const ARTICLE_BADGE = {
 };
 
 const BLANK_FORM = {
-  name: '', collectionTitle: '', collectionHandle: '', cadence: 'manual', articlesPerRun: 3,
-  wordCount: 1500, aiModel: 'gemini', publishMode: 'draft', blogId: '',
+  name: '', collectionTitle: '', collectionHandle: '', cadence: 'manual', articlesPerRun: 3, wordCount: 1500,
+  aiModel: 'gemini', publishMode: 'draft', blogId: '', instructions: '', imagesPerPost: 3, startsAt: '', endsAt: '',
 };
 
 const formFrom = (c) => ({
   name: c.name, collectionTitle: c.collection_title, collectionHandle: c.collection_handle || '', cadence: c.cadence,
   articlesPerRun: c.articles_per_run, wordCount: c.word_count, aiModel: c.ai_model, publishMode: c.publish_mode, blogId: c.blog_id || '',
+  instructions: c.instructions || '', imagesPerPost: c.images_per_post, startsAt: toDateTimeInput(c.starts_at), endsAt: toDateInput(c.ends_at),
 });
 
 // The shape the API takes, with the handle of the chosen category.
@@ -30,10 +35,12 @@ const toPayload = (form, collections) => ({
   collectionHandle: collections.find(c => c.title === form.collectionTitle)?.handle || form.collectionHandle || undefined,
   articlesPerRun: Number(form.articlesPerRun),
   wordCount: Number(form.wordCount),
+  imagesPerPost: Number(form.imagesPerPost),
+  startsAt: form.cadence === 'manual' ? null : fromDateTimeInput(form.startsAt),
+  endsAt: form.cadence === 'manual' ? null : endOfDay(form.endsAt),
 });
 
-// `withName` adds the campaign name, which a new campaign takes from its category.
-function CampaignFields({ value, onChange, collections, blogs, withName = false }) {
+function CampaignFields({ value, onChange, collections, blogs }) {
   const set = (key) => (e) => onChange({ ...value, [key]: e.target.value });
   // A category or blog removed from the store stays selectable on campaigns that use it.
   const categories = [...new Set([value.collectionTitle, ...collections.map(c => c.title)].filter(Boolean))];
@@ -48,13 +55,12 @@ function CampaignFields({ value, onChange, collections, blogs, withName = false 
   });
 
   return (
+    <>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
-      {withName && (
-        <div className="form-group">
-          <label className="form-label">Campaign name</label>
-          <input className="form-input" value={value.name} onChange={set('name')} maxLength={120} />
-        </div>
-      )}
+      <div className="form-group">
+        <label className="form-label">Campaign name</label>
+        <input className="form-input" value={value.name} onChange={set('name')} maxLength={120} placeholder="Defaults to the category" />
+      </div>
       <div className="form-group">
         <label className="form-label">Category (collection)</label>
         <select className="form-select" value={value.collectionTitle} onChange={setCategory}>
@@ -101,7 +107,20 @@ function CampaignFields({ value, onChange, collections, blogs, withName = false 
           <input className="form-input" value={value.blogId} onChange={set('blogId')} placeholder="Blog ID" />
         )}
       </div>
+      <ImagesPerPost value={value.imagesPerPost} onChange={(imagesPerPost) => onChange({ ...value, imagesPerPost })}
+        label="Images in each article" help="The banner, then images through the article." />
+      {value.cadence !== 'manual' && (
+        <ScheduleWindow startsAt={value.startsAt} endsAt={value.endsAt} onChange={(change) => onChange({ ...value, ...change })}
+          startHelp={`Leave blank to start one ${value.cadence === 'daily' ? 'day' : 'month'} from now.`} />
+      )}
     </div>
+    <div className="form-group">
+      <label className="form-label">Instructions (optional)</label>
+      <textarea className="form-textarea" rows={2} value={value.instructions} onChange={set('instructions')} maxLength={2000}
+        placeholder="e.g. Friendly tone, mention free shipping above ₹499, festive gold and red banners" />
+      <div className="form-helper">Followed when writing the articles and designing their banners.</div>
+    </div>
+    </>
   );
 }
 
@@ -147,8 +166,9 @@ export default function Campaigns() {
     if (!form.blogId) return toast.error('Pick a blog');
     setCreating(true);
     try {
-      await createCampaign({ ...toPayload(form, collections), name: form.collectionTitle });
+      await createCampaign(toPayload(form, collections));
       toast.success('Campaign created');
+      setForm(f => ({ ...f, name: '', instructions: '', startsAt: '', endsAt: '' }));
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to create campaign');
@@ -257,12 +277,13 @@ export default function Campaigns() {
                       <div className="flex items-center gap-8">
                         {expanded === c.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                         <strong>{c.name}</strong>
-                        <span className={`badge ${c.status === 'active' ? 'badge-success' : 'badge-warning'}`}>{c.status}</span>
+                        <span className={`badge ${STATUS_BADGE[c.status] || 'badge-warning'}`}>{c.status}</span>
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 24 }}>
-                        {c.cadence} · {c.articles_per_run}/run · {c.ai_model} · {c.publish_mode} · {c.published_count}/{c.total_count} done
+                        {c.cadence} · {c.articles_per_run}/run · {c.images_per_post} images · {c.ai_model} · {c.publish_mode} · {c.published_count}/{c.total_count} done
                         {c.next_run_at ? ` · next: ${new Date(c.next_run_at).toLocaleString()}` : ''}
                       </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 24 }}>{scheduleText(c)}</div>
                     </div>
                     <div className="flex gap-8">
                       <button className="btn btn-secondary btn-sm" onClick={() => runNow(c)} disabled={busyId === c.id} title="Run now">
@@ -282,7 +303,7 @@ export default function Campaigns() {
 
                   {editing?.id === c.id && (
                     <form onSubmit={handleSave} style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
-                      <CampaignFields value={editing} onChange={setEditing} collections={collections} blogs={blogs} withName />
+                      <CampaignFields value={editing} onChange={setEditing} collections={collections} blogs={blogs} />
                       <div className="form-helper mb-16">
                         Changes apply to the next articles. Articles already written stay as they are.
                         {editing.cadence !== c.cadence && editing.cadence !== 'manual' && ` The next run will be one ${editing.cadence === 'daily' ? 'day' : 'month'} from now.`}

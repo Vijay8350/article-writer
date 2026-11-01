@@ -9,7 +9,8 @@ import * as media from '../services/igMedia.js';
 import {
   createProductImage, regenerateProductImage, publishProductImage, withUrl,
 } from '../services/productImages.js';
-import { PRODUCT_IMAGE_STYLES } from '../lib/igPrompts.js';
+import { PRODUCT_IMAGE_STYLES, isProductStyle } from '../lib/igPrompts.js';
+import { clampImages } from '../lib/campaignSchedule.js';
 
 // AI product images (/api/product-images). Everyone in the workspace can browse
 // and generate; posting and deleting need owner/admin, like Instagram Studio.
@@ -38,7 +39,7 @@ const sendRow = (res, row, failedMessage, message) =>
     ...(row.status === 'ready' && !row.error ? { message } : { warning: row.error || failedMessage }),
   });
 
-const cleanStyle = (style) => (PRODUCT_IMAGE_STYLES.some((s) => s.key === style) ? style : null);
+const cleanStyle = (style) => (isProductStyle(style) ? style : null);
 const cleanNotes = (notes) => String(notes || '').trim().slice(0, MAX_NOTES) || null;
 
 async function accountFor(req) {
@@ -101,10 +102,11 @@ router.get('/', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { siteUrl, productId, style, notes } = req.body || {};
+    const { siteUrl, productId, style, notes, imagesPerPost } = req.body || {};
     if (!siteUrl || !productId) return bad(res, 'Pick a website and a product');
     const row = await createProductImage(req.workspace.id, req.user.id, {
       siteUrl, productId, accountId: await accountFor(req), style: cleanStyle(style), notes: cleanNotes(notes),
+      imagesPerPost: clampImages(imagesPerPost),
     });
     sendRow(res, row, 'The image failed the quality check.', 'Image ready');
   } catch (err) { fail(res, next, err); }
@@ -146,7 +148,7 @@ router.delete('/:id', manage, async (req, res, next) => {
   try {
     const row = await repo.remove(req.workspace.id, req.params.id);
     if (!row) return bad(res, 'Image not found or busy', 404);
-    await media.deleteImage(row.image_file);
+    await Promise.all([row.image_file, ...(row.extra_image_files || [])].map(media.deleteImage));
     res.json({ success: true, message: 'Image deleted' });
   } catch (error) { next(error); }
 });

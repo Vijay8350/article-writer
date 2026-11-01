@@ -7,7 +7,10 @@ import { publishPost } from './instagram.js';
 import { buildCaption } from './productCaption.js';
 import { resolveAi } from './ai.js';
 import { assertCanGenerateIgPost, incrementIgUsage } from './usage.js';
-import { buildProductImagePrompt, buildProductVisionPrompt, resolveProductStyle } from '../lib/igPrompts.js';
+import {
+  buildProductImagePrompt, buildProductVisionPrompt, buildBannerVisionPrompt, resolveProductStyle,
+  extraSlideStyles, productBannerCopy, bannerCopyLines,
+} from '../lib/igPrompts.js';
 
 // A product on a store's website → an AI image of THAT product → Instagram.
 // The store's real photos are the references, so the model restages the product
@@ -15,11 +18,19 @@ import { buildProductImagePrompt, buildProductVisionPrompt, resolveProductStyle 
 // Only images that pass (status = 'ready') can be posted: fail closed.
 
 const MAX_REFERENCES = 2;
+const MAX_PHOTOS = 3; // store photos to draw a carousel's slides from
+const SLIDE_PARALLEL = 3;
 const MAX_CAPTION = 2200;
 
 const badRequest = (message, status = 400) => Object.assign(new Error(message), { status });
 const errText = (e) => (e instanceof Error ? e.message : String(e)).slice(0, 500);
-export const withUrl = (row) => (row ? { ...row, image_url: row.image_file ? media.publicImageUrl(row.image_file) : null } : row);
+const allFiles = (row) => [row.image_file, ...(row.extra_image_files || [])].filter(Boolean);
+export const imageUrlsOf = (row) => allFiles(row).map(media.publicImageUrl);
+export const withUrl = (row) => {
+  if (!row) return row;
+  const [imageUrl = null, ...extraUrls] = imageUrlsOf(row);
+  return { ...row, image_url: imageUrl, extra_urls: extraUrls };
+};
 
 async function findProduct(siteUrl, productId) {
   const product = (await storefront.getProducts(siteUrl)).find((p) => p.id === String(productId));
@@ -28,31 +39,72 @@ async function findProduct(siteUrl, productId) {
   return product;
 }
 
-// The generate → inspect loop for one row. Counts once against the plan's Instagram
-// post limit, however many attempts it took.
+function bannerCopy(product, row) {
+  const was = Number(product.compareAtPrice);
+  return productBannerCopy(product, {
+    price: storefront.formatPrice(product.price, row.currency),
+    discount: was > Number(product.price) ? `${Math.round((1 - product.price / was) * 100)}% OFF` : null,
+    storeName: row.site_name,
+  });
+}
+
+// The slides after the cover: the same product in other scenes, from other store
+// photos where there are any. One that fails its check is left out.
+async function renderExtraSlides({ images, row, product, photos, cover, coverStyle }) {
+  const count = row.images_per_post - 1;
+  if (count < 1) return { files: [], skipped: 0 };
+  const styles = extraSlideStyles(coverStyle.key);
+  const coverRef = { data: cover.toString('base64'), mimeType: 'image/jpeg' };
+  const results = await media.mapLimit(Array.from({ length: count }), SLIDE_PARALLEL, async (_, i) => {
+    const photo = photos[(i + 1) % photos.length];
+    const { jpeg, verdict } = await media.generateUntilPassed(images, {
+      prompt: buildProductImagePrompt(product, {
+        storeName: row.site_name, style: styles[i % styles.length], slide: { index: i + 2, total: count + 1 },
+      }),
+      gatePrompt: buildProductVisionPrompt(product),
+      references: [photo, coverRef],
+      compareTo: [photo],
+      format: 'square',
+      attempts: config.instagram.maxRegenAttempts,
+    });
+    if (!verdict.pass) throw new Error('failed the quality check');
+    return media.saveImage(jpeg);
+  });
+  const files = results.filter((r) => typeof r === 'string');
+  return { files, skipped: count - files.length };
+}
+
+// The generate → inspect loop for one row: the cover, then any extra slides. Counts
+// once against the plan's Instagram post limit, however many images it took.
 async function render(workspaceId, row, product) {
   const images = await media.imageBackend(workspaceId);
-  const references = await media.loadReferenceImages(product.images.slice(0, MAX_REFERENCES), { maxSize: 1024 });
-  if (!references.length) throw new Error(`Couldn't download the photo of "${product.title}".`);
+  const photos = await media.loadReferenceImages(product.images.slice(0, MAX_PHOTOS), { maxSize: 1024 });
+  if (!photos.length) throw new Error(`Couldn't download the photo of "${product.title}".`);
 
+  const style = resolveProductStyle(row.style);
+  const copy = style.banner ? bannerCopy(product, row) : null;
   const { jpeg, verdict, attempts } = await media.generateUntilPassed(images, {
-    prompt: buildProductImagePrompt(product, { storeName: row.site_name, style: resolveProductStyle(row.style), notes: row.notes }),
-    gatePrompt: buildProductVisionPrompt(product),
-    references,
+    prompt: buildProductImagePrompt(product, { storeName: row.site_name, style, notes: row.notes, copy }),
+    gatePrompt: copy
+      ? buildBannerVisionPrompt({ texts: bannerCopyLines(copy), brief: row.notes, productTitle: product.title })
+      : buildProductVisionPrompt(product, { notes: row.notes }),
+    references: photos.slice(0, MAX_REFERENCES),
     format: 'square',
     attempts: config.instagram.maxRegenAttempts,
   });
 
+  const extras = verdict.pass ? await renderExtraSlides({ images, row, product, photos, cover: jpeg, coverStyle: style }) : { files: [], skipped: 0 };
   const file = await media.saveImage(jpeg); // the last attempt is kept either way, so a failure can be reviewed
-  await media.deleteImage(row.image_file);
+  await Promise.all(allFiles(row).map(media.deleteImage));
   await incrementIgUsage(workspaceId);
   return repo.update(row.id, {
     image_file: file,
+    extra_image_files: extras.files,
     status: verdict.pass ? 'ready' : 'qa_failed',
     qa_score: verdict.score,
     qa_reasons: verdict.reasons,
     attempts,
-    error: null,
+    error: extras.skipped ? `${extras.skipped} extra image(s) failed the quality check and were left out.` : null,
   });
 }
 
@@ -74,7 +126,7 @@ async function fill(workspaceId, row, product, captionContext) {
   }
 }
 
-export async function createProductImage(workspaceId, userId, { siteUrl, productId, accountId, style, notes }) {
+export async function createProductImage(workspaceId, userId, { siteUrl, productId, accountId, style, notes, imagesPerPost }) {
   await assertCanGenerateIgPost(workspaceId);
   const store = await storefront.getStoreInfo(siteUrl);
   const product = await findProduct(store.url, productId);
@@ -82,17 +134,17 @@ export async function createProductImage(workspaceId, userId, { siteUrl, product
     accountId,
     siteUrl: store.url, siteName: store.name, currency: store.currency,
     productId: product.id, productTitle: product.title, productUrl: product.url, sourceImage: product.images[0],
-    style, notes,
+    style, notes, imagesPerPost,
   });
   return fill(workspaceId, row, product, { site_url: store.url, site_name: store.name, currency: store.currency });
 }
 
 // A fresh attempt at an existing image. Keeps the caption, which may have been edited.
-export async function regenerateProductImage(workspaceId, id, { style, notes } = {}) {
+export async function regenerateProductImage(workspaceId, id, { style, notes, imagesPerPost } = {}) {
   await assertCanGenerateIgPost(workspaceId);
   const claimed = await repo.claim(workspaceId, id, ['ready', 'qa_failed', 'failed'], 'generating');
   if (!claimed) throw badRequest('This image is busy or already posted.');
-  const row = await repo.update(claimed.id, { style, notes });
+  const row = await repo.update(claimed.id, { style, notes, images_per_post: imagesPerPost });
   let product;
   try {
     product = await findProduct(row.site_url, row.product_id);
@@ -117,9 +169,7 @@ export async function publishProductImage(workspaceId, id, input = {}) {
   const row = await repo.claim(workspaceId, id, ['ready'], 'publishing');
   if (!row) throw badRequest('Only images that passed the quality check can be posted.');
   try {
-    const { mediaId, permalink } = await publishPost(
-      await igRepo.getAccountWithToken(account.id), [media.publicImageUrl(row.image_file)], caption
-    );
+    const { mediaId, permalink } = await publishPost(await igRepo.getAccountWithToken(account.id), imageUrlsOf(row), caption);
     return await repo.update(row.id, {
       status: 'published', account_id: account.id, caption, ig_media_id: mediaId, permalink, published_at: new Date(), error: null,
     });
@@ -131,15 +181,15 @@ export async function publishProductImage(workspaceId, id, input = {}) {
 
 // ─── Daily jobs (instagram_automations with image_mode = 'ai') ──────────────
 
-// Makes today's image for a leased job. Throws if it can't be used, so the job
-// can fall back to the store's own photos rather than miss the day.
+// Makes today's post for a leased job. Throws if it can't be used: nothing goes
+// out unoptimized, and the job tries again in an hour with the next product.
 export async function renderForAutomation(automation, product, caption) {
   await assertCanGenerateIgPost(automation.workspace_id);
   const row = await repo.create(automation.workspace_id, automation.created_by, {
     accountId: automation.account_id, automationId: automation.id,
     siteUrl: automation.site_url, siteName: automation.site_name, currency: automation.currency,
     productId: product.id, productTitle: product.title, productUrl: product.url, sourceImage: product.images[0],
-    style: automation.image_style, notes: automation.image_notes, caption,
+    style: automation.image_style, notes: automation.image_notes, caption, imagesPerPost: automation.images_per_post,
   });
   let done;
   try {

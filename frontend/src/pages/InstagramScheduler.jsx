@@ -4,6 +4,8 @@ import {
   AlarmClock, Plus, Play, Pause, Trash2, RefreshCw, Loader2, ChevronDown, ChevronRight, Eye, Send, Save, Copy, X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { ScheduleWindow, ImagesPerPost } from '../components/ScheduleFields';
+import { toDateTimeInput, toDateInput, fromDateTimeInput, endOfDay, scheduleText } from '../lib/dates';
 import {
   getInstagramAccounts, getInstagramAutomations, createInstagramAutomation, updateInstagramAutomation,
   deleteInstagramAutomation, previewInstagramPost, postInstagramNow, getInstagramPosts, getProductImageStatus,
@@ -14,7 +16,7 @@ const errMsg = (err, fallback) => err.response?.data?.error || fallback;
 const fmt = (d) => (d ? new Date(d).toLocaleString() : '—');
 const muted = { fontSize: 12, color: 'var(--text-muted)' };
 const danger = { fontSize: 12, color: 'var(--accent-danger)' };
-const siteLabel = (j) => j.site_name || j.site_url.replace(/^https?:\/\//, '');
+const siteLabel = (j) => j.name || j.site_name || j.site_url.replace(/^https?:\/\//, '');
 
 // "today 2:00 PM" / "tomorrow 10:00 AM" / "10/3/2026 9:00 AM"
 export function fmtNext(d) {
@@ -37,15 +39,32 @@ function timezoneOptions(current) {
 
 export const emptyJob = (accounts) => ({
   siteUrl: '', accountId: accounts[0]?.id || '', postTime: '10:00', timezone: browserTimezone(),
-  captionInstructions: '', hashtags: '', imageMode: 'photo', imageStyle: '', imageNotes: '',
+  captionInstructions: '', hashtags: '', imageStyle: 'banner', imageNotes: '', name: '', imagesPerPost: 1, startsAt: '', endsAt: '',
 });
 
-// `aiOnly` hides the image choice, for the AI Product Posts page.
-export function JobFields({ value, onChange, accounts, styles = [], aiOnly = false }) {
+export const jobForm = (j) => ({
+  accountId: j.account_id, postTime: j.post_time, timezone: j.timezone, name: j.name || '',
+  captionInstructions: j.caption_instructions || '', hashtags: j.hashtags || '',
+  imageStyle: j.image_style || 'banner', imageNotes: j.image_notes || '', imagesPerPost: j.images_per_post || 1,
+  startsAt: toDateTimeInput(j.starts_at), endsAt: toDateInput(j.ends_at),
+});
+
+// The shape the API takes.
+export const jobPayload = (form) => ({
+  ...form,
+  imagesPerPost: Number(form.imagesPerPost) || 1,
+  startsAt: fromDateTimeInput(form.startsAt),
+  endsAt: endOfDay(form.endsAt),
+});
+
+export function JobFields({ value, onChange, accounts, styles = [] }) {
   const set = (key) => (e) => onChange({ ...value, [key]: e.target.value });
-  const isAi = aiOnly || value.imageMode === 'ai';
   return (
     <>
+      <div className="form-group">
+        <label className="form-label">Campaign name (optional)</label>
+        <input className="form-input" value={value.name} onChange={set('name')} maxLength={120} placeholder="e.g. Daily price banners" />
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
         <div className="form-group">
           <label className="form-label">Instagram account</label>
@@ -65,32 +84,22 @@ export function JobFields({ value, onChange, accounts, styles = [], aiOnly = fal
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
-        {!aiOnly && (
-          <div className="form-group">
-            <label className="form-label">Post image</label>
-            <select className="form-select" value={value.imageMode} onChange={set('imageMode')}>
-              <option value="photo">The store's product photos</option>
-              <option value="ai">New ChatGPT image of the product</option>
-            </select>
-          </div>
-        )}
-        {isAi && (
-          <div className="form-group">
-            <label className="form-label">Image style</label>
-            <select className="form-select" value={value.imageStyle || ''} onChange={set('imageStyle')}>
-              <option value="">A different style each day</option>
-              {styles.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-            </select>
-          </div>
-        )}
-      </div>
-      {isAi && (
         <div className="form-group">
-          <label className="form-label">Direction for the image (optional)</label>
-          <input className="form-input" value={value.imageNotes || ''} onChange={set('imageNotes')} maxLength={500}
-            placeholder="e.g. warm Indian home setting, soft morning light" />
+          <label className="form-label">Image style</label>
+          <select className="form-select" value={value.imageStyle || 'banner'} onChange={set('imageStyle')}>
+            {styles.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+            <option value="auto">A different style each day</option>
+          </select>
+          <div className="form-helper">Promo banner shows the product with its name and price.</div>
         </div>
-      )}
+        <ImagesPerPost value={value.imagesPerPost} onChange={(imagesPerPost) => onChange({ ...value, imagesPerPost })} />
+        <ScheduleWindow startsAt={value.startsAt} endsAt={value.endsAt} onChange={(change) => onChange({ ...value, ...change })} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Instructions for the image (optional)</label>
+        <input className="form-input" value={value.imageNotes || ''} onChange={set('imageNotes')} maxLength={500}
+          placeholder="e.g. With price banner, festive red and gold, mention free shipping" />
+      </div>
       <div className="form-group">
         <label className="form-label">Caption instructions for DeepSeek (optional)</label>
         <textarea className="form-textarea" rows={2} value={value.captionInstructions} onChange={set('captionInstructions')}
@@ -109,7 +118,7 @@ function PreviewCard({ preview }) {
   return (
     <div style={{ background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', padding: 12 }}>
       <div className="form-label">
-        Next post preview · {preview.format === 'carousel' ? `carousel of ${preview.imageUrls.length} images` : 'single image'}
+        Next product · store photos the images are made from
       </div>
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 12 }}>
         {preview.imageUrls.map(u => (
@@ -118,8 +127,7 @@ function PreviewCard({ preview }) {
       </div>
       <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.5, overflowWrap: 'anywhere' }}>{preview.caption}</div>
       <div className="form-helper" style={{ marginTop: 8 }}>
-        Preview only — nothing was posted. The real post gets a freshly written caption
-        {preview.imageMode === 'ai' ? ', and a new ChatGPT image made from these photos.' : '.'}
+        Preview only — nothing was posted. The real post gets a freshly written caption and new designed images made from these photos.
       </div>
     </div>
   );
@@ -173,14 +181,7 @@ export default function InstagramScheduler() {
 
   const open = (j) => {
     setExpanded(j.id);
-    setEdits(e => ({
-      ...e,
-      [j.id]: {
-        accountId: j.account_id, postTime: j.post_time, timezone: j.timezone,
-        captionInstructions: j.caption_instructions || '', hashtags: j.hashtags || '',
-        imageMode: j.image_mode || 'photo', imageStyle: j.image_style || '', imageNotes: j.image_notes || '',
-      },
-    }));
+    setEdits(e => ({ ...e, [j.id]: jobForm(j) }));
     loadPosts(j.id).catch(() => {});
   };
 
@@ -188,7 +189,7 @@ export default function InstagramScheduler() {
     e.preventDefault();
     if (!newJob.siteUrl.trim()) return toast.error('Enter the website URL');
     run('create', async () => {
-      const res = await createInstagramAutomation({ ...newJob, siteUrl: newJob.siteUrl.trim() });
+      const res = await createInstagramAutomation({ ...jobPayload(newJob), siteUrl: newJob.siteUrl.trim() });
       toast.success(res.message);
       setNewJob(j => ({ ...emptyJob(accounts), accountId: j.accountId, timezone: j.timezone }));
       setShowForm(false);
@@ -198,11 +199,7 @@ export default function InstagramScheduler() {
 
   // Pre-fills the New job form from an existing job — quickest way to add another time slot.
   const handleDuplicate = (j) => {
-    setNewJob({
-      siteUrl: j.site_url, accountId: j.account_id, postTime: j.post_time, timezone: j.timezone,
-      captionInstructions: j.caption_instructions || '', hashtags: j.hashtags || '',
-      imageMode: j.image_mode || 'photo', imageStyle: j.image_style || '', imageNotes: j.image_notes || '',
-    });
+    setNewJob({ ...jobForm(j), siteUrl: j.site_url });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     toast('Copied — pick a new time and save', { icon: '📋' });
@@ -233,7 +230,7 @@ export default function InstagramScheduler() {
   });
 
   const handleSave = (j) => run(`save:${j.id}`, async () => {
-    await updateInstagramAutomation(j.id, edits[j.id]);
+    await updateInstagramAutomation(j.id, jobPayload(edits[j.id]));
     toast.success('Saved');
     await load();
   });
@@ -256,8 +253,8 @@ export default function InstagramScheduler() {
         <div>
           <h1>🗓️ Instagram Scheduler</h1>
           <p>
-            Add as many posting jobs as you like. Each job posts the next product from a website to an Instagram
-            account every day at its time, with a caption written by DeepSeek.
+            Add as many posting jobs as you like. Each job takes the next product from a website, turns its photos into
+            designed images, and posts them to Instagram every day at its time with a caption written by DeepSeek.
           </p>
         </div>
         {accounts.length > 0 && !showForm && (
@@ -348,8 +345,9 @@ export default function InstagramScheduler() {
                               <strong>{siteLabel(j)}</strong>
                               <span style={{ color: 'var(--text-muted)' }}>→ @{j.username}</span>
                               <span className={`badge ${j.status === 'active' ? 'badge-success' : 'badge-warning'}`}>{j.status}</span>
-                              {j.image_mode === 'ai' && <span className="badge badge-purple">ChatGPT image</span>}
+                              {j.images_per_post > 1 && <span className="badge badge-purple">{j.images_per_post} images</span>}
                             </div>
+                            <div style={muted}>{scheduleText(j)}</div>
                             <div style={muted}>
                               {j.timezone} · {j.published_count} posted
                               {j.status === 'active' && j.next_run_at ? ` · next: ${fmtNext(j.next_run_at)}` : ''}
@@ -411,7 +409,7 @@ export default function InstagramScheduler() {
                                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
                                           <span className={`badge ${POST_BADGE[p.status]}`}>{p.status}</span>
                                           {p.trigger === 'manual' && <span style={{ ...muted, marginLeft: 6 }}>manual</span>}
-                                          {p.image_source === 'ai' && <span style={{ ...muted, marginLeft: 6 }}>ChatGPT image</span>}
+                                          {p.image_source === 'photo' && <span style={{ ...muted, marginLeft: 6 }}>store photo</span>}
                                         </td>
                                         <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
                                           {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer">View post</a>}

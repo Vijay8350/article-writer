@@ -74,15 +74,31 @@ export async function imageBackend(workspaceId) {
       return finish(await engine.generate(prompt, references, size, aspect));
     },
     inspect: (prompt, jpegs) => engine.inspect(prompt, jpegs),
-    score: (jpeg, intended, dna) => engine.inspect(buildVisionPrompt(intended, dna), [jpeg]),
+    score: (jpeg, intended, dna, brief) => engine.inspect(buildVisionPrompt(intended, dna, brief), [jpeg]),
     check: () => engine.check(),
   };
 }
 
+// Runs `fn(item, index)` over items with a concurrency limit. Results keep their
+// order; a failed item comes back as { error }.
+export async function mapLimit(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i).catch((error) => ({ error }));
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 // Generate → inspect, up to `attempts` times, telling the model what was wrong with
 // the last try. Returns the final attempt either way; the caller decides what a fail means.
-export async function generateUntilPassed(images, { prompt, gatePrompt, references = [], format, attempts = 1 }) {
-  const originals = references.map((r) => Buffer.from(r.data, 'base64'));
+// `compareTo` is what the gate sees beside the result (by default the references).
+export async function generateUntilPassed(images, { prompt, gatePrompt, references = [], compareTo = references, format, attempts = 1 }) {
+  const originals = compareTo.map((r) => Buffer.from(r.data, 'base64'));
   let jpeg = null;
   let verdict = null;
   let tried = 0;

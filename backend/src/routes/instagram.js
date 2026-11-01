@@ -7,7 +7,8 @@ import { deleteImage } from '../services/igMedia.js';
 import * as storefront from '../services/storefront.js';
 import { identifyAccount, checkAccountStatus } from '../services/instagram.js';
 import { previewAutomation, runAutomation } from '../services/instagramAutopost.js';
-import { PRODUCT_IMAGE_STYLES } from '../lib/igPrompts.js';
+import { isProductStyle } from '../lib/igPrompts.js';
+import { parseWindow, clampImages } from '../lib/campaignSchedule.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
@@ -21,11 +22,19 @@ function isValidTimezone(tz) {
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// Daily jobs: 'photo' posts the store's photos, 'ai' draws a new image from them.
-const IMAGE_MODES = ['photo', 'ai'];
-const validImageFields = ({ imageMode, imageStyle }) =>
-  (imageMode === undefined || IMAGE_MODES.includes(imageMode))
-  && (!imageStyle || PRODUCT_IMAGE_STYLES.some((s) => s.key === imageStyle));
+// The optional campaign fields of a job. Only what was sent is touched, so pausing a
+// job leaves its dates alone. Throws a 400 on bad input.
+function jobExtras(body) {
+  const { name, imageStyle, imageNotes, imagesPerPost } = body;
+  if (imageStyle && !isProductStyle(imageStyle)) throw Object.assign(new Error('Unknown image style'), { status: 400 });
+  return {
+    imageStyle,
+    imageNotes: imageNotes?.trim(),
+    name: name?.trim().slice(0, 120),
+    imagesPerPost: imagesPerPost === undefined ? undefined : clampImages(imagesPerPost),
+    ...('startsAt' in body || 'endsAt' in body ? parseWindow(body) : {}),
+  };
+}
 
 // The workspace's account for :id, or null (a malformed id is simply "not found").
 const findAccount = (req) =>
@@ -93,12 +102,9 @@ router.get('/automations', async (req, res, next) => {
 
 router.post('/automations', manage, async (req, res, next) => {
   try {
-    const {
-      siteUrl, accountId, postTime = '10:00', timezone = 'Asia/Kolkata', captionInstructions, hashtags,
-      imageMode = 'photo', imageStyle, imageNotes,
-    } = req.body || {};
+    const { siteUrl, accountId, postTime = '10:00', timezone = 'Asia/Kolkata', captionInstructions, hashtags } = req.body || {};
     if (!siteUrl) return bad(res, 'Website URL is required');
-    if (!validImageFields({ imageMode, imageStyle })) return bad(res, 'Unknown image option');
+    const extras = jobExtras(req.body);
     if (!accountId || !(await repo.getAccountMeta(req.workspace.id, accountId))) return bad(res, 'Pick a connected Instagram account');
     if (!TIME_RE.test(postTime)) return bad(res, 'Post time must be HH:MM (24-hour)');
     if (!isValidTimezone(timezone)) return bad(res, 'Invalid time zone');
@@ -109,29 +115,34 @@ router.post('/automations', manage, async (req, res, next) => {
 
     const row = await repo.createAutomation(req.workspace.id, req.user.id, {
       accountId, siteUrl: store.url, siteName: store.name, currency: store.currency,
-      postTime, timezone, captionInstructions: captionInstructions?.trim(), hashtags: hashtags?.trim(),
-      imageMode, imageStyle, imageNotes: imageNotes?.trim(),
+      postTime, timezone, captionInstructions: captionInstructions?.trim(), hashtags: hashtags?.trim(), ...extras,
     });
     res.status(201).json({ success: true, message: `Daily posts scheduled for ${store.name || store.url}`, data: row });
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (error.status) return bad(res, error.message, error.status);
+    next(error);
+  }
 });
 
 router.patch('/automations/:id', manage, async (req, res, next) => {
   try {
-    const { accountId, postTime, timezone, captionInstructions, hashtags, status, imageMode, imageStyle, imageNotes } = req.body || {};
+    const { accountId, postTime, timezone, captionInstructions, hashtags, status } = req.body || {};
     if (status !== undefined && !['active', 'paused'].includes(status)) return bad(res, 'status must be active or paused');
-    if (!validImageFields({ imageMode, imageStyle })) return bad(res, 'Unknown image option');
+    const extras = jobExtras(req.body || {});
     if (postTime !== undefined && !TIME_RE.test(postTime)) return bad(res, 'Post time must be HH:MM (24-hour)');
     if (timezone !== undefined && !isValidTimezone(timezone)) return bad(res, 'Invalid time zone');
     if (accountId !== undefined && !(await repo.getAccountMeta(req.workspace.id, accountId))) return bad(res, 'Pick a connected Instagram account');
 
     const row = await repo.updateAutomation(req.workspace.id, req.params.id, {
-      accountId, postTime, timezone, status, imageMode, imageStyle,
-      captionInstructions: captionInstructions?.trim(), hashtags: hashtags?.trim(), imageNotes: imageNotes?.trim(),
+      accountId, postTime, timezone, status, ...extras,
+      captionInstructions: captionInstructions?.trim(), hashtags: hashtags?.trim(),
     });
     if (!row) return bad(res, 'Automation not found', 404);
     res.json({ success: true, message: 'Saved', data: row });
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (error.status) return bad(res, error.message, error.status);
+    next(error);
+  }
 });
 
 router.delete('/automations/:id', manage, async (req, res, next) => {

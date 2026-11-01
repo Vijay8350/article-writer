@@ -177,7 +177,7 @@ export async function releaseStalePosts() {
 export async function deletePost(workspaceId, id) {
   const { rows } = await query(
     `DELETE FROM ig_generated_posts WHERE id = $1 AND workspace_id = $2 AND status NOT IN ('generating', 'publishing')
-     RETURNING image_file`,
+     RETURNING image_file, extra_image_files`,
     [id, workspaceId]
   );
   return rows[0] || null;
@@ -185,10 +185,11 @@ export async function deletePost(workspaceId, id) {
 
 export async function imageFilesForAccount(workspaceId, accountId) {
   const { rows } = await query(
-    'SELECT image_file FROM ig_generated_posts WHERE workspace_id = $1 AND account_id = $2 AND image_file IS NOT NULL',
+    `SELECT image_file, extra_image_files FROM ig_generated_posts
+      WHERE workspace_id = $1 AND account_id = $2 AND image_file IS NOT NULL`,
     [workspaceId, accountId]
   );
-  return rows.map((r) => r.image_file);
+  return rows.flatMap((r) => [r.image_file, ...r.extra_image_files]);
 }
 
 export async function publishedLast24h(accountId) {
@@ -216,10 +217,11 @@ export async function listCampaigns(workspaceId) {
 export async function createCampaign(workspaceId, createdBy, c) {
   const { rows } = await query(
     `INSERT INTO ig_campaigns
-       (workspace_id, account_id, name, topic, goal, tone, per_day, days, prompt, reference_images, posts_target, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+       (workspace_id, account_id, name, topic, goal, tone, per_day, days, prompt, reference_images, posts_target,
+        created_by, instructions, images_per_post, starts_at, ends_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
     [workspaceId, c.accountId, c.name, c.topic || null, c.goal, c.tone, c.perDay, c.days, c.prompt, c.referenceImages,
-      c.perDay * c.days, createdBy || null]
+      c.perDay * c.days, createdBy || null, c.instructions || null, c.imagesPerPost || 1, c.startsAt || null, c.endsAt || null]
   );
   return rows[0];
 }
@@ -229,21 +231,22 @@ export async function getCampaign(workspaceId, id) {
   return rows[0] || null;
 }
 
-// Saves an edited campaign. Its target follows the new schedule: reaching it ends the
-// campaign, and a finished one that gets extended comes back paused, so autopilot
-// posts nothing until someone resumes it.
+// Saves an edited campaign. A posts_target of 0 means no end date. Reaching the target
+// or end date finishes it, and a finished one that gets extended comes back paused, so
+// autopilot posts nothing until someone resumes it.
 export async function updateCampaign(workspaceId, id, c) {
   const { rows } = await query(
     `UPDATE ig_campaigns
         SET account_id = $3, name = $4, topic = $5, goal = $6, tone = $7, per_day = $8, days = $9,
-            prompt = $10, reference_images = $11, posts_target = $12::int,
-            status = CASE WHEN $12::int <= posts_done THEN 'done'
+            prompt = $10, reference_images = $11, posts_target = $12::int, instructions = $13,
+            images_per_post = $14, starts_at = $15::timestamptz, ends_at = $16::timestamptz,
+            status = CASE WHEN ($12::int > 0 AND $12::int <= posts_done) OR $16::timestamptz <= now() THEN 'done'
                           WHEN status = 'done' THEN 'paused'
                           ELSE status END
       WHERE id = $1 AND workspace_id = $2
       RETURNING *`,
     [id, workspaceId, c.accountId, c.name, c.topic || null, c.goal, c.tone, c.perDay, c.days, c.prompt,
-      c.referenceImages, c.perDay * c.days]
+      c.referenceImages, c.perDay * c.days, c.instructions || null, c.imagesPerPost || 1, c.startsAt || null, c.endsAt || null]
   );
   return rows[0] || null;
 }
@@ -262,16 +265,26 @@ export async function deleteCampaign(workspaceId, id) {
 export async function bumpCampaign(id) {
   await query(
     `UPDATE ig_campaigns SET posts_done = posts_done + 1,
-            status = CASE WHEN posts_done + 1 >= posts_target THEN 'done' ELSE status END
+            status = CASE WHEN posts_target > 0 AND posts_done + 1 >= posts_target THEN 'done' ELSE status END
       WHERE id = $1`,
     [id]
   );
 }
 
-// The campaign that feeds an account's autopilot slots: its oldest active, unfinished one.
+// Campaigns past their end date are finished.
+export async function finishExpiredCampaigns() {
+  await query(`UPDATE ig_campaigns SET status = 'done' WHERE status = 'active' AND ends_at IS NOT NULL AND ends_at <= now()`);
+}
+
+// The campaign that feeds an account's autopilot slots: its oldest active, unfinished
+// one inside its start and end dates.
 export async function activeCampaignFor(accountId) {
   const { rows } = await query(
-    `SELECT * FROM ig_campaigns WHERE account_id = $1 AND status = 'active' AND posts_done < posts_target
+    `SELECT * FROM ig_campaigns
+      WHERE account_id = $1 AND status = 'active'
+        AND (posts_target = 0 OR posts_done < posts_target)
+        AND (starts_at IS NULL OR starts_at <= now())
+        AND (ends_at IS NULL OR ends_at > now())
       ORDER BY created_at LIMIT 1`,
     [accountId]
   );

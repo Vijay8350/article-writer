@@ -14,6 +14,7 @@ import { setCommentHidden, deleteComment } from '../services/instagram.js';
 import { resolveAi } from '../services/ai.js';
 import * as deepseek from '../services/deepseek.js';
 import { isConfigured as facebookLoginConfigured, redirectUri } from '../services/facebookLogin.js';
+import { parseWindow, clampImages } from '../lib/campaignSchedule.js';
 
 // Instagram Studio API (/api/ig). Everyone in the workspace can view and draft
 // posts; publishing, schedules, settings and comment actions need owner/admin.
@@ -50,7 +51,12 @@ async function account(req, res) {
   return meta;
 }
 
-const withImageUrl = (p) => ({ ...p, image_url: p.image_file ? `/api/media/ig/${p.image_file}` : null });
+const mediaUrl = (file) => `/api/media/ig/${file}`;
+const withImageUrl = (p) => ({
+  ...p,
+  image_url: p.image_file ? mediaUrl(p.image_file) : null,
+  extra_urls: (p.extra_image_files || []).map(mediaUrl),
+});
 
 // ─── Readiness (AI keys, models, publishing URL, Facebook Login) ─────────────
 
@@ -244,7 +250,7 @@ router.delete('/posts/:id', manage, async (req, res, next) => {
   try {
     const row = UUID_RE.test(req.params.id) ? await repo.deletePost(req.workspace.id, req.params.id) : null;
     if (!row) return bad(res, 'Post not found or busy', 404);
-    await media.deleteImage(row.image_file);
+    await Promise.all([row.image_file, ...(row.extra_image_files || [])].map(media.deleteImage));
     ok(res, null, 'Post deleted');
   } catch (err) { next(err); }
 });
@@ -460,18 +466,25 @@ router.get('/campaigns', async (req, res, next) => {
 
 // Shared by create and edit. Posts are generated from `prompt`, so it's rebuilt
 // every time: an edit that left it alone would change nothing.
-function campaignFields(b, acc) {
+// `since` is when the run began: an end date sets how many posts it aims for, and
+// without one the campaign has no target and runs until it's paused.
+function campaignFields(b, acc, since = new Date()) {
   const perDay = Math.min(Math.max(parseInt(b.perDay) || 1, 1), 5);
-  const days = Math.min(Math.max(parseInt(b.days) || 7, 1), 90);
+  const { startsAt, endsAt } = parseWindow(b);
+  const from = new Date(startsAt || since);
+  const days = endsAt ? Math.max(1, Math.ceil((new Date(endsAt) - from) / 864e5)) : 0;
+  const imagesPerPost = clampImages(b.imagesPerPost);
+  const instructions = text(b.instructions, 2000);
   const referenceImages = (Array.isArray(b.referenceImages) ? b.referenceImages : String(b.referenceImages || '').split('\n'))
     .map((s) => String(s).trim()).filter((s) => /^https?:\/\//i.test(s)).slice(0, 3);
   const name = text(b.name, 120) || 'Untitled campaign';
   const fields = {
     accountId: acc.id, name, topic: text(b.topic, 300), goal: text(b.goal, 100) || 'Engagement & saves',
-    tone: text(b.tone, 100) || 'Calm & wise', perDay, days, referenceImages,
+    tone: text(b.tone, 100) || 'Calm & wise', perDay, days, referenceImages, startsAt, endsAt, imagesPerPost, instructions,
   };
   fields.prompt = buildCampaignPrompt({
-    name, handle: acc.username || 'account', topic: fields.topic, goal: fields.goal, tone: fields.tone, perDay, days, hasRefs: referenceImages.length > 0,
+    name, handle: acc.username || 'account', topic: fields.topic, goal: fields.goal, tone: fields.tone, perDay, days,
+    hasRefs: referenceImages.length > 0, instructions, imagesPerPost,
   });
   return fields;
 }
@@ -482,7 +495,7 @@ router.post('/campaigns', manage, async (req, res, next) => {
     const acc = UUID_RE.test(b.accountId || '') ? await igRepo.getAccountMeta(req.workspace.id, b.accountId) : null;
     if (!acc) return bad(res, 'Pick a connected Instagram account.');
     ok(res, await repo.createCampaign(req.workspace.id, req.user.id, campaignFields(b, acc)), 'Campaign created');
-  } catch (err) { next(err); }
+  } catch (err) { if (err.status) fail(res, err); else next(err); }
 });
 
 // Edits a campaign. Posts already made stay as they are; new ones follow the new settings.
@@ -499,12 +512,12 @@ router.put('/campaigns/:id', manage, async (req, res, next) => {
     const acc = UUID_RE.test(accountId) ? await igRepo.getAccountMeta(req.workspace.id, accountId) : null;
     if (!acc) return bad(res, 'Pick a connected Instagram account.');
 
-    const saved = await repo.updateCampaign(req.workspace.id, current.id, campaignFields(b, acc));
-    const message = saved.status === 'done' ? 'Saved. The new total is already reached, so this campaign is done.'
+    const saved = await repo.updateCampaign(req.workspace.id, current.id, campaignFields(b, acc, current.created_at));
+    const message = saved.status === 'done' ? 'Saved. This campaign has already reached its end, so it is done.'
       : current.status === 'done' ? 'Saved. The campaign is paused: resume it to continue.'
         : 'Campaign saved';
     ok(res, saved, message);
-  } catch (err) { next(err); }
+  } catch (err) { if (err.status) fail(res, err); else next(err); }
 });
 
 router.patch('/campaigns/:id', manage, async (req, res, next) => {

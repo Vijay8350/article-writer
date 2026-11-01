@@ -76,7 +76,8 @@ function buildFAQPageLd(faqs) {
 }
 
 // ─── Core generation ────────────────────────────────────────────────────────
-export async function generateArticleForWorkspace(workspaceId, { topic, wordCount, aiModel, primaryKeyword, secondaryKeywords, imageMode }, actor) {
+// `brief` comes from a campaign: { instructions, imageCount }.
+export async function generateArticleForWorkspace(workspaceId, { topic, wordCount, aiModel, primaryKeyword, secondaryKeywords, imageMode, brief }, actor) {
   await usage.assertCanGenerate(workspaceId);
 
   const { dna } = await loadWorkspaceContext(workspaceId);
@@ -86,7 +87,7 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
     throw e;
   }
 
-  const imagePlan = await planArticleImages(workspaceId, imageMode);
+  const imagePlan = await planArticleImages(workspaceId, imageMode, { imageCount: brief?.imageCount });
 
   // Featured image first (the hero), then inline images excluding that product.
   // With ChatGPT images on, the store photo hero is only the fallback.
@@ -94,7 +95,7 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
   const inlineImages = selectRelevantImages(topic, dna.products || [], {
     max: productImageLimit(imagePlan.mode),
     excludeHandles: productHero ? [productHero.productHandle] : [],
-    relevantOnly: imagePlan.slots > 0,
+    relevantOnly: Boolean(imagePlan.backend),
   });
 
   const businessContext = {
@@ -110,6 +111,7 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
     inlineImages,
     selectedImages: inlineImages, // back-compat with older prompt code paths
     aiImageSlots: imagePlan.slots,
+    campaignInstructions: brief?.instructions,
     primaryKeyword: primaryKeyword || topic,
     secondaryKeywords: Array.isArray(secondaryKeywords) ? secondaryKeywords : [],
     brandSummary: dna.brand?.summary,
@@ -123,7 +125,7 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
   await usage.incrementUsage(workspaceId);
   if (actor) activity.log(actor, 'generate', article.title, workspaceId);
 
-  const aiImages = imagePlan.backend ? await addAiImages({ plan: imagePlan, article, topic, dna }) : null;
+  const aiImages = imagePlan.backend ? await addAiImages({ plan: imagePlan, article, topic, dna, brief }) : null;
   if (aiImages) article.bodyHtml = aiImages.bodyHtml;
   const featuredImage = aiImages?.hero || productHero;
 

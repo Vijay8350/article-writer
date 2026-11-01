@@ -2,6 +2,7 @@ import * as campaigns from '../repositories/campaigns.js';
 import { getKeywordIdeas, isDuplicate } from './keywordIdeas.js';
 import { resolveAi } from './ai.js';
 import { loadWorkspaceContext, generateArticleForWorkspace, publishArticleForWorkspace } from './articleService.js';
+import { nextOccurrence } from '../lib/campaignSchedule.js';
 
 function relevantProductTitles(dna, collectionTitle) {
   const products = dna.products || [];
@@ -16,13 +17,6 @@ function relevantProductTitles(dna, collectionTitle) {
   return (matched.length ? matched : products.map((p) => p.title)).slice(0, 25);
 }
 
-function nextPeriod(cadence) {
-  if (cadence === 'manual') return null;
-  const d = new Date();
-  if (cadence === 'daily') return new Date(d.getTime() + 24 * 60 * 60 * 1000).toISOString();
-  if (cadence === 'monthly') { d.setMonth(d.getMonth() + 1); return d.toISOString(); }
-  return null;
-}
 
 export async function runOneArticleForCampaign(campaign) {
   const workspaceId = campaign.workspace_id;
@@ -63,6 +57,7 @@ export async function runOneArticleForCampaign(campaign) {
       topic: fresh.title,
       wordCount: campaign.word_count,
       aiModel: campaign.ai_model,
+      brief: { instructions: campaign.instructions, imageCount: campaign.images_per_post },
     }, actor);
 
     const publishLive = campaign.publish_mode === 'live';
@@ -92,7 +87,8 @@ export async function runDueCampaignArticle() {
   let runRemaining = campaign.run_remaining > 0 ? campaign.run_remaining : campaign.articles_per_run;
   const result = await runOneArticleForCampaign(campaign);
   runRemaining = result.stopRun ? 0 : runRemaining - 1;
-  const nextRunAt = runRemaining > 0 ? campaign.next_run_at : nextPeriod(campaign.cadence);
+  // Counted from the start time when there is one, so runs keep their time of day.
+  const nextRunAt = runRemaining > 0 ? campaign.next_run_at : nextOccurrence(campaign.cadence, campaign.starts_at || campaign.next_run_at);
   await campaigns.updateRunState(campaign.id, { runRemaining, nextRunAt });
   return true;
 }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Sparkles, Loader2, ImageIcon, Send, RefreshCw, Trash2, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getStudioPrompts, getStudioPosts, generateStudioPost, generateStudioImage, publishStudioPost, deleteStudioPost } from '../../lib/api';
-import { errMsg, fmt, muted, danger, LoadingCard } from './shared';
+import { errMsg, fmt, muted, danger, LoadingCard, ExtraImages } from './shared';
 
 const STATUS = {
   draft: ['badge-info', 'Text only'],
@@ -26,6 +26,7 @@ function PostCard({ post: p, busy, canManage, onImage, onPublish, onDelete }) {
           {p.status === 'generating' ? <><Loader2 size={22} className="spinning" /> Making the image and checking it…</> : <><ImageIcon size={22} /> No image yet</>}
         </div>
       )}
+      {p.extra_urls?.length > 0 && <ExtraImages urls={p.extra_urls} />}
       <div className="ig-post-body">
         <div className="flex justify-between gap-8" style={{ alignItems: 'flex-start' }}>
           <strong style={{ fontSize: 15, lineHeight: 1.3 }}>{p.headline}</strong>

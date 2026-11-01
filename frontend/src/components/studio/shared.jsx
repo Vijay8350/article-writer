@@ -7,6 +7,17 @@ export const fmt = (d) => (d ? new Date(d).toLocaleString() : '—');
 export const muted = { fontSize: 12, color: 'var(--text-muted)' };
 export const danger = { fontSize: 12, color: 'var(--accent-danger)' };
 
+// The rest of a multi-image post, under its cover.
+export function ExtraImages({ urls }) {
+  return (
+    <div className="ig-post-extras">
+      {urls.map((url) => (
+        <a key={url} href={url} target="_blank" rel="noreferrer"><img src={url} alt="" loading="lazy" /></a>
+      ))}
+    </div>
+  );
+}
+
 // Arrays ⇄ one-item-per-line textareas.
 export const toLines = (arr) => (arr || []).join('\n');
 export const fromLines = (s) => String(s || '').split('\n').map((x) => x.trim()).filter(Boolean);

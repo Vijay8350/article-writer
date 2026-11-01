@@ -13,13 +13,27 @@ export function aiImageInstructions(slots) {
 Also make the FIRST item of imagePrompts a SCENE for the article's main hero image, following the same rules.`;
 }
 
-export function buildArticleImagePrompt({ scene, storeName, niche, withProduct = false }) {
+export function buildArticleImagePrompt({ scene, storeName, niche, withProduct = false, instructions }) {
   return [
     `Create a landscape editorial photograph for a blog post${storeName ? ` by ${storeName}` : ''}${niche ? `, an online store in the ${niche} niche` : ''}.`,
     `Scene: ${scene}`,
     withProduct ? 'The attached photo shows a real product from the store. Feature that exact product naturally in the scene, keeping its shape, colours and details unchanged.' : '',
+    instructions ? `Campaign instructions (follow these first): ${instructions}` : '',
     'Style: photorealistic, natural light, shallow depth of field, magazine quality, believable people and objects.',
     'Do NOT include any text, letters, numbers, captions, logos, watermarks or brand names anywhere in the image.',
+  ].filter(Boolean).join('\n');
+}
+
+// A campaign article's hero: a designed banner with the headline on it.
+export function buildArticleBannerPrompt({ headline, scene, storeName, niche, withProduct = false, instructions }) {
+  return [
+    `Design an attractive landscape marketing banner for a blog article${storeName ? ` by ${storeName}` : ''}${niche ? `, an online store in the ${niche} niche` : ''}.`,
+    'Make it look like a professional campaign banner from a premium brand: one clear focal image, a clean area for the headline, a bold hierarchy, a limited colour palette and generous margins.',
+    `Visual: ${scene}`,
+    withProduct ? 'The attached photo shows a real product from the store. Feature that exact product, keeping its shape, colours and details unchanged.' : '',
+    instructions ? `Campaign instructions (follow these first): ${instructions}` : '',
+    `Render this headline once, large and high-contrast, spelled EXACTLY as written: "${headline}"`,
+    'Add no other words, no fake logos and no watermarks unless the instructions ask for them.',
   ].filter(Boolean).join('\n');
 }
 
