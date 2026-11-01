@@ -54,28 +54,35 @@ nano /home/ubuntu/Article_Writer/.env
 Paste your env vars (same shape as local), then save (`Ctrl+O`, `Enter`, `Ctrl+X`):
 
 ```env
-SHOPIFY_STORE_URL=...
-SHOPIFY_ACCESS_TOKEN=...
+# Amazon RDS — TLS verified against the AWS CA bundle (present at /etc/ssl/certs/rds-global-bundle.pem)
+DATABASE_URL=postgresql://article_writer:<password>@my-app-postgres.ctiwq4cm6blm.ap-south-1.rds.amazonaws.com:5432/article_writer?sslmode=verify-full&sslrootcert=/etc/ssl/certs/rds-global-bundle.pem
+JWT_SECRET=<64 random hex>
+ENCRYPTION_KEY=<64 random hex — never change once set>
 DEEPSEEK_API_KEY=...
 DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 GEMINI_API_KEY=...
 PORT=5001
 NODE_ENV=production
-FRONTEND_URL=http://YOUR_EC2_PUBLIC_IP
+FRONTEND_URL=https://app.jsyxi.com
 
 # Instagram Studio
-PUBLIC_BASE_URL=https://your-domain.com   # Instagram downloads generated images from here (must be public https)
+PUBLIC_BASE_URL=https://app.jsyxi.com       # Instagram downloads generated images from here (must be public https)
 FACEBOOK_APP_ID=...                       # "Connect with Facebook" + Meta data-deletion callback
 FACEBOOK_APP_SECRET=...
 # Optional: GEMINI_IMAGE_MODEL (default gemini-3.1-flash-lite-image), GEMINI_VISION_MODEL,
 # MAX_REGEN_ATTEMPTS (default 3), FACEBOOK_SCOPES (comma-separated override)
 ```
 
-> **Important:** set `FRONTEND_URL` to `http://YOUR_EC2_PUBLIC_IP` so CORS works.
+> **Production (since Nov 2026):** `https://app.jsyxi.com` on EC2 `3.110.185.60` (ap-south-1, 908 MB RAM,
+> SSH as `ubuntu` with the git-ignored `article-writer-deploy.pem`), database `article_writer` on Amazon RDS.
+> The box is too small to build the frontend: build it on a PC (`VITE_APP_URL=https://app.jsyxi.com npm run build`)
+> and upload `frontend/dist`. Keep a copy of the server `.env` — it holds `ENCRYPTION_KEY`.
+>
+> **Important:** set `FRONTEND_URL` (and `PUBLIC_BASE_URL`) to the public https URL so CORS and image fetching work.
 
 > **Instagram Studio / Meta app settings:** in the Meta app (Facebook Login → Settings) add
-> `https://your-domain.com/api/meta/oauth/callback` as a Valid OAuth Redirect URI, and set the
-> Data Deletion Callback URL to `https://your-domain.com/api/meta/data-deletion`. Generated images
+> `https://app.jsyxi.com/api/meta/oauth/callback` as a Valid OAuth Redirect URI, and set the
+> Data Deletion Callback URL to `https://app.jsyxi.com/api/meta/data-deletion`. Generated images
 > live in `backend/media/ig/` (gitignored, survives deploys) and are served at `/api/media/ig/…`.
 
 ### 5. First-time install + build + start
