@@ -131,18 +131,13 @@ export async function createArticle(creds, blogId, articleData) {
   return data.article;
 }
 
+// Only what's passed changes, so an update never unpublishes, publishes or blanks anything by accident.
 export async function updateArticle(creds, blogId, articleId, articleData) {
   ensure(creds);
-  const payload = {
-    article: {
-      id: articleId,
-      title: articleData.title,
-      body_html: articleData.bodyHtml,
-      tags: articleData.tags || '',
-      published: articleData.published !== false,
-      summary_html: articleData.summary || '',
-    },
-  };
+  const payload = { article: { id: articleId, title: articleData.title, body_html: articleData.bodyHtml } };
+  if (articleData.tags) payload.article.tags = articleData.tags;
+  if (articleData.summary) payload.article.summary_html = articleData.summary;
+  if (articleData.published !== undefined) payload.article.published = articleData.published;
 
   if (articleData.image) {
     payload.article.image = articleData.image;
@@ -193,6 +188,16 @@ export async function updateArticle(creds, blogId, articleId, articleData) {
   }
 
   return data.article;
+}
+
+// The meta title and description of an article, which live in metafields.
+export async function getArticleSeo(creds, articleId) {
+  ensure(creds);
+  const { data } = await axios.get(`${baseUrl(creds)}/articles/${articleId}/metafields.json`, {
+    params: { namespace: 'global' }, headers: headers(creds), timeout: 15000,
+  });
+  const value = (key) => data.metafields?.find((m) => m.key === key)?.value || '';
+  return { seoTitle: value('title_tag'), seoDescription: value('description_tag') };
 }
 
 export async function deleteArticle(creds, blogId, articleId) {

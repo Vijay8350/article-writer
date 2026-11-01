@@ -1,3 +1,5 @@
+import { extractFaqs, stripTags, TAKEAWAYS_RE } from './articleStructure.js';
+
 export function countWords(html) {
   if (!html) return 0;
   const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -136,4 +138,101 @@ export function calculateSeoScore(article) {
   else push('Tags', 'fail', 0, 'Add 5-8 tags');
 
   return { score: Math.min(total, max), maxScore: max, checks };
+}
+
+// ─── AEO: how easily AI assistants and answer boxes can quote the article ───
+
+const QUESTION_RE = /\?\s*$|^(how|what|why|which|when|where|who|can|do|does|is|are|should|will)\b/i;
+const VAGUE_START_RE = /^(it|this|that|these|those|they)\b/i;
+const NOT_AN_ANSWER_RE = /key takeaways?|quick answer|at a glance|tl;?dr|faq|frequently asked|q\s*&\s*a|conclusion|final thoughts|wrapping up/i;
+const CLAIM_RE = /\b\d{1,3}(?:\.\d+)?\s?%|\b(?:studies show|study found|research shows|according to|surveys? (?:show|found)|experts say)\b/gi;
+const QUOTABLE_WORDS = [25, 75]; // an answer short enough to lift, long enough to stand alone
+const MAX_INTRO_WORDS = 80;
+const MAX_FAQ_ANSWER_WORDS = 90;
+const MIN_FAQS = 3;
+
+function splitSections(html) {
+  const heads = [...html.matchAll(/<h2[^>]*>([\s\S]*?)<\/h2>/gi)];
+  return {
+    intro: heads.length ? html.slice(0, heads[0].index) : html,
+    sections: heads.map((m, i) => ({
+      title: stripTags(m[1]),
+      body: html.slice(m.index + m[0].length, heads[i + 1]?.index ?? html.length),
+    })),
+  };
+}
+
+const firstParagraph = (html) => stripTags(/<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(html)?.[1] || '');
+
+function averageSentenceLength(text) {
+  const sentences = text.split(/[.!?]+\s/).filter((s) => s.trim().length > 1);
+  return sentences.length ? text.split(' ').length / sentences.length : 0;
+}
+
+export function calculateAeoScore(article) {
+  const checks = [];
+  let total = 0;
+  const push = (name, status, score, tip) => { checks.push({ name, status, score, tip }); total += score; };
+
+  const body = String(article.bodyHtml || article.body_html || '').replace(/<nav class="article-toc">[\s\S]*?<\/nav>/gi, '');
+  const { intro, sections } = splitSections(body);
+
+  // ─── Direct answer up front (15) ──────────────────────────
+  const introWords = countWords(firstParagraph(intro));
+  const keyword = String(article.primaryKeyword || '').toLowerCase().trim();
+  const hasKeyword = !keyword || firstParagraph(intro).toLowerCase().includes(keyword);
+  if (introWords > 0 && introWords <= MAX_INTRO_WORDS && hasKeyword) push('Direct answer first', 'pass', 15, `Opens with a ${introWords}-word answer`);
+  else if (introWords > 0) push('Direct answer first', 'warn', 8, hasKeyword ? `${introWords} words: answer the topic in under ${MAX_INTRO_WORDS}` : 'Name the topic in the opening paragraph');
+  else push('Direct answer first', 'fail', 0, 'Open with a short paragraph that answers the topic');
+
+  // ─── Key takeaways (10) ───────────────────────────────────
+  const takeaways = sections.find((s) => TAKEAWAYS_RE.test(s.title));
+  if (takeaways && /<(ul|ol)\b/i.test(takeaways.body)) push('Key takeaways', 'pass', 10, 'Summary list found');
+  else push('Key takeaways', 'fail', 0, 'Add a Key Takeaways list near the top');
+
+  // ─── Question headings (15) ───────────────────────────────
+  const content = sections.filter((s) => !NOT_AN_ANSWER_RE.test(s.title));
+  const questions = content.filter((s) => QUESTION_RE.test(s.title)).length;
+  const share = content.length ? questions / content.length : 0;
+  if (share >= 0.5) push('Question headings', 'pass', 15, `${questions} of ${content.length} headings are questions`);
+  else if (share >= 0.25) push('Question headings', 'warn', 8, `${questions} of ${content.length}: phrase more headings as questions`);
+  else push('Question headings', 'fail', 0, 'Phrase headings as the questions shoppers ask');
+
+  // ─── A quotable answer under each heading (20) ────────────
+  const answered = content.filter((s) => {
+    const text = firstParagraph(s.body);
+    const words = countWords(text);
+    return words >= QUOTABLE_WORDS[0] && words <= QUOTABLE_WORDS[1] && !VAGUE_START_RE.test(text);
+  }).length;
+  const answeredShare = content.length ? answered / content.length : 0;
+  if (answeredShare >= 0.75) push('Quotable answers', 'pass', 20, `${answered} of ${content.length} sections open with a self-contained answer`);
+  else if (answeredShare >= 0.4) push('Quotable answers', 'warn', 10, `${answered} of ${content.length}: open each section with a ${QUOTABLE_WORDS[0]}-${QUOTABLE_WORDS[1]} word answer`);
+  else push('Quotable answers', 'fail', 0, `Open each section with a ${QUOTABLE_WORDS[0]}-${QUOTABLE_WORDS[1]} word answer that makes sense on its own`);
+
+  // ─── FAQ, published as schema (15) ────────────────────────
+  const faqs = extractFaqs(body);
+  const shortAnswers = faqs.filter((f) => countWords(f.answer) <= MAX_FAQ_ANSWER_WORDS).length;
+  if (faqs.length >= MIN_FAQS && shortAnswers === faqs.length) push('FAQ schema', 'pass', 15, `${faqs.length} questions, published as FAQ schema`);
+  else if (faqs.length >= MIN_FAQS) push('FAQ schema', 'warn', 10, `${faqs.length - shortAnswers} answers are too long to quote: keep them under ${MAX_FAQ_ANSWER_WORDS} words`);
+  else if (faqs.length) push('FAQ schema', 'warn', 5, `Only ${faqs.length}: add at least ${MIN_FAQS} questions`);
+  else push('FAQ schema', 'fail', 0, 'Add a Frequently Asked Questions section with H3 questions');
+
+  // ─── Structured content (10) ──────────────────────────────
+  if (/<(table|ol)\b/i.test(body)) push('Steps or tables', 'pass', 10, 'Numbered steps or a table found');
+  else if (/<ul\b/i.test(body)) push('Steps or tables', 'warn', 5, 'Add numbered steps or a comparison table');
+  else push('Steps or tables', 'fail', 0, 'Add a list, numbered steps or a table');
+
+  // ─── Plain language (10) ──────────────────────────────────
+  const plain = stripTags(body);
+  const avg = averageSentenceLength(plain);
+  if (avg && avg <= 22) push('Plain language', 'pass', 10, `${Math.round(avg)} words per sentence`);
+  else if (avg <= 28) push('Plain language', 'warn', 5, `${Math.round(avg)} words per sentence: aim for under 22`);
+  else push('Plain language', 'fail', 0, `${Math.round(avg)} words per sentence: too long to quote`);
+
+  // ─── Claims a person should check (5) ─────────────────────
+  const claims = plain.match(CLAIM_RE) || [];
+  if (!claims.length) push('Claims to verify', 'pass', 5, 'No statistics or cited sources to check');
+  else push('Claims to verify', 'warn', 0, `Check ${claims.length} statistic or source claim(s) are true before publishing`);
+
+  return { score: Math.min(total, 100), maxScore: 100, checks };
 }

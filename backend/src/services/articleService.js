@@ -7,7 +7,11 @@ import * as stores from '../repositories/stores.js';
 import * as dnaRepo from '../repositories/dna.js';
 import * as usage from './usage.js';
 import * as activity from '../repositories/activity.js';
-import { calculateSeoScore, countWords } from '../lib/seo.js';
+import { calculateSeoScore, calculateAeoScore, countWords } from '../lib/seo.js';
+import { structureBody, tidySeoFields, extractFaqs, withFaqSchema, stripFaqSchema } from '../lib/articleStructure.js';
+
+const DEFAULT_ENHANCE_INSTRUCTIONS = 'Optimize this article for search engines and AI answer engines: question-led headings, a direct answer under each one, key takeaways and a strong FAQ. Add internal links and keep it human.';
+const MIN_KEPT_LENGTH = 0.7; // an edit that loses more than this much of the article is rejected
 
 export async function loadWorkspaceContext(workspaceId) {
   const [creds, dna] = await Promise.all([
@@ -15,64 +19,6 @@ export async function loadWorkspaceContext(workspaceId) {
     dnaRepo.getDna(workspaceId),
   ]);
   return { creds, dna };
-}
-
-// ─── FAQ extraction + JSON-LD ───────────────────────────────────────────────
-function extractFAQ(html) {
-  if (!html) return [];
-  const headings = [];
-  const hRe = /<h2[^>]*>([\s\S]*?)<\/h2>/gi;
-  let m;
-  while ((m = hRe.exec(html)) !== null) {
-    headings.push({ index: m.index, end: m.index + m[0].length, text: m[1].replace(/<[^>]+>/g, '').trim() });
-  }
-  const faqIdx = headings.findIndex((h) => /faq|frequently asked|q\s*&\s*a/i.test(h.text));
-  if (faqIdx < 0) return [];
-  const start = headings[faqIdx].end;
-  const end = headings[faqIdx + 1]?.index ?? html.length;
-  const section = html.slice(start, end);
-
-  const items = [];
-  const qRe = /<h3[^>]*>([\s\S]*?)<\/h3>([\s\S]*?)(?=<h3|$)/gi;
-  let q;
-  while ((q = qRe.exec(section)) !== null) {
-    const question = q[1].replace(/<[^>]+>/g, '').trim();
-    const answer = q[2].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    if (question && answer) items.push({ question, answer });
-  }
-  return items;
-}
-
-function buildBlogPostingLd({ title, summary, featuredImage, storeName, storeDomain, datePublished, author }) {
-  const ld = {
-    '@context': 'https://schema.org',
-    '@type': 'BlogPosting',
-    headline: title,
-    description: summary || undefined,
-    datePublished,
-    dateModified: datePublished,
-    author: { '@type': 'Person', name: author || (storeName ? `${storeName} Editorial` : 'Editorial') },
-    publisher: {
-      '@type': 'Organization',
-      name: storeName || 'Article Writer',
-      ...(storeDomain ? { logo: { '@type': 'ImageObject', url: `https://${storeDomain}/favicon.ico` } } : {}),
-    },
-  };
-  if (featuredImage?.src) ld.image = featuredImage.src;
-  return ld;
-}
-
-function buildFAQPageLd(faqs) {
-  if (!faqs.length) return null;
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: faqs.map((f) => ({
-      '@type': 'Question',
-      name: f.question,
-      acceptedAnswer: { '@type': 'Answer', text: f.answer },
-    })),
-  };
 }
 
 // ─── Core generation ────────────────────────────────────────────────────────
@@ -129,38 +75,30 @@ export async function generateArticleForWorkspace(workspaceId, { topic, wordCoun
   if (aiImages) article.bodyHtml = aiImages.bodyHtml;
   const featuredImage = aiImages?.hero || productHero;
 
-  // Build authoritative JSON-LD server-side from the response + featured image.
-  const datePublished = new Date().toISOString();
-  const faqs = extractFAQ(article.bodyHtml || '');
-  const jsonLd = [
-    buildBlogPostingLd({
-      title: article.title,
-      summary: article.summary,
-      featuredImage,
-      storeName: dna.shop.name,
-      storeDomain: dna.shop.domain,
-      datePublished,
-    }),
-    buildFAQPageLd(faqs),
-  ].filter(Boolean);
-
-  const seoScore = calculateSeoScore({ ...article, featuredImage });
+  // Everything a model can't be trusted to do exactly happens here, before scoring.
+  const keyword = primaryKeyword || article.primaryKeyword || topic;
+  const finished = {
+    ...article,
+    primaryKeyword: keyword,
+    bodyHtml: structureBody(article.bodyHtml),
+    ...tidySeoFields(article, { primaryKeyword: keyword }),
+    featuredImage,
+  };
   const warnings = [
     imagePlan.warning,
     ...(aiImages?.warnings || []),
     !featuredImage && 'No image for the featured/hero slot — article will publish without a main image.',
   ].filter(Boolean);
   return {
-    ...article,
-    featuredImage,
+    ...finished,
     insertedImages: inlineImages,
     aiImages: aiImages?.images || [],
     imageMode: imagePlan.mode,
-    jsonLd,
-    faqExtracted: faqs.length,
-    seoScore,
+    faqExtracted: extractFaqs(finished.bodyHtml).length,
+    seoScore: calculateSeoScore(finished),
+    aeoScore: calculateAeoScore(finished),
     aiModel: ai.provider,
-    wordCount: countWords(article.bodyHtml),
+    wordCount: countWords(finished.bodyHtml),
     publishWarning: warnings.join(' ') || undefined,
   };
 }
@@ -173,15 +111,48 @@ export async function enhanceArticleForWorkspace(workspaceId, { article, instruc
     collections: dna.collections,
   } : {};
 
+  const originalBody = stripFaqSchema(article.bodyHtml || article.body_html);
   const ai = await resolveAi(workspaceId, 'enhance', aiModel);
   const enhanced = await ai.service.enhanceArticle(
-    article,
-    instructions || 'Improve SEO, add internal links, make more engaging',
+    { ...article, bodyHtml: originalBody },
+    instructions || DEFAULT_ENHANCE_INSTRUCTIONS,
     ctx,
     ai.apiKey,
     ai.model
   );
-  return { ...enhanced, seoScore: calculateSeoScore(enhanced), wordCount: countWords(enhanced.bodyHtml) };
+
+  const bodyHtml = structureBody(stripImagePlaceholders(enhanced.bodyHtml));
+  if (countWords(bodyHtml) < countWords(originalBody) * MIN_KEPT_LENGTH) {
+    throw Object.assign(new Error('The AI shortened this article too much, so the result was discarded. Please try again.'), { status: 502 });
+  }
+  const before = (html) => (String(html).match(/<img\b/gi) || []).length;
+  const lostImages = before(originalBody) - before(bodyHtml);
+
+  const finished = {
+    ...enhanced,
+    ...tidySeoFields(enhanced, { keepHandle: true }),
+    handle: article.handle, // a published article's URL never changes
+    bodyHtml,
+    primaryKeyword: article.primaryKeyword,
+    featuredImage: article.image || article.featuredImage,
+  };
+  return {
+    ...finished,
+    seoScore: calculateSeoScore(finished),
+    aeoScore: calculateAeoScore(finished),
+    wordCount: countWords(bodyHtml),
+    warning: lostImages > 0 ? `The AI removed ${lostImages} image(s) from this article. Check it before updating.` : undefined,
+  };
+}
+
+// Saves changes to an article already on Shopify, in place: same URL, same status.
+export async function updateArticleForWorkspace(workspaceId, blogId, articleId, article) {
+  const creds = await stores.getDefaultStore(workspaceId);
+  if (!creds) throw Object.assign(new Error('No Shopify store connected.'), { status: 400 });
+  return shopifyService.updateArticle(creds, blogId, articleId, {
+    ...article,
+    bodyHtml: withFaqSchema(stripImagePlaceholders(article.bodyHtml)),
+  });
 }
 
 export async function generateAndPublishForWorkspace(workspaceId, { topic, wordCount, aiModel, blogId, primaryKeyword, secondaryKeywords, imageMode }, actor) {
@@ -220,11 +191,11 @@ export async function publishArticleForWorkspace(workspaceId, blogId, article, a
 
   const created = await shopifyService.createArticle(creds, blogId, {
     title: article.title,
-    bodyHtml: stripImagePlaceholders(article.bodyHtml),
+    bodyHtml: withFaqSchema(stripImagePlaceholders(article.bodyHtml)),
     tags: article.tags,
     summary: article.summary,
     handle: article.handle,
-    author: article.author,
+    author: article.author || (creds.shopName ? `${creds.shopName} Team` : undefined),
     published: article.published !== false,
     seoTitle: article.seoTitle,
     seoDescription: article.seoDescription,

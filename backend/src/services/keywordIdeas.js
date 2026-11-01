@@ -30,6 +30,7 @@ Suggest ${count} blog article ideas for the product category "${collectionTitle}
 
 Requirements:
 - Target LONG-TAIL, LOW-COMPETITION search queries (specific, intent-driven, question/how-to/comparison/buying-guide style). Avoid broad head terms.
+- Phrase each keyword the way people ask Google and AI assistants, usually as a full question, and use that keyword in the title.
 - Each idea must be genuinely useful to shoppers and naturally relate to the category's products.
 - Do NOT duplicate or closely overlap any of these existing/already-covered titles:
 ${exclude}

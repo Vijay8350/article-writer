@@ -1,6 +1,7 @@
 import axios from 'axios';
 import config from '../config/env.js';
 import { aiImageInstructions } from '../lib/articleImagePrompts.js';
+import { answerEngineRules, ENHANCE_RULES } from '../lib/articleStructure.js';
 import { escapeControlChars, unreadableArticle } from '../lib/articleJson.js';
 
 const DEEPSEEK_URL = config.deepseek.baseUrl;
@@ -67,7 +68,7 @@ You return ONLY valid JSON. Never markdown code blocks. Never explanations.`;
 }
 
 export async function enhanceArticle(article, instructions, ctx, apiKey, model) {
-  const sys = `You are an expert blog editor. Enhance articles to be more human-sounding, better SEO-optimized, and longer. Keep content AT LEAST as long as the original. Remove AI phrases. Add internal links. Return ONLY valid JSON.`;
+  const sys = `You are an expert blog editor. Enhance articles to be more human-sounding, better optimized for search engines and AI answer engines, and longer. Keep content AT LEAST as long as the original. Remove AI phrases. Add internal links. Return ONLY valid JSON.`;
 
   const prompt = `Enhance this article:
 
@@ -87,7 +88,8 @@ Requirements:
 - Remove AI phrases ("In today's world", "Let's dive in", etc.)
 - Add 3-5 product/collection links: <a href="/products/HANDLE">keyword anchor</a>
 - Add <strong> to key phrases
-- Add image placeholders if missing
+${ENHANCE_RULES}
+${answerEngineRules(ctx?.storeName)}
 - Ensure 5+ H2 headings
 
 Return ONLY JSON: {"title":"","handle":"","bodyHtml":"KEEP IT LONG","summary":"","tags":"tag1, tag2, tag3, tag4, tag5, tag6","seoTitle":"(50-60 chars)","seoDescription":"(150-160 chars)","imagePrompts":[]}`;
@@ -165,7 +167,7 @@ SECONDARY KEYWORDS: ${secondary} — sprinkle naturally.
 
 STRUCTURE REQUIRED (in this exact order, no H1 in body):
 1) INTRO: 2-3 sentences. BLUF. Primary keyword in the first 100 words.
-${wordCount >= 1200 ? `2) "In this article" TOC with anchor links to each H2 (slug ids on the H2s).
+${wordCount >= 1200 ? `2) KEY TAKEAWAYS: <h2>Key Takeaways</h2> with a <ul> of 3-5 one-sentence facts that answer the topic on their own.
 3) 4-7 <h2> sections (150-300 words each), <h3> sub-points where useful. At least one <ul>/<ol>. Where relevant, ONE comparison <table>. Bold 8-15 key phrases.
 4) Final <h2>Frequently Asked Questions</h2> with 3-5 <h3>question / <p>answer pairs.
 5) Conclusion + soft CTA mentioning ${ctx.storeName || 'the store'} (link to a product or collection).
@@ -178,9 +180,11 @@ ${featuredBlock}
 ${imageBlock}
 ${ctx.aiImageSlots ? `\n${aiImageInstructions(ctx.aiImageSlots)}\n` : ''}
 ${ctx.campaignInstructions ? `CAMPAIGN INSTRUCTIONS (follow these first): ${ctx.campaignInstructions}\n` : ''}
+${answerEngineRules(ctx.storeName)}
+
 WRITING STYLE:
 - Contractions: you'll, it's, don't, we've, that's
-- Personal opinions: "Honestly...", "Here's what most people miss...", "What I've found is..."
+- Personal opinions: "Honestly...", "Here's what most people miss..."
 - Rhetorical questions: "But does that actually work?", "Sound familiar?"
 - Mix short sentences (3-5 words) with longer detailed ones
 - Transitions: "That said,", "Look,", "The reality is,", "Here's why:"

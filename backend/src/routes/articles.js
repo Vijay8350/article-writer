@@ -2,7 +2,7 @@ import { Router } from 'express';
 import * as shopifyService from '../services/shopify.js';
 import * as articleService from '../services/articleService.js';
 import * as stores from '../repositories/stores.js';
-import { calculateSeoScore } from '../lib/seo.js';
+import { calculateSeoScore, calculateAeoScore, countWords } from '../lib/seo.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireWorkspace } from '../middleware/workspace.js';
 
@@ -60,7 +60,10 @@ router.post('/enhance', async (req, res, next) => {
     if (!article) return res.status(400).json({ success: false, error: 'Article data is required' });
     const result = await articleService.enhanceArticleForWorkspace(req.workspace.id, { article, instructions, aiModel });
     res.json({ success: true, data: result });
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ success: false, error: error.message });
+    next(error);
+  }
 });
 
 router.post('/publish', async (req, res, next) => {
@@ -77,10 +80,13 @@ router.post('/publish', async (req, res, next) => {
 
 router.put('/update/:blogId/:articleId', async (req, res, next) => {
   try {
-    const creds = await getCreds(req, res); if (!creds) return;
-    const updated = await shopifyService.updateArticle(creds, req.params.blogId, req.params.articleId, req.body?.article);
-    res.json({ success: true, data: updated, message: 'Article updated!' });
-  } catch (error) { next(error); }
+    if (!req.body?.article) return res.status(400).json({ success: false, error: 'Article data is required' });
+    const updated = await articleService.updateArticleForWorkspace(req.workspace.id, req.params.blogId, req.params.articleId, req.body.article);
+    res.json({ success: true, data: updated, message: 'Article updated on Shopify' });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ success: false, error: error.message });
+    next(error);
+  }
 });
 
 router.get('/existing/:blogId', async (req, res, next) => {
@@ -93,6 +99,8 @@ router.get('/existing/:blogId', async (req, res, next) => {
         id: a.id, title: a.title, handle: a.handle, tags: a.tags, author: a.author,
         publishedAt: a.published_at, createdAt: a.created_at, updatedAt: a.updated_at,
         summary: a.summary_html, image: a.image, bodyHtml: a.body_html,
+        wordCount: countWords(a.body_html),
+        aeo: calculateAeoScore({ bodyHtml: a.body_html }).score,
       })),
     });
   } catch (error) { next(error); }
@@ -101,7 +109,18 @@ router.get('/existing/:blogId', async (req, res, next) => {
 router.get('/existing/:blogId/:articleId', async (req, res, next) => {
   try {
     const creds = await getCreds(req, res); if (!creds) return;
-    res.json({ success: true, data: await shopifyService.getArticle(creds, req.params.blogId, req.params.articleId) });
+    const [article, seo] = await Promise.all([
+      shopifyService.getArticle(creds, req.params.blogId, req.params.articleId),
+      shopifyService.getArticleSeo(creds, req.params.articleId).catch(() => ({ seoTitle: '', seoDescription: '' })),
+    ]);
+    const scored = {
+      title: article.title, handle: article.handle, tags: article.tags, bodyHtml: article.body_html,
+      featuredImage: article.image, ...seo,
+    };
+    res.json({
+      success: true,
+      data: { ...article, ...seo, bodyHtml: article.body_html, seoScore: calculateSeoScore(scored), aeoScore: calculateAeoScore(scored) },
+    });
   } catch (error) { next(error); }
 });
 
@@ -123,7 +142,7 @@ router.get('/blogs', async (req, res, next) => {
 
 router.post('/seo-score', (req, res) => {
   if (!req.body?.article) return res.status(400).json({ success: false, error: 'Article required' });
-  res.json({ success: true, data: calculateSeoScore(req.body.article) });
+  res.json({ success: true, data: { ...calculateSeoScore(req.body.article), aeoScore: calculateAeoScore(req.body.article) } });
 });
 
 export default router;

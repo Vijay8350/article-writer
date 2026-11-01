@@ -19,7 +19,7 @@ const ATTEMPTS = 2;
 const BANNER_ATTEMPTS = 3; // exact text and layout take more tries than a plain photo
 
 const PLACEHOLDER_RE = /<div[^>]*class=["'][^"']*article-image-placeholder[^"']*["'][^>]*>[\s\S]*?<\/div>/gi;
-const NO_IMAGE_SECTION_RE = /faq|frequently asked|conclusion|final thoughts|wrapping up/i;
+const NO_IMAGE_SECTION_RE = /key takeaways?|faq|frequently asked|conclusion|final thoughts|wrapping up/i;
 
 const escapeAttr = (s) => String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const stripTags = (html) => String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();

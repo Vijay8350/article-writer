@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function SeoScoreCard({ seoScore }) {
+export default function SeoScoreCard({ seoScore, title = '📊 SEO Score' }) {
   if (!seoScore) return null;
 
   const { score, maxScore, checks } = seoScore;
@@ -9,7 +9,7 @@ export default function SeoScoreCard({ seoScore }) {
 
   return (
     <div className="card mb-24">
-      <div className="card-header"><h3>📊 SEO Score</h3></div>
+      <div className="card-header"><h3>{title}</h3></div>
       <div className="card-body">
         <div className="seo-gauge" style={{ border: `3px solid ${color}`, boxShadow: `0 0 20px ${color}33` }}>
           <div className="seo-gauge-value" style={{ color }}>{score}</div>

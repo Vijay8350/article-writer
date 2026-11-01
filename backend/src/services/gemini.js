@@ -1,6 +1,7 @@
 import axios from 'axios';
 import config from '../config/env.js';
 import { aiImageInstructions } from '../lib/articleImagePrompts.js';
+import { answerEngineRules, ENHANCE_RULES } from '../lib/articleStructure.js';
 import { escapeControlChars, unreadableArticle } from '../lib/articleJson.js';
 
 function geminiUrl(apiKey) {
@@ -164,7 +165,7 @@ HUMAN TONE (CRITICAL — readers must NOT detect AI):
 - Vary sentence lengths dramatically: some 4-word sentences. Then a longer, more complex sentence that weaves in details and nuance. Then something short again.
 - Use transitional phrases real writers use: "That said,", "Look,", "The reality is,", "Here's why this matters:", "On the flip side,"
 - NEVER use these AI phrases: "In today's fast-paced world", "In this comprehensive guide", "Let's dive in", "Without further ado", "In the realm of", "It's important to note", "Whether you're a beginner or expert", "In conclusion", "To sum up", "Unlock the power", "Navigate the world of", "Embark on a journey", "Elevate your", "Supercharge your", "Game-changer", "Revolutionize", "Cutting-edge"
-- Write as if you've personally used or experienced what you're discussing
+- Write with the confidence of the store's experts, but never claim personal tests or invent experiences
 - Include 1-2 slightly opinionated takes that a real expert would have
 
 KEYWORDS (target these):
@@ -173,7 +174,7 @@ KEYWORDS (target these):
 
 ARTICLE STRUCTURE (CRITICAL — follow this order exactly, no H1 in body):
 1. INTRO: 2-3 sentences. State the value up front (BLUF). Include the primary keyword naturally in the FIRST 100 words.
-${wordCount >= 1200 ? `2. TOC: a short "In this article" block with anchor links to each H2 section (use slug-style #anchor ids), e.g. <p><strong>In this article:</strong> <a href="#section-one">Title</a> · <a href="#section-two">Title</a> ...</p>. Add matching id="..." attributes on the H2s.
+${wordCount >= 1200 ? `2. KEY TAKEAWAYS: <h2>Key Takeaways</h2> with a <ul> of 3-5 one-sentence facts that answer the topic on their own.
 ` : ''}${wordCount >= 1200 ? '3' : '2'}. 4-7 <h2> sections (150-300 words each), with <h3> sub-points where useful. At least one <ul>/<ol> list. Where genuinely useful (comparison/options/specs), include ONE <table> with <thead><tbody>. Bold 8-15 key phrases with <strong>.
 ${wordCount >= 1200 ? '4' : '3'}. FAQ section: a final <h2>Frequently Asked Questions</h2> with 3-5 <h3> question/answer pairs. Each Q is an <h3>; the answer follows as 1-2 <p> tags. (We extract these for FAQPage schema — match the structure exactly.)
 ${wordCount >= 1200 ? '5' : '4'}. CONCLUSION + CTA: a short closing paragraph that includes the primary keyword and a soft CTA linking to a relevant product or collection.
@@ -207,6 +208,8 @@ ${inlineSection}`
 <div class="article-image-placeholder" data-prompt="DETAILED_IMAGE_DESCRIPTION"><p>[Image: SHORT_CAPTION]</p></div>`}
 ${ctx.aiImageSlots ? `\n${aiImageInstructions(ctx.aiImageSlots)}\n` : ''}
 ${ctx.campaignInstructions ? `CAMPAIGN INSTRUCTIONS (follow these first): ${ctx.campaignInstructions}\n` : ''}
+${answerEngineRules(ctx.storeName)}
+
 
 === OUTPUT FORMAT ===
 Return ONLY valid JSON (no markdown fences, no preamble):
@@ -241,7 +244,8 @@ ${instructions}
 - Remove any AI-sounding phrases like "In today's world", "Let's dive in", "Without further ado"
 - Improve SEO: add internal links to products/collections, optimize headings with keywords
 - Add <strong> tags around key phrases for scannability
-- Add image placeholders if missing: <div class="article-image-placeholder" data-prompt="DESC"><p>[Image: CAPTION]</p></div>
+${ENHANCE_RULES}
+${answerEngineRules(ctx?.storeName)}
 - Ensure 5-8 H2 headings and at least 2-3 H3 sub-headings
 - Fix any grammar or readability issues
 - Add bullet/numbered lists where helpful

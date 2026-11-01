@@ -86,6 +86,8 @@ export const publishArticle = (blogId, article) =>
   api.post('/articles/publish', { blogId, article }).then(r => r.data);
 export const updateArticle = (blogId, articleId, article) =>
   api.put(`/articles/update/${blogId}/${articleId}`, { article }).then(r => r.data);
+export const getExistingArticle = (blogId, articleId) =>
+  api.get(`/articles/existing/${blogId}/${articleId}`).then(r => r.data);
 export const getExistingArticles = (blogId) =>
   api.get(`/articles/existing/${blogId}`).then(r => r.data);
 export const getExistingArticle = (blogId, articleId) =>

@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Trash2, Sparkles, Eye, Loader2, RefreshCw } from 'lucide-react';
-import { getBusinessDna, getExistingArticles, deleteArticle, enhanceArticle, getSettings } from '../lib/api';
+import {
+  getBusinessDna, getExistingArticles, getExistingArticle, deleteArticle, enhanceArticle, updateArticle, getSettings,
+} from '../lib/api';
 import toast from 'react-hot-toast';
 import SeoScoreCard from '../components/SeoScoreCard';
+
+const scoreColor = (score) => (score >= 80 ? 'var(--accent-success)' : score >= 50 ? 'var(--accent-warning)' : 'var(--accent-danger)');
 
 export default function ExistingArticles() {
   const [dna, setDna] = useState(null);
@@ -14,6 +18,7 @@ export default function ExistingArticles() {
   const [enhanceInstructions, setEnhanceInstructions] = useState('');
   const [enhancedResult, setEnhancedResult] = useState(null);
   const [aiModel, setAiModel] = useState('gemini');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     getBusinessDna().then(res => {
@@ -58,21 +63,48 @@ export default function ExistingArticles() {
     }
   };
 
+  // The list has the text; the scores and meta fields come from the article itself.
+  const handleSelect = async (a) => {
+    setSelectedArticle(a);
+    setEnhancedResult(null);
+    try {
+      const res = await getExistingArticle(selectedBlog, a.id);
+      setSelectedArticle(current => (current?.id === a.id ? { ...current, ...res.data, id: a.id } : current));
+    } catch { /* the article still shows without its scores */ }
+  };
+
   const handleEnhance = async () => {
     if (!selectedArticle) return;
     setEnhancing(true);
     try {
       const res = await enhanceArticle({
         article: selectedArticle,
-        instructions: enhanceInstructions || 'Improve SEO, add internal links, make more engaging and human-like',
+        instructions: enhanceInstructions || undefined,
         aiModel,
       });
       setEnhancedResult(res.data);
-      toast.success('Article enhanced!');
+      if (res.data.warning) toast(res.data.warning, { icon: '⚠️', duration: 8000 });
+      else toast.success('Optimized version ready. Review it, then update the article.');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Enhancement failed');
+      toast.error(err.response?.data?.error || 'Optimization failed');
     }
     setEnhancing(false);
+  };
+
+  // Updates the original in place: same URL, same published or draft status.
+  const handleUpdate = async () => {
+    if (!window.confirm(`Replace "${selectedArticle.title}" on Shopify with this version? ${selectedArticle.publishedAt ? 'It is live, so the change is public straight away.' : 'It stays a draft.'}`)) return;
+    setSaving(true);
+    try {
+      const { title, bodyHtml, tags, summary, seoTitle, seoDescription } = enhancedResult;
+      const res = await updateArticle(selectedBlog, selectedArticle.id, { title, bodyHtml, tags, summary, seoTitle, seoDescription });
+      toast.success(res.message || 'Article updated');
+      await fetchArticles();
+      await handleSelect({ ...selectedArticle, title, bodyHtml, tags });
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Update failed');
+    }
+    setSaving(false);
   };
 
   return (
@@ -80,7 +112,7 @@ export default function ExistingArticles() {
       <div className="page-header flex items-center justify-between">
         <div>
           <h1>📄 Existing Articles</h1>
-          <p>View, enhance, and manage your Shopify blog articles</p>
+          <p>See how each article scores for SEO and AI answers, and optimize it in place. URLs never change.</p>
         </div>
         <div className="flex gap-8">
           {dna?.blogs?.length > 0 && (
@@ -117,14 +149,15 @@ export default function ExistingArticles() {
               ) : (
                 <div className="table-container">
                   <table className="data-table">
-                    <thead><tr><th>Title</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+                    <thead><tr><th>Title</th><th title="How easily AI assistants can quote this article">AEO</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
                     <tbody>
                       {articles.map(a => (
                         <tr key={a.id} style={{ cursor: 'pointer', background: selectedArticle?.id === a.id ? 'rgba(139,92,246,0.06)' : undefined }}
-                          onClick={() => { setSelectedArticle(a); setEnhancedResult(null); }}>
+                          onClick={() => handleSelect(a)}>
                           <td style={{ fontWeight: 500, color: 'var(--text-primary)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {a.title}
                           </td>
+                          <td style={{ fontWeight: 700, color: scoreColor(a.aeo) }}>{a.aeo}</td>
                           <td>
                             <span className={`badge ${a.publishedAt ? 'badge-success' : 'badge-warning'}`}>
                               {a.publishedAt ? 'Published' : 'Draft'}
@@ -167,14 +200,18 @@ export default function ExistingArticles() {
                 </div>
               </div>
 
-              {/* Enhance */}
+              <SeoScoreCard seoScore={selectedArticle.seoScore} />
+              <SeoScoreCard seoScore={selectedArticle.aeoScore} title="🤖 AEO Score (AI answers)" />
+
+              {/* Optimize */}
               <div className="card">
-                <div className="card-header"><h3>🔮 Enhance with AI</h3></div>
+                <div className="card-header"><h3>🔮 Optimize for SEO + AEO</h3></div>
                 <div className="card-body">
                   <div className="form-group">
-                    <label className="form-label">Enhancement Instructions</label>
+                    <label className="form-label">Extra instructions (optional)</label>
                     <textarea className="form-textarea" rows={3} value={enhanceInstructions} onChange={e => setEnhanceInstructions(e.target.value)}
-                      placeholder="e.g., 'Add more product links, improve SEO, make the tone more conversational'" />
+                      placeholder="e.g., Mention free shipping, keep a friendly tone" />
+                    <div className="form-helper">Adds question headings, direct answers, key takeaways, an FAQ and internal links. Nothing changes on Shopify until you approve it.</div>
                   </div>
                   <div className="form-group">
                     <select className="form-select" value={aiModel} onChange={e => setAiModel(e.target.value)}>
@@ -183,7 +220,7 @@ export default function ExistingArticles() {
                     </select>
                   </div>
                   <button className="btn btn-primary w-full" onClick={handleEnhance} disabled={enhancing}>
-                    {enhancing ? <><Loader2 size={16} className="spinning" /> Enhancing...</> : <><Sparkles size={16} /> Enhance Article</>}
+                    {enhancing ? <><Loader2 size={16} className="spinning" /> Optimizing...</> : <><Sparkles size={16} /> Optimize Article</>}
                   </button>
                 </div>
               </div>
@@ -191,17 +228,19 @@ export default function ExistingArticles() {
               {/* Enhanced Result */}
               {enhancedResult && (
                 <div className="card slide-up">
-                  <div className="card-header"><h3>✨ Enhanced Version</h3></div>
+                  <div className="card-header"><h3>✨ Optimized Version</h3></div>
                   <div className="card-body">
                     <h4 style={{ marginBottom: 8 }}>{enhancedResult.title}</h4>
+                    <div className="form-helper mb-16">
+                      SEO {selectedArticle.seoScore?.score ?? '—'} to {enhancedResult.seoScore?.score} · AEO {selectedArticle.aeoScore?.score ?? '—'} to {enhancedResult.aeoScore?.score}
+                      {' '}· {enhancedResult.wordCount} words
+                    </div>
                     <div className="article-preview" style={{ maxHeight: 300 }}
                       dangerouslySetInnerHTML={{ __html: enhancedResult.bodyHtml }} />
                     <div className="mt-16 flex gap-8">
-                      <button className="btn btn-success btn-sm" onClick={() => {
-                        publishArticle(selectedBlog, { ...enhancedResult, published: true })
-                          .then(() => { toast.success('Published!'); fetchArticles(); })
-                          .catch(e => toast.error(e.response?.data?.error || 'Failed'));
-                      }}>Publish Enhanced</button>
+                      <button className="btn btn-success btn-sm" onClick={handleUpdate} disabled={saving}>
+                        {saving ? <Loader2 size={14} className="spinning" /> : null} Update Article on Shopify
+                      </button>
                       <button className="btn btn-secondary btn-sm" onClick={() => {
                         navigator.clipboard.writeText(enhancedResult.bodyHtml);
                         toast.success('HTML copied!');
@@ -217,7 +256,7 @@ export default function ExistingArticles() {
       {enhancing && (
         <div className="loading-overlay">
           <div className="spinner spinner-lg" />
-          <div className="loading-text">Enhancing article with AI...</div>
+          <div className="loading-text">Optimizing the article for SEO and AI answers...</div>
         </div>
       )}
       <style>{`.spinning { animation: spin 1s linear infinite; }`}</style>

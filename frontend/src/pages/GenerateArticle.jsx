@@ -379,6 +379,7 @@ export default function GenerateArticle() {
 
                 {/* SEO Score */}
                 <SeoScoreCard seoScore={currentArticle.seoScore} />
+                <SeoScoreCard seoScore={currentArticle.aeoScore} title="🤖 AEO Score (AI answers)" />
 
                 {/* Meta Info */}
                 <div className="card mb-24">

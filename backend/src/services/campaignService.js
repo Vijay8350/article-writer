@@ -55,6 +55,7 @@ export async function runOneArticleForCampaign(campaign) {
 
     const generated = await generateArticleForWorkspace(workspaceId, {
       topic: fresh.title,
+      primaryKeyword: fresh.keyword,
       wordCount: campaign.word_count,
       aiModel: campaign.ai_model,
       brief: { instructions: campaign.instructions, imageCount: campaign.images_per_post },
