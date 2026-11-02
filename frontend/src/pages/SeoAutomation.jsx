@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  SearchCheck, Loader2, Play, Sparkles, Power, Undo2, EyeOff, ExternalLink, Wrench, Link2, Unlink, Save,
+  SearchCheck, Loader2, Play, Sparkles, Power, Undo2, EyeOff, ExternalLink, Wrench, Link2, Unlink, Save, X, RefreshCw, RotateCcw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
-  getSeoOverview, saveSeoSettings, runSeoAudit, getSeoIssues, fixSeoIssue, ignoreSeoIssue, getSeoChanges, undoSeoChange,
-  startGoogleConnect, getGoogleSites, setGoogleSite, disconnectGoogle,
+  getSeoOverview, saveSeoSettings, runSeoAudit, getSeoIssues, suggestSeoFix, fixSeoIssue, ignoreSeoIssue, restoreSeoIssue,
+  getSeoChanges, undoSeoChange, startGoogleConnect, getGoogleSites, setGoogleSite, disconnectGoogle,
 } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { ColumnChart, BarList, Kpi, compact } from '../components/insights/Charts';
@@ -16,6 +16,9 @@ const TABS = [['overview', 'Overview'], ['issues', 'Problems'], ['changes', 'Cha
 const SEVERITY = { critical: ['badge-danger', 'Critical'], high: ['badge-warning', 'High'], medium: ['badge-info', 'Medium'], low: ['badge-purple', 'Low'] };
 const ISSUE_VIEWS = [['open', 'Open'], ['fixed', 'Fixed'], ['resolved', 'Gone'], ['ignored', 'Ignored']];
 const POLL_MS = 5000;
+// What Google shows in full, and the most the server accepts from a person.
+const LIMITS = { seoTitle: [60, 70], seoDescription: [160, 200] };
+const FIX_LABELS = { meta: 'Fix', alt: 'Add alt text', links: 'Remove dead links', article: 'Rewrite' };
 
 const errMsg = (err, fallback = 'Something went wrong') => err.response?.data?.error || fallback;
 const muted = { fontSize: 12, color: 'var(--text-muted)' };
@@ -85,70 +88,216 @@ function OverviewTab({ data }) {
   );
 }
 
+function Counter({ value, field }) {
+  const [shown, hardMax] = LIMITS[field];
+  const n = value.length;
+  const color = n > hardMax ? 'var(--accent-danger)' : n > shown ? 'var(--accent-warning)' : 'var(--text-muted)';
+  return <span style={{ fontSize: 12, color }}>{n} / {shown}{n > shown && n <= hardMax ? ' · Google may cut this off' : ''}</span>;
+}
+
+// A title or description fix: the AI's suggestion (or the reason there isn't one), which
+// the owner can change or replace before anything is saved to the store.
+function MetaEditor({ issue, onClose, onSaved }) {
+  const [info, setInfo] = useState(null);
+  const [form, setForm] = useState({ seoTitle: '', seoDescription: '' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const suggest = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await suggestSeoFix(issue.id);
+      setInfo(data);
+      setForm({
+        seoTitle: data.suggestion?.seoTitle || data.current.seoTitle || '',
+        seoDescription: data.suggestion?.seoDescription || data.current.seoDescription || '',
+      });
+    } catch (err) {
+      toast.error(errMsg(err), { duration: 8000 });
+      onClose();
+    }
+    setLoading(false);
+  }, [issue.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { suggest(); }, [suggest]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && !saving) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, saving]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      toast.success((await fixSeoIssue(issue.id, form)).message);
+      onSaved();
+    } catch (err) {
+      toast.error(errMsg(err), { duration: 8000 });
+      setSaving(false);
+    }
+  };
+
+  const tooLong = form.seoTitle.length > LIMITS.seoTitle[1] || form.seoDescription.length > LIMITS.seoDescription[1];
+  const canSave = !loading && !saving && form.seoTitle.trim() && form.seoDescription.trim() && !tooLong;
+  const field = (key, label, rows) => (
+    <div className="form-group">
+      <div className="flex justify-between" style={{ alignItems: 'baseline' }}>
+        <label className="form-label" htmlFor={key}>{label}</label>
+        <Counter value={form[key]} field={key} />
+      </div>
+      {rows ? (
+        <textarea id={key} className="form-textarea" rows={rows} value={form[key]} disabled={loading || saving} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} />
+      ) : (
+        <input id={key} className="form-input" value={form[key]} disabled={loading || saving} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} />
+      )}
+    </div>
+  );
+
+  return (
+    <div className="seo-modal" role="dialog" aria-modal="true" aria-label="Fix title and description" onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
+      <div className="seo-modal__card">
+        <button className="seo-modal__close" onClick={onClose} disabled={saving} aria-label="Close"><X size={18} /></button>
+        <h3 style={{ marginBottom: 4 }}>Google title and description</h3>
+        <a href={issue.url} target="_blank" rel="noreferrer" style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{issue.title} <ExternalLink size={11} /></a>
+        <div style={{ ...muted, margin: '4px 0 16px' }}>{issue.label}: {issue.detail}</div>
+
+        {loading ? (
+          <div className="flex gap-8" style={{ alignItems: 'center', padding: '24px 0' }}><Loader2 size={16} className="spinning" /> Writing a suggestion from the page's own details…</div>
+        ) : (
+          <>
+            {info?.note
+              ? <div className="seo-modal__note">{info.note}</div>
+              : <div style={{ ...muted, marginBottom: 12 }}>Suggested by DeepSeek from this page's details. Change anything you like before saving.</div>}
+            {field('seoTitle', 'Title in Google')}
+            {info?.storeName && !form.seoTitle.toLowerCase().includes(info.storeName.toLowerCase()) && (
+              <p className="form-helper" style={{ marginTop: -8, marginBottom: 12 }}>Most themes add “ – {info.storeName}” to a title that doesn't name the store. End it with “| {info.storeName}” to control that.</p>
+            )}
+            {field('seoDescription', 'Description in Google', 3)}
+            <div className="seo-preview" aria-label="How it may look in Google">
+              <div className="seo-preview__url">{issue.url}</div>
+              <div className="seo-preview__title">{form.seoTitle || issue.title}</div>
+              <div className="seo-preview__desc">{form.seoDescription || 'No description yet.'}</div>
+            </div>
+            <div style={{ ...muted, marginTop: 8 }}>
+              Before: {info?.current.seoTitle || 'no title set (Google uses the page name)'}{info?.current.seoDescription ? ` — ${info.current.seoDescription}` : ''}
+            </div>
+          </>
+        )}
+
+        <div className="flex gap-8 mt-16" style={{ flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" disabled={!canSave} onClick={save}>{saving ? <Loader2 size={15} className="spinning" /> : <Save size={15} />} Save to store</button>
+          <button className="btn btn-secondary" disabled={loading || saving} onClick={suggest}><RefreshCw size={15} /> Suggest again</button>
+          <button className="btn btn-ghost" disabled={saving} onClick={onClose}>Cancel</button>
+        </div>
+        <p className="form-helper" style={{ marginTop: 8 }}>Saved changes are listed under Changes made, where you can undo them.</p>
+      </div>
+    </div>
+  );
+}
+
 function IssuesTab({ canManage, refreshKey, onChanged }) {
   const [view, setView] = useState('open');
-  const [issues, setIssues] = useState(null);
+  const [type, setType] = useState('');
+  const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(null);
+  const [editing, setEditing] = useState(null);
 
   const load = useCallback(async () => {
-    try { setIssues((await getSeoIssues(view)).data); }
+    try { setResult(await getSeoIssues(view, type)); }
     catch (err) { toast.error(errMsg(err, 'Failed to load problems')); }
-  }, [view]);
-  useEffect(() => { setIssues(null); load(); }, [load, refreshKey]);
+  }, [view, type]);
+  useEffect(() => { setResult(null); load(); }, [load, refreshKey]);
 
+  const switchView = (key) => { setType(''); setView(key); };
   const act = async (id, fn) => {
     setBusy(id);
     try {
       toast.success((await fn(id)).message);
       await load();
       onChanged();
-    } catch (err) { toast.error(errMsg(err), { duration: 8000 }); }
+    } catch (err) { toast.error(errMsg(err), { duration: 10000 }); }
     setBusy(null);
   };
+  const fix = (issue) => {
+    if (issue.fixKind === 'meta') return setEditing(issue);
+    if (issue.fixKind === 'article' && !window.confirm('Rewrite this whole article with AI? It keeps the images and links, and you can undo it under Changes made. This takes a minute or two.')) return undefined;
+    return act(issue.id, (id) => fixSeoIssue(id));
+  };
+
+  const issues = result?.data;
+  const types = result?.types || [];
+  const total = types.reduce((sum, t) => sum + t.n, 0);
+  const shownTotal = type ? types.find((t) => t.type === type)?.n || 0 : total;
 
   return (
     <>
-      <div className="flex gap-8 mb-16" style={{ flexWrap: 'wrap' }}>
+      <div className="flex gap-8 mb-16" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
         {ISSUE_VIEWS.map(([key, label]) => (
-          <button key={key} className={`btn btn-sm ${view === key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setView(key)}>{label}</button>
+          <button key={key} className={`btn btn-sm ${view === key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => switchView(key)}>{label}</button>
         ))}
+        {types.length > 0 && (
+          <select className="form-select" style={{ width: 'auto', minWidth: 220, padding: '6px 10px', fontSize: 13 }} value={type} onChange={(e) => setType(e.target.value)} aria-label="Problem type">
+            <option value="">All problems ({total})</option>
+            {types.map((t) => <option key={t.type} value={t.type}>{t.label} ({t.n})</option>)}
+          </select>
+        )}
       </div>
       {!issues ? <div className="spinner" /> : issues.length === 0 ? (
         <p className="form-helper">Nothing here.</p>
       ) : (
-        <div className="table-container">
-          <table className="data-table">
-            <thead><tr><th>Priority</th><th>Problem</th><th>Page</th>{view === 'open' && canManage && <th />}</tr></thead>
-            <tbody>
-              {issues.map((issue) => {
-                const [cls, label] = SEVERITY[issue.severity] || ['badge-info', issue.severity];
-                return (
-                  <tr key={issue.id}>
-                    <td><span className={`badge ${cls}`}>{label}</span></td>
-                    <td>
-                      <div>{issue.label}</div>
-                      <div style={{ ...muted, overflowWrap: 'anywhere' }}>{issue.detail}</div>
-                    </td>
-                    <td>
-                      <a href={issue.url} target="_blank" rel="noreferrer" style={{ overflowWrap: 'anywhere' }}>{issue.title} <ExternalLink size={11} /></a>
-                      <div style={muted}>{issue.resource_type}</div>
-                    </td>
-                    {view === 'open' && canManage && (
-                      <td style={{ whiteSpace: 'nowrap' }}>
-                        {issue.fixable && (
-                          <button className="btn btn-sm btn-secondary" disabled={!!busy} onClick={() => act(issue.id, fixSeoIssue)} title="Fix this one now">
-                            {busy === issue.id ? <Loader2 size={13} className="spinning" /> : <Wrench size={13} />} Fix
-                          </button>
-                        )}{' '}
-                        <button className="btn btn-sm btn-ghost" disabled={!!busy} onClick={() => act(issue.id, ignoreSeoIssue)} title="Stop showing this one"><EyeOff size={13} /></button>
+        <>
+          {issues.length < shownTotal && <p className="form-helper mb-16">Showing the first {issues.length} of {shownTotal}. Pick a problem type above to see the rest.</p>}
+          <div className="table-container">
+            <table className="data-table">
+              <thead><tr><th>Priority</th><th>Problem</th><th>Page</th>{canManage && (view === 'open' || view === 'ignored') && <th />}</tr></thead>
+              <tbody>
+                {issues.map((issue) => {
+                  const [cls, label] = SEVERITY[issue.severity] || ['badge-info', issue.severity];
+                  return (
+                    <tr key={issue.id}>
+                      <td><span className={`badge ${cls}`}>{label}</span></td>
+                      <td>
+                        <div>{issue.label}</div>
+                        <div style={{ ...muted, overflowWrap: 'anywhere' }}>{issue.detail}</div>
+                        {!issue.fixable && issue.advice && view === 'open' && (
+                          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, overflowWrap: 'anywhere' }}><strong>What to do:</strong> {issue.advice}</div>
+                        )}
                       </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      <td>
+                        <a href={issue.url} target="_blank" rel="noreferrer" style={{ overflowWrap: 'anywhere' }}>{issue.title} <ExternalLink size={11} /></a>
+                        <div style={muted}>{issue.resource_type}</div>
+                      </td>
+                      {canManage && view === 'open' && (
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          {issue.fixable && (
+                            <button className="btn btn-sm btn-secondary" disabled={!!busy} onClick={() => fix(issue)} title={issue.fixKind === 'meta' ? 'See a suggestion, edit it, then save' : 'Fix this one now'}>
+                              {busy === issue.id ? <Loader2 size={13} className="spinning" /> : <Wrench size={13} />} {FIX_LABELS[issue.fixKind] || 'Fix'}
+                            </button>
+                          )}{' '}
+                          <button className="btn btn-sm btn-ghost" disabled={!!busy} onClick={() => act(issue.id, ignoreSeoIssue)} title="Ignore: the daily run leaves it alone" aria-label="Ignore"><EyeOff size={13} /></button>
+                        </td>
+                      )}
+                      {canManage && view === 'ignored' && (
+                        <td style={{ whiteSpace: 'nowrap' }}>
+                          <button className="btn btn-sm btn-secondary" disabled={!!busy} onClick={() => act(issue.id, restoreSeoIssue)}>
+                            {busy === issue.id ? <Loader2 size={13} className="spinning" /> : <RotateCcw size={13} />} Restore
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {editing && (
+        <MetaEditor
+          issue={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); load(); onChanged(); }}
+        />
       )}
     </>
   );
@@ -288,9 +437,9 @@ const SETTING_FIELDS = (s) => ({
   fixMeta: s.fix_meta, fixAlt: s.fix_alt, fixLinks: s.fix_links, fixArticles: s.fix_articles,
 });
 const FIX_OPTIONS = [
-  ['fixMeta', 'Meta titles and descriptions', 'Written by DeepSeek from the page\'s own facts.'],
-  ['fixAlt', 'Product image alt text', 'Taken from the product name.'],
-  ['fixLinks', 'Dead links in articles', 'Removes the link and keeps the words.'],
+  ['fixMeta', 'Meta titles and descriptions', 'Written by DeepSeek from the page\'s own facts. Pages with almost no text, and empty collections, are left for you.'],
+  ['fixAlt', 'Product image alt text', 'Taken from the product name. Every product that needs it, each run.'],
+  ['fixLinks', 'Dead links in articles', 'Removes the link and keeps the words. Only links your live site says are gone.'],
   ['fixArticles', 'Rewrite weak articles', 'Changes your published text, one article a day. Check these yourself: the AI can get facts wrong.'],
 ];
 
@@ -321,9 +470,9 @@ function SettingsTab({ settings, canManage, onChanged }) {
         </div>
       </div>
       <div className="form-group">
-        <label className="form-label">Pages to improve each day</label>
+        <label className="form-label">Pages the AI rewrites each day</label>
         <input type="number" min="1" max="50" className="form-input" value={form.maxFixes} disabled={!canManage} onChange={(e) => set('maxFixes', e.target.value)} />
-        <p className="form-helper">The whole site is checked every day. This limits how many pages change. A changed page then rests for 14 days.</p>
+        <p className="form-helper">The whole site is checked every day. This limits the AI-written titles, descriptions and articles. Alt text and dead links don't count toward it. A changed field then rests for 14 days, so Google can react to it.</p>
       </div>
       <label className="form-label">What the daily run may change</label>
       {FIX_OPTIONS.map(([key, label, help]) => (

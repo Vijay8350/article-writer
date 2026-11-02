@@ -297,6 +297,26 @@ export async function getCollections(creds, { strict = false } = {}) {
   return [...custom.map(shape('custom')), ...smart.map(shape('smart'))];
 }
 
+// How many products each collection holds, in one GraphQL query per 250 collections.
+export async function getCollectionProductCounts(creds) {
+  ensure(creds);
+  const host = String(creds.storeUrl || '').replace(/\/$/, '').replace(/^https?:\/\//, '');
+  const counts = new Map();
+  let after = null;
+  do {
+    const { data } = await axios.post(`https://${host}/admin/api/2025-10/graphql.json`, {
+      query: `query($after: String) { collections(first: 250, after: $after) {
+        nodes { legacyResourceId productsCount { count } } pageInfo { hasNextPage endCursor } } }`,
+      variables: { after },
+    }, { headers: headers(creds), timeout: 20000 });
+    if (data.errors) throw new Error(data.errors[0]?.message || 'GraphQL error');
+    const page = data.data.collections;
+    for (const c of page.nodes) counts.set(String(c.legacyResourceId), c.productsCount?.count ?? 0);
+    after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+  } while (after);
+  return counts;
+}
+
 // The names of a few products in a collection, which say what the page really holds.
 export async function getCollectionProductTitles(creds, collectionId, limit = 12) {
   ensure(creds);

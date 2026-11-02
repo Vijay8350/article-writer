@@ -8,7 +8,7 @@ import * as dnaRepo from '../repositories/dna.js';
 import * as gsc from '../services/searchConsole.js';
 import { createState, verifyState } from '../services/facebookLogin.js';
 import { runAudit, loadIssuePage } from '../services/seoAudit.js';
-import { fixOne, undoChange } from '../services/seoFixes.js';
+import { fixOne, undoChange, suggestMeta, cleanManualMeta } from '../services/seoFixes.js';
 import { ISSUE_TYPES } from '../lib/seoRules.js';
 
 // SEO automation (/api/seo). The Google callback is public, because Google calls it, and
@@ -75,7 +75,25 @@ const manage = requireWorkspaceRole('owner', 'admin');
 
 router.param('id', (req, res, next, id) => (UUID_RE.test(id) ? next() : bad(res, 'Not found', 404)));
 
-const labelled = (issue) => ({ ...issue, label: ISSUE_TYPES[issue.type]?.label || issue.type, fixable: Boolean(ISSUE_TYPES[issue.type]?.fix) });
+const labelled = (issue) => {
+  const kind = ISSUE_TYPES[issue.type];
+  return { ...issue, label: kind?.label || issue.type, fixable: Boolean(kind?.fix), fixKind: kind?.fix || null, advice: kind?.advice || null };
+};
+
+// The store and the one page an issue is about. When there's none, it has already
+// answered the request with the reason and returns null.
+async function issueContext(req, res) {
+  const refuse = (error, status) => { bad(res, error, status); return null; };
+  const issue = await repo.getIssue(req.workspace.id, req.params.id);
+  if (!issue) return refuse('Issue not found', 404);
+  if (!ISSUE_TYPES[issue.type]?.fix) return refuse(ISSUE_TYPES[issue.type]?.advice || "This one can't be fixed automatically.");
+  const [creds, dna] = await Promise.all([stores.getDefaultStore(req.workspace.id), dnaRepo.getDna(req.workspace.id)]);
+  if (!creds) return refuse('No Shopify store is connected.');
+  if (!dna?.shop?.domain) return refuse('Fetch your Business DNA first, so the store domain is known.');
+  const { page, live } = await loadIssuePage(creds, dna.shop.domain, issue);
+  if (!page) return refuse('This page is no longer published on your store.', 404);
+  return { issue, creds, page, live, storeName: dna.shop.name };
+}
 
 router.get('/overview', async (req, res, next) => {
   try {
@@ -127,28 +145,50 @@ router.post('/audit', manage, async (req, res, next) => {
 router.get('/issues', async (req, res, next) => {
   try {
     const status = ['open', 'fixed', 'resolved', 'ignored'].includes(req.query.status) ? req.query.status : 'open';
-    res.json({ success: true, data: (await repo.listIssues(req.workspace.id, status)).map(labelled) });
+    const type = ISSUE_TYPES[req.query.type] ? req.query.type : null;
+    const [issues, types] = await Promise.all([repo.listIssues(req.workspace.id, status, { type }), repo.issueTypeCounts(req.workspace.id, status)]);
+    res.json({
+      success: true,
+      data: issues.map(labelled),
+      types: types.map((t) => ({ ...t, label: ISSUE_TYPES[t.type]?.label || t.type })),
+    });
   } catch (error) { next(error); }
 });
 
 router.post('/issues/:id/ignore', manage, async (req, res, next) => {
   try {
     await repo.setIssueStatus(req.workspace.id, req.params.id, 'ignored');
-    res.json({ success: true, message: 'Issue ignored' });
+    res.json({ success: true, message: 'Ignored. The daily run will leave it alone.' });
   } catch (error) { next(error); }
 });
 
+router.post('/issues/:id/restore', manage, async (req, res, next) => {
+  try {
+    await repo.setIssueStatus(req.workspace.id, req.params.id, 'open');
+    res.json({ success: true, message: 'Back on the open list' });
+  } catch (error) { next(error); }
+});
+
+// The editor's starting point for a title or description problem. Changes nothing.
+router.post('/issues/:id/suggest', manage, async (req, res, next) => {
+  try {
+    const ctx = await issueContext(req, res);
+    if (!ctx) return undefined;
+    if (ISSUE_TYPES[ctx.issue.type].fix !== 'meta') return bad(res, 'Only title and description problems have an editor.');
+    const result = await suggestMeta({ workspaceId: req.workspace.id, creds: ctx.creds, page: ctx.page, storeName: ctx.storeName });
+    res.json({ success: true, data: { ...result, storeName: ctx.storeName, page: { name: ctx.page.name, url: ctx.page.url, type: ctx.page.type } } });
+  } catch (err) { fail(res, next, err); }
+});
+
+// Fixes one problem now. For a title or description, the body may carry the owner's own
+// wording (seoTitle, seoDescription), which is saved instead of asking the AI.
 router.post('/issues/:id/fix', manage, async (req, res, next) => {
   try {
-    const issue = await repo.getIssue(req.workspace.id, req.params.id);
-    if (!issue) return bad(res, 'Issue not found', 404);
-    if (!ISSUE_TYPES[issue.type]?.fix) return bad(res, "This one can't be fixed automatically.");
-    const [creds, dna] = await Promise.all([stores.getDefaultStore(req.workspace.id), dnaRepo.getDna(req.workspace.id)]);
-    if (!creds) return bad(res, 'No Shopify store is connected.');
-    const { page, live } = await loadIssuePage(creds, dna?.shop?.domain, issue);
-    if (!page) return bad(res, 'This page is no longer on your store.', 404);
-    await fixOne({ workspaceId: req.workspace.id, creds, issue, page, live, storeName: dna?.shop?.name });
-    res.json({ success: true, message: 'Fixed on your store' });
+    const manual = req.body?.seoTitle !== undefined || req.body?.seoDescription !== undefined ? cleanManualMeta(req.body) : undefined;
+    const ctx = await issueContext(req, res);
+    if (!ctx) return undefined;
+    await fixOne({ workspaceId: req.workspace.id, creds: ctx.creds, issue: ctx.issue, page: ctx.page, live: ctx.live, storeName: ctx.storeName, manual });
+    res.json({ success: true, message: 'Saved to your store. You can undo it under Changes made.' });
   } catch (err) { fail(res, next, err); }
 });
 

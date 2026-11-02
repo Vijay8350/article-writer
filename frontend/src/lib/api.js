@@ -83,9 +83,11 @@ export const syncCollections = () => api.post('/business-dna/sync-collections').
 export const getSeoOverview = () => api.get('/seo/overview').then(r => r.data);
 export const saveSeoSettings = (data) => api.put('/seo/settings', data).then(r => r.data);
 export const runSeoAudit = (data) => api.post('/seo/audit', data).then(r => r.data);
-export const getSeoIssues = (status) => api.get('/seo/issues', { params: { status } }).then(r => r.data);
-export const fixSeoIssue = (id) => api.post(`/seo/issues/${id}/fix`).then(r => r.data);
+export const getSeoIssues = (status, type) => api.get('/seo/issues', { params: { status, type: type || undefined } }).then(r => r.data);
+export const suggestSeoFix = (id) => api.post(`/seo/issues/${id}/suggest`).then(r => r.data);
+export const fixSeoIssue = (id, wording) => api.post(`/seo/issues/${id}/fix`, wording || {}).then(r => r.data);
 export const ignoreSeoIssue = (id) => api.post(`/seo/issues/${id}/ignore`).then(r => r.data);
+export const restoreSeoIssue = (id) => api.post(`/seo/issues/${id}/restore`).then(r => r.data);
 export const getSeoChanges = () => api.get('/seo/changes').then(r => r.data);
 export const undoSeoChange = (id) => api.post(`/seo/changes/${id}/undo`).then(r => r.data);
 export const startGoogleConnect = () => api.post('/seo/google/start').then(r => r.data);

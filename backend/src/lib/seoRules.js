@@ -7,10 +7,12 @@ export const LIMITS = {
   minImpressionsForCtr: 100, lowCtr: 0.01, topPosition: 10, strikingFrom: 8, strikingTo: 20,
 };
 
-// `fix` names the automatic repair, if there is one.
+// `fix` names the automatic repair, if there is one. `advice` tells the owner what to do
+// about the ones that need a person.
 export const ISSUE_TYPES = {
-  broken_page: { label: 'Page does not load', severity: 'critical' },
-  noindex: { label: 'Hidden from Google', severity: 'critical' },
+  broken_page: { label: 'Page does not load', severity: 'critical', advice: 'Open the page. If it was deleted on purpose, add a URL redirect in Shopify (Online Store → Navigation → URL redirects).' },
+  noindex: { label: 'Hidden from Google', severity: 'critical', advice: 'Remove the noindex setting for this page in your theme or SEO app, unless you want it hidden.' },
+  empty_collection: { label: 'Empty collection', severity: 'high', advice: 'Add products to this collection in Shopify, or hide it from your Online Store sales channel. An empty page hurts your site in Google.' },
   title_missing: { label: 'Missing page title', severity: 'high', fix: 'meta' },
   meta_missing: { label: 'Missing meta description', severity: 'high', fix: 'meta' },
   title_duplicate: { label: 'Duplicate page title', severity: 'high', fix: 'meta' },
@@ -21,12 +23,12 @@ export const ISSUE_TYPES = {
   meta_long: { label: 'Meta description too long', severity: 'medium', fix: 'meta' },
   meta_short: { label: 'Meta description too short', severity: 'medium', fix: 'meta' },
   alt_missing: { label: 'Images without alt text', severity: 'medium', fix: 'alt' },
-  h1_missing: { label: 'No main heading', severity: 'medium' },
-  thin_content: { label: 'Very little text', severity: 'medium' },
+  h1_missing: { label: 'No main heading', severity: 'medium', advice: 'Your theme decides this. In the theme editor, make sure this page type shows its title as a heading.' },
+  thin_content: { label: 'Very little text', severity: 'medium', advice: 'Add a few real sentences: what it is made of, its size, how to wear it and who it suits. Only you know these facts.' },
   low_ctr: { label: 'Seen on Google but rarely clicked', severity: 'medium', fix: 'meta' },
-  not_indexed: { label: 'Not in Google yet', severity: 'medium' },
+  not_indexed: { label: 'Not in Google yet', severity: 'medium', advice: 'Usually fixes itself as Google crawls more. Link to this page from a collection or article, or press Request indexing for it in Search Console.' },
   aeo_low: { label: 'Weak for AI answers', severity: 'low', fix: 'article' },
-  striking_distance: { label: 'Close to page one', severity: 'low' },
+  striking_distance: { label: 'Close to page one', severity: 'low', advice: 'Already near the top of Google. Add a little more helpful text and link to it from your articles to push it up.' },
 };
 
 const PENALTY = { critical: 100, high: 25, medium: 10, low: 3 };
@@ -102,6 +104,8 @@ function pageIssues(page, seen, search, live, aeoScore) {
   const found = [];
   const { http } = page;
   if (!http?.status || http.status >= 400) return [issue(page, 'broken_page', http?.status ? `The page returned ${http.status}.` : 'The page did not respond.')];
+  // Nothing on it to describe, so its title and description don't matter until it has products.
+  if (page.type === 'collection' && page.productCount === 0) return [issue(page, 'empty_collection', 'This collection has no products, so shoppers and Google see an empty page.')];
 
   if (http.noindex) found.push(issue(page, 'noindex', 'A noindex tag keeps this page out of Google.'));
 

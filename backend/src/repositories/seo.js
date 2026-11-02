@@ -126,11 +126,11 @@ export async function syncIssues(workspaceId, auditId, issues) {
   );
 }
 
-export async function listIssues(workspaceId, status = 'open', limit = 300) {
+export async function listIssues(workspaceId, status = 'open', { type = null, limit = 500 } = {}) {
   const { rows } = await query(
-    `SELECT * FROM seo_issues WHERE workspace_id = $1 AND status = $2
-      ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, last_seen DESC LIMIT $3`,
-    [workspaceId, status, limit]
+    `SELECT * FROM seo_issues WHERE workspace_id = $1 AND status = $2 AND ($3::text IS NULL OR type = $3)
+      ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, title, type LIMIT $4`,
+    [workspaceId, status, type, limit]
   );
   return rows;
 }
@@ -148,10 +148,10 @@ export async function issueCounts(workspaceId) {
   return Object.fromEntries(rows.map((r) => [r.severity, r.n]));
 }
 
-export async function issueTypeCounts(workspaceId) {
+export async function issueTypeCounts(workspaceId, status = 'open') {
   const { rows } = await query(
-    "SELECT type, count(*)::int AS n FROM seo_issues WHERE workspace_id = $1 AND status = 'open' GROUP BY type ORDER BY n DESC",
-    [workspaceId]
+    'SELECT type, count(*)::int AS n FROM seo_issues WHERE workspace_id = $1 AND status = $2 GROUP BY type ORDER BY n DESC',
+    [workspaceId, status]
   );
   return rows;
 }
@@ -181,7 +181,7 @@ export async function logChange(workspaceId, c) {
   return rows[0];
 }
 
-export async function listChanges(workspaceId, limit = 100) {
+export async function listChanges(workspaceId, limit = 300) {
   const { rows } = await query(
     `SELECT id, resource_type, resource_id, url, title, field, source, status, created_at, undone_at,
             CASE WHEN field = 'article_body' THEN NULL ELSE before_value END AS before_value,
@@ -210,11 +210,19 @@ export const reopenChange = (id) => query("UPDATE seo_changes SET status = 'appl
 
 // Pages changed lately are left alone, so the same page isn't rewritten day after day, and
 // a page whose change the owner undid is never touched by the automation again.
+// Which fields of which pages must be left alone: changed lately, or changed and then undone.
+// Returns "type:id" → Set of fields.
 export async function recentlyChanged(workspaceId, days) {
   const { rows } = await query(
-    `SELECT DISTINCT resource_type, resource_id FROM seo_changes
+    `SELECT DISTINCT resource_type, resource_id, field FROM seo_changes
       WHERE workspace_id = $1 AND (status = 'undone' OR created_at > now() - make_interval(days => $2))`,
     [workspaceId, days]
   );
-  return new Set(rows.map((r) => `${r.resource_type}:${r.resource_id}`));
+  const map = new Map();
+  for (const r of rows) {
+    const key = `${r.resource_type}:${r.resource_id}`;
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key).add(r.field);
+  }
+  return map;
 }

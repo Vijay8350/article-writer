@@ -3,19 +3,33 @@ import * as shopify from './shopify.js';
 import * as deepseek from './deepseek.js';
 import { resolveAi } from './ai.js';
 import { enhanceArticleForWorkspace } from './articleService.js';
-import { tidySeoFields, withFaqSchema } from '../lib/articleStructure.js';
+import { withFaqSchema } from '../lib/articleStructure.js';
 import { ISSUE_TYPES, SEVERITY_ORDER, deadLinks } from '../lib/seoRules.js';
 
 // Turns audit findings into changes on the live store. Every change saves what it
 // replaced first, so it can be undone, and only the fields the owner allowed are touched.
 
-const RECHANGE_DAYS = 14; // a changed page rests this long before it can change again
+const RECHANGE_DAYS = 14; // a changed field rests this long before it can change again
 const MAX_ARTICLE_REWRITES = 1; // per run: these are the biggest changes the automation makes
+const MAX_RULE_FIX_PAGES = 150; // alt text and dead links need no AI; this only bounds one run
+const AI_TRIES_PER_FIX = 2; // a run stops asking the AI after max_fixes × this many pages, so a bad night can't loop
+const META_ATTEMPTS = 2; // a rejected answer gets one more try, told what was wrong
 const MIN_SEO_DESCRIPTION = 70;
 const MIN_FACT_WORDS = 12; // below this the AI has nothing true to say about the page
+const MAX_SEO_TITLE = 60;
 const MAX_SEO_DESCRIPTION = 160;
+const MAX_MANUAL_TITLE = 70; // an owner's own wording gets a little more room
+const MAX_MANUAL_DESCRIPTION = 200;
 const IMAGE_PAUSE_MS = 400; // Shopify allows about two admin calls a second
 const CLAIMS_RE = /free (?:shipping|delivery)|\d+\s*% off|guarantee\w*|warranty|lowest price|best price|cash on delivery|\bcod\b|hypoallergenic|waterproof|anti[- ]tarnish/gi;
+
+const AI_KINDS = new Set(['meta', 'article']);
+// The earlier changes that make each kind of fix wait: a rewritten article also replaced its meta.
+const BLOCKED_BY = { meta: ['meta', 'article_body'], alt: ['image_alt'], links: ['article_links', 'article_body'], article: ['article_body', 'meta'] };
+const TYPES_BY_FIX = Object.entries(ISSUE_TYPES).reduce((map, [type, { fix }]) => {
+  if (fix) (map[fix] ||= []).push(type);
+  return map;
+}, {});
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -35,9 +49,23 @@ function wholeSentences(text, max) {
 }
 
 function parseMeta(raw) {
-  const match = String(raw).match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('The AI returned no metadata.');
-  return JSON.parse(match[0]);
+  const match = String(raw || '').match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('The AI sent back no title and description.');
+  try { return JSON.parse(match[0]); } catch { throw new Error('The AI sent back an answer that could not be read.'); }
+}
+
+// Nothing is cut to fit: a title cut off mid-phrase reads worse than the one it replaces.
+function checkMeta(parsed, page, storeName) {
+  const seoTitle = String(parsed.seoTitle || '').replace(/\s+/g, ' ').trim();
+  const seoDescription = wholeSentences(parsed.seoDescription, MAX_SEO_DESCRIPTION);
+  if (!seoTitle) throw new Error('The AI left the title empty.');
+  if (seoTitle.length > MAX_SEO_TITLE) throw new Error(`The title was ${seoTitle.length} characters, over the ${MAX_SEO_TITLE} Google shows.`);
+  if (seoDescription.length < MIN_SEO_DESCRIPTION) throw new Error('The description was too short to use.');
+  const claim = inventedClaim(`${seoTitle} ${seoDescription}`, page);
+  if (claim) throw new Error(`The AI added a claim the page doesn't make: "${claim}".`);
+  const brand = storeName?.toLowerCase();
+  if (brand && seoTitle.toLowerCase().split(brand).length > 2) throw new Error('The AI repeated the store name in the title.');
+  return { seoTitle, seoDescription };
 }
 
 function metaPrompt(page, { storeName, queries }) {
@@ -49,7 +77,7 @@ FACTS: ${page.facts || 'none beyond the name'}
 ${queries?.length ? `PEOPLE FIND THIS PAGE BY SEARCHING: ${queries.join(', ')}` : ''}
 
 Rules:
-- seoTitle: 5 to 8 words. Lead with what the page is, in the words a shopper would search, such as the styles, materials or occasions the facts mention.${storeName ? ` End with " | ${storeName}".` : ''}
+- seoTitle: 4 to 7 words. Lead with what the page is, in the words a shopper would search, such as the styles, materials or occasions the facts mention.${storeName ? ` End with " | ${storeName}".` : ''}
 - seoDescription: one or two short sentences, about 20 words in all. Name what's actually on the page, using specifics from the facts: styles, finishes, stones, who it suits.
 - Write like a helpful shop assistant, not an advert: no words like stunning, timeless, exquisite or perfect.
 - Don't open with Browse, Explore or Discover, don't use the word "collection", and skip filler like "find what you want".
@@ -61,19 +89,25 @@ Rules:
 Return ONLY JSON: {"seoTitle":"","seoDescription":""}`;
 }
 
+// A rejected answer gets one more try, told why. DeepSeek itself failing isn't retried here.
 async function writeMeta(workspaceId, page, context) {
   const ai = await resolveAi(workspaceId, 'article', 'deepseek');
-  const raw = await deepseek.complete(metaPrompt(page, context), ai.apiKey, { temperature: 0.4, model: ai.model });
-  const parsed = parseMeta(raw);
-  const { seoTitle, seoDescription } = tidySeoFields({
-    title: page.name, handle: 'x', seoTitle: parsed.seoTitle, seoDescription: wholeSentences(parsed.seoDescription, MAX_SEO_DESCRIPTION),
-  });
-  if (!seoTitle || seoDescription.length < MIN_SEO_DESCRIPTION) throw new Error('The AI returned metadata that was too short to use.');
-  const claim = inventedClaim(`${seoTitle} ${seoDescription}`, page);
-  if (claim) throw new Error(`The AI added a claim the page doesn't make: "${claim}"`);
-  const brand = context.storeName?.toLowerCase();
-  if (brand && seoTitle.toLowerCase().split(brand).length > 2) throw new Error('The AI repeated the store name in the title.');
-  return { seoTitle, seoDescription };
+  let feedback = '';
+  for (let attempt = 1; ; attempt++) {
+    let raw;
+    try {
+      raw = await deepseek.complete(metaPrompt(page, context) + feedback, ai.apiKey, { temperature: 0.4, model: ai.model });
+    } catch (err) {
+      const status = err.response?.status;
+      throw new Error(status ? `DeepSeek refused the request (error ${status}). Check the DeepSeek key and balance in Settings.` : 'DeepSeek did not answer. Please try again.');
+    }
+    try {
+      return checkMeta(parseMeta(raw), page, context.storeName);
+    } catch (err) {
+      if (attempt >= META_ATTEMPTS) throw err;
+      feedback = `\n\nYour last answer could not be used: ${err.message} Write a new one that follows every rule, with fewer words in the title if it was too long.`;
+    }
+  }
 }
 
 // A collection has no text of its own worth using, but its products say what it is. Any
@@ -82,18 +116,42 @@ async function writeMeta(workspaceId, page, context) {
 async function pageFacts(creds, page) {
   if (page.type === 'collection') {
     const titles = await shopify.getCollectionProductTitles(creds, page.id);
-    if (!titles.length) throw new Error('This collection has no products to describe.');
+    if (!titles.length) throw new Error('This collection has no products yet, so there is nothing true to describe. Add products to it, or write the title and description yourself.');
     return `Products here include: ${titles.join('; ')}`;
   }
   if (String(page.facts || '').split(/\s+/).filter(Boolean).length < MIN_FACT_WORDS) {
-    throw new Error('This page has too little text of its own to describe.');
+    throw new Error("This page has almost no text of its own, so the AI can't describe it truthfully. Write the title and description yourself, or ignore this problem.");
   }
   return page.facts;
 }
 
-async function fixMeta({ workspaceId, creds, page, context, audit, source }) {
+// An owner's own title and description, tidied and kept within what Google can show.
+export function cleanManualMeta(input) {
+  const tidy = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+  const seoTitle = tidy(input?.seoTitle);
+  const seoDescription = tidy(input?.seoDescription);
+  const bad = (message) => Object.assign(new Error(message), { status: 400 });
+  if (!seoTitle || !seoDescription) throw bad('Write both a title and a description.');
+  if (seoTitle.length > MAX_MANUAL_TITLE) throw bad(`Keep the title to ${MAX_MANUAL_TITLE} characters or fewer (it is ${seoTitle.length}).`);
+  if (seoDescription.length > MAX_MANUAL_DESCRIPTION) throw bad(`Keep the description to ${MAX_MANUAL_DESCRIPTION} characters or fewer (it is ${seoDescription.length}).`);
+  return { seoTitle, seoDescription };
+}
+
+// What the editor opens with: the page's current title and description, and the AI's
+// suggestion, or the reason there isn't one.
+export async function suggestMeta({ workspaceId, creds, page, storeName }) {
+  const current = await shopify.getResourceSeo(creds, page.type, page.id);
+  try {
+    const suggestion = await writeMeta(workspaceId, { ...page, facts: await pageFacts(creds, page) }, { storeName });
+    return { current, suggestion, note: null };
+  } catch (err) {
+    return { current, suggestion: null, note: err.message };
+  }
+}
+
+async function fixMeta({ workspaceId, creds, page, context, audit, source, manual }) {
   const before = await shopify.getResourceSeo(creds, page.type, page.id);
-  const after = await writeMeta(workspaceId, { ...page, facts: await pageFacts(creds, page) }, context);
+  const after = manual || await writeMeta(workspaceId, { ...page, facts: await pageFacts(creds, page) }, context);
   await shopify.setResourceSeo(creds, page.type, page.id, after);
   await repo.logChange(workspaceId, {
     auditId: audit?.id, resourceType: page.type, resourceId: page.id, blogId: page.blogId, url: page.url, title: page.name,
@@ -154,38 +212,43 @@ async function rewriteArticle({ workspaceId, creds, page, audit, source }) {
 
 const allowed = (settings) => ({ meta: settings.fix_meta, alt: settings.fix_alt, links: settings.fix_links, article: settings.fix_articles });
 
+const failure = (err) => (err.response?.data?.errors ? `Shopify refused the change: ${JSON.stringify(err.response.data.errors)}` : err.message);
+
 // Applies the fixes one page needs. Failures are per fix: one bad page never stops the rest.
-async function fixPage({ workspaceId, creds, page, types, kinds, live, context, audit, source }) {
-  let applied = 0;
-  const fixed = [];
+// One write settles every problem of its kind on the page, so all of them are marked fixed.
+async function fixPage({ workspaceId, creds, page, types, kinds, live, context, audit, source, manual }) {
+  const done = [];
+  const errors = [];
   const run = async (kind, fn) => {
-    const matching = types.filter((t) => ISSUE_TYPES[t]?.fix === kind);
-    if (!matching.length || !kinds[kind]) return;
+    if (!kinds[kind] || !types.some((t) => ISSUE_TYPES[t]?.fix === kind)) return;
     try {
       await fn();
-      applied++;
-      fixed.push(...matching);
+      done.push(kind);
     } catch (err) {
-      console.error(`SEO fix ${kind} failed on ${page.url}: ${err.response?.data?.errors ? JSON.stringify(err.response.data.errors) : err.message}`);
+      errors.push(failure(err));
+      console.error(`SEO fix ${kind} failed on ${page.url}: ${failure(err)}`);
     }
   };
-  await run('meta', () => fixMeta({ workspaceId, creds, page, context, audit, source }));
+  await run('meta', () => fixMeta({ workspaceId, creds, page, context, audit, source, manual }));
   await run('alt', () => fixAlt({ workspaceId, creds, page, audit, source }));
   await run('links', () => fixLinks({ workspaceId, creds, page, live, audit, source }));
   await run('article', () => rewriteArticle({ workspaceId, creds, page, audit, source }));
-  if (fixed.length) await repo.markFixed(workspaceId, page.type, page.id, fixed);
-  return applied;
+  if (done.length) await repo.markFixed(workspaceId, page.type, page.id, done.flatMap((kind) => TYPES_BY_FIX[kind]));
+  return { done, errors };
 }
 
-// The daily run: the worst problems first, then the pages Google already shows most.
+// The daily run: the worst problems first, then the pages Google already shows most. Only
+// AI-written changes count toward the owner's daily limit; alt text and dead links follow
+// fixed rules, so every page that needs them is done in the same run.
 export async function applyFixes({ workspaceId, settings, creds, pages, issues, live, audit, search, queriesFor, storeName }) {
   const kinds = allowed(settings);
-  const rested = await repo.recentlyChanged(workspaceId, RECHANGE_DAYS);
+  const resting = await repo.recentlyChanged(workspaceId, RECHANGE_DAYS);
+  const canFix = (key, kind) => kinds[kind] && !BLOCKED_BY[kind].some((field) => resting.get(key)?.has(field));
   const byPage = new Map();
   for (const issue of issues) {
     const fix = ISSUE_TYPES[issue.type]?.fix;
     const key = `${issue.resource_type}:${issue.resource_id}`;
-    if (!fix || !kinds[fix] || rested.has(key)) continue;
+    if (!fix || !canFix(key, fix)) continue;
     if (!byPage.has(key)) byPage.set(key, []);
     byPage.get(key).push(issue);
   }
@@ -198,31 +261,48 @@ export async function applyFixes({ workspaceId, settings, creds, pages, issues, 
   });
 
   let touched = 0;
+  let aiPages = 0;
+  let aiTries = 0;
+  let rulePages = 0;
   let rewrites = 0;
   for (const [key, found] of queue) {
-    if (touched >= settings.max_fixes) break;
+    const aiRoom = aiPages < settings.max_fixes && aiTries < settings.max_fixes * AI_TRIES_PER_FIX;
+    const ruleRoom = rulePages < MAX_RULE_FIX_PAGES;
+    if (!aiRoom && !ruleRoom) break;
     const page = lookup.get(key);
     if (!page) continue;
-    const allowRewrite = rewrites < MAX_ARTICLE_REWRITES;
-    const pageKinds = { ...kinds, article: kinds.article && allowRewrite };
     const types = found.map((i) => i.type);
-    if (!types.some((t) => pageKinds[ISSUE_TYPES[t].fix])) continue;
-    const queries = await queriesFor?.(page.url).catch(() => []);
-    const applied = await fixPage({
+    const pageKinds = {
+      meta: aiRoom && canFix(key, 'meta'),
+      article: aiRoom && rewrites < MAX_ARTICLE_REWRITES && canFix(key, 'article'),
+      alt: ruleRoom && canFix(key, 'alt'),
+      links: ruleRoom && canFix(key, 'links'),
+    };
+    const wanted = Object.keys(pageKinds).filter((kind) => pageKinds[kind] && types.some((t) => ISSUE_TYPES[t].fix === kind));
+    if (!wanted.length) continue;
+    const usesAi = wanted.some((kind) => AI_KINDS.has(kind));
+    const queries = usesAi ? await queriesFor?.(page.url).catch(() => []) : [];
+    const { done } = await fixPage({
       workspaceId, creds, page, types, kinds: pageKinds, live, audit, source: 'auto', context: { storeName, queries },
     });
-    if (applied) touched++;
-    if (pageKinds.article && types.includes('aeo_low')) rewrites++;
+    if (usesAi) aiTries++;
+    if (done.some((kind) => AI_KINDS.has(kind))) aiPages++;
+    if (done.some((kind) => !AI_KINDS.has(kind))) rulePages++;
+    if (done.length) touched++;
+    if (wanted.includes('article')) rewrites++;
   }
   return touched;
 }
 
 // One issue fixed on request. Ignores the automation's toggles: the owner just asked for it.
-export async function fixOne({ workspaceId, creds, issue, page, live, storeName }) {
-  const kinds = { meta: true, alt: true, links: true, article: true };
-  const types = [issue.type];
-  const applied = await fixPage({ workspaceId, creds, page, types, kinds, live, source: 'manual', context: { storeName } });
-  if (!applied) throw Object.assign(new Error("This fix couldn't be applied. Please try again."), { status: 502 });
+// `manual` is the owner's own title and description, used instead of asking the AI.
+export async function fixOne({ workspaceId, creds, issue, page, live, storeName, manual }) {
+  const kind = ISSUE_TYPES[issue.type]?.fix;
+  const kinds = { meta: false, alt: false, links: false, article: false, [kind]: true };
+  const { done, errors } = await fixPage({
+    workspaceId, creds, page, types: [issue.type], kinds, live, source: 'manual', context: { storeName }, manual: kind === 'meta' ? manual : undefined,
+  });
+  if (!done.length) throw Object.assign(new Error(errors[0] || "This fix couldn't be applied."), { status: 422 });
 }
 
 // Puts back exactly what a change replaced.

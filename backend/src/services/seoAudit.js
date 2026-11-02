@@ -30,10 +30,15 @@ const isPublished = (item) => Boolean(item.published_at);
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Everything the store has published, as pages the audit can check and the fixes can edit.
-async function loadInventory(creds, domain) {
+// `confirmLinks` checks suspect article links on the live site, which only link fixes need.
+async function loadInventory(creds, domain, { confirmLinks = true } = {}) {
   const base = `https://${domain}`;
-  const [products, collections, blogs, shopPages] = await Promise.all([
+  const [products, collections, blogs, shopPages, productCounts] = await Promise.all([
     shopify.getProducts(creds), shopify.getCollections(creds, { strict: true }), shopify.getBlogs(creds), shopify.getPages(creds),
+    shopify.getCollectionProductCounts(creds).catch((err) => { // without counts, empty collections just aren't flagged
+      console.error(`Collection product counts failed: ${err.message}`);
+      return null;
+    }),
   ]);
   const articles = (await Promise.all(blogs.map(async (blog) => (await shopify.getArticles(creds, blog.id))
     .filter(isPublished).map((a) => ({ ...a, blogId: blog.id, blogHandle: blog.handle }))))).flat();
@@ -48,7 +53,9 @@ async function loadInventory(creds, domain) {
       images: (p.images || []).map((i) => ({ id: i.id, alt: i.alt, position: i.position })),
       facts: [p.product_type, stripTags(p.body_html).slice(0, 300)].filter(Boolean).join('. '), // never the price: metadata outlives it
     })),
-    ...liveCollections.filter((c) => !INTERNAL_COLLECTION_RE.test(c.title)).map((c) => ({ type: 'collection', id: c.id, handle: c.handle, name: c.title, url: `${base}/collections/${c.handle}` })),
+    ...liveCollections.filter((c) => !INTERNAL_COLLECTION_RE.test(c.title)).map((c) => ({
+      type: 'collection', id: c.id, handle: c.handle, name: c.title, url: `${base}/collections/${c.handle}`, productCount: productCounts?.get(String(c.id)),
+    })),
     ...articles.map((a) => ({
       type: 'article', id: a.id, blogId: a.blogId, handle: a.handle, name: a.title, url: `${base}/blogs/${a.blogHandle}/${a.handle}`,
       body: a.body_html, tags: a.tags, image: a.image, facts: stripTags(a.summary_html || a.body_html).slice(0, 300),
@@ -63,7 +70,7 @@ async function loadInventory(creds, domain) {
     hosts: liveHosts(domain, creds.storeUrl?.replace(/^https?:\/\//, '').replace(/\/.*$/, '')),
     gone: new Set(),
   };
-  await confirmDeadLinks(pages, live, base);
+  if (confirmLinks) await confirmDeadLinks(pages, live, base);
   return { pages, live };
 }
 
@@ -157,8 +164,9 @@ export async function runAudit(workspaceId, { trigger = 'schedule', applying = t
 }
 
 // Loads the one page an issue is about, fresh from Shopify, so a manual fix uses today's text.
-export async function loadIssuePage(creds, domain, issue) {
-  const { pages, live } = await loadInventory(creds, domain);
+// Only a dead-link fix needs the live site's answer for each suspect link.
+export async function loadIssuePage(creds, domain, issue, { confirmLinks = issue.type === 'broken_link' } = {}) {
+  const { pages, live } = await loadInventory(creds, domain, { confirmLinks });
   const page = pages.find((p) => p.type === issue.resource_type && String(p.id) === issue.resource_id);
   return { page, live };
 }
