@@ -12,6 +12,7 @@ import { ISSUE_TYPES, SEVERITY_ORDER, deadLinks } from '../lib/seoRules.js';
 const RECHANGE_DAYS = 14; // a changed page rests this long before it can change again
 const MAX_ARTICLE_REWRITES = 1; // per run: these are the biggest changes the automation makes
 const MIN_SEO_DESCRIPTION = 70;
+const MIN_FACT_WORDS = 12; // below this the AI has nothing true to say about the page
 const MAX_SEO_DESCRIPTION = 160;
 const IMAGE_PAUSE_MS = 400; // Shopify allows about two admin calls a second
 const CLAIMS_RE = /free (?:shipping|delivery)|\d+\s*% off|guarantee\w*|warranty|lowest price|best price|cash on delivery|\bcod\b|hypoallergenic|waterproof|anti[- ]tarnish/gi;
@@ -52,6 +53,7 @@ Rules:
 - seoDescription: one or two short sentences, about 20 words in all. Name what's actually on the page, using specifics from the facts: styles, finishes, stones, who it suits.
 - Write like a helpful shop assistant, not an advert: no words like stunning, timeless, exquisite or perfect.
 - Don't open with Browse, Explore or Discover, don't use the word "collection", and skip filler like "find what you want".
+- Name the store only once, at the end of the title.
 - Use only the facts above. Never invent discounts, free shipping, materials, guarantees or stock claims.
 - No emojis, no capital-letter shouting, no quotation marks.
 - Don't count characters. The length is checked afterwards.
@@ -69,16 +71,24 @@ async function writeMeta(workspaceId, page, context) {
   if (!seoTitle || seoDescription.length < MIN_SEO_DESCRIPTION) throw new Error('The AI returned metadata that was too short to use.');
   const claim = inventedClaim(`${seoTitle} ${seoDescription}`, page);
   if (claim) throw new Error(`The AI added a claim the page doesn't make: "${claim}"`);
+  const brand = context.storeName?.toLowerCase();
+  if (brand && seoTitle.toLowerCase().split(brand).length > 2) throw new Error('The AI repeated the store name in the title.');
   return { seoTitle, seoDescription };
 }
 
-// A collection has no text of its own worth using, but its products say what it is. An
-// empty one has nothing true to say, so it's left until it has products.
+// A collection has no text of its own worth using, but its products say what it is. Any
+// other page with almost no text (a contact form, an app's page) is left alone: the AI
+// would only pad out the store name.
 async function pageFacts(creds, page) {
-  if (page.type !== 'collection') return page.facts;
-  const titles = await shopify.getCollectionProductTitles(creds, page.id);
-  if (!titles.length) throw new Error('This collection has no products to describe.');
-  return `Products here include: ${titles.join('; ')}`;
+  if (page.type === 'collection') {
+    const titles = await shopify.getCollectionProductTitles(creds, page.id);
+    if (!titles.length) throw new Error('This collection has no products to describe.');
+    return `Products here include: ${titles.join('; ')}`;
+  }
+  if (String(page.facts || '').split(/\s+/).filter(Boolean).length < MIN_FACT_WORDS) {
+    throw new Error('This page has too little text of its own to describe.');
+  }
+  return page.facts;
 }
 
 async function fixMeta({ workspaceId, creds, page, context, audit, source }) {

@@ -68,6 +68,8 @@ FRONTEND_URL=https://app.jsyxi.com
 # Instagram Studio
 PUBLIC_BASE_URL=https://app.jsyxi.com       # Instagram downloads generated images from here (must be public https)
 FACEBOOK_APP_ID=...                       # "Connect with Facebook" + Meta data-deletion callback
+GOOGLE_CLIENT_ID=...                      # SEO Automation: Google Search Console sign-in. OAuth client (Web application)
+GOOGLE_CLIENT_SECRET=...                  #   with redirect URI https://<your-domain>/api/seo/google/callback; publish the consent screen
 FACEBOOK_APP_SECRET=...
 # Optional: GEMINI_IMAGE_MODEL (default gemini-3.1-flash-lite-image), GEMINI_VISION_MODEL,
 # MAX_REGEN_ATTEMPTS (default 3), FACEBOOK_SCOPES (comma-separated override)
