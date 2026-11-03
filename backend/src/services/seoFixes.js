@@ -5,6 +5,7 @@ import { resolveAi } from './ai.js';
 import { enhanceArticleForWorkspace } from './articleService.js';
 import { withFaqSchema } from '../lib/articleStructure.js';
 import { ISSUE_TYPES, SEVERITY_ORDER, deadLinks } from '../lib/seoRules.js';
+import { cleanDescription, cleanBody } from '../lib/seoClaims.js';
 
 // Turns audit findings into changes on the live store. Every change saves what it
 // replaced first, so it can be undone, and only the fields the owner allowed are touched.
@@ -24,8 +25,12 @@ const IMAGE_PAUSE_MS = 400; // Shopify allows about two admin calls a second
 const CLAIMS_RE = /free (?:shipping|delivery)|\d+\s*% off|guarantee\w*|warranty|lowest price|best price|cash on delivery|\bcod\b|hypoallergenic|waterproof|anti[- ]tarnish/gi;
 
 const AI_KINDS = new Set(['meta', 'article']);
-// The earlier changes that make each kind of fix wait: a rewritten article also replaced its meta.
-const BLOCKED_BY = { meta: ['meta', 'article_body'], alt: ['image_alt'], links: ['article_links', 'article_body'], article: ['article_body', 'meta'] };
+// The earlier changes that make each kind of fix wait: a rewritten article also replaced its
+// meta, and an owner who undid a promise fix wants that product's text left alone.
+const BLOCKED_BY = {
+  meta: ['meta', 'article_body'], alt: ['image_alt'], links: ['article_links', 'article_body'], article: ['article_body', 'meta'],
+  claims: ['product_body'], hide: ['collection_published'],
+};
 const TYPES_BY_FIX = Object.entries(ISSUE_TYPES).reduce((map, [type, { fix }]) => {
   if (fix) (map[fix] ||= []).push(type);
   return map;
@@ -193,6 +198,45 @@ async function fixLinks({ workspaceId, creds, page, live, audit, source }) {
   });
 }
 
+// What removing a product's false promises would change, worked out from Shopify's current
+// text. Changes nothing; `error` says why it needs a person instead.
+export async function planClaims(creds, page, facts) {
+  if (!facts) return { error: 'Set your store facts in Settings first.' };
+  const seo = await shopify.getResourceSeo(creds, 'product', page.id);
+  const body = page.body || '';
+  const description = cleanDescription(seo.seoDescription, facts);
+  const text = cleanBody(body, facts);
+  const error = description.error || text.error;
+  const changes = [];
+  if (description.changed) changes.push({ where: 'Google description', before: seo.seoDescription, after: description.text });
+  for (const line of text.lines || []) changes.push({ where: 'Product text', before: line.before, after: line.after });
+  return { seo, body, description, text, changes, error: error || (changes.length ? null : 'No promise left to remove: this one is already fixed.') };
+}
+
+async function fixClaims({ workspaceId, creds, page, context, audit, source }) {
+  const plan = await planClaims(creds, page, context.facts);
+  if (plan.error) throw new Error(plan.error);
+  const entry = { auditId: audit?.id, resourceType: 'product', resourceId: page.id, url: page.url, title: page.name, source };
+  if (plan.description.changed) {
+    await shopify.setResourceSeo(creds, 'product', page.id, { seoDescription: plan.description.text });
+    await repo.logChange(workspaceId, { ...entry, field: 'meta', before: plan.seo, after: { seoTitle: plan.seo.seoTitle, seoDescription: plan.description.text } });
+  }
+  if (plan.text.changed) {
+    await shopify.setProductBody(creds, page.id, plan.text.html);
+    const removed = plan.text.lines.map((l) => (l.after === null ? `"${l.before}"` : `"${l.before}" → "${l.after}"`));
+    await repo.logChange(workspaceId, { ...entry, field: 'product_body', before: { bodyHtml: plan.body }, after: { removed } });
+  }
+}
+
+// Only on request: hiding a page is the owner's call, never the daily run's.
+async function hideCollection({ workspaceId, creds, page, audit, source }) {
+  await shopify.setCollectionPublished(creds, page.collectionType, page.id, false);
+  await repo.logChange(workspaceId, {
+    auditId: audit?.id, resourceType: 'collection', resourceId: page.id, url: page.url, title: page.name,
+    field: 'collection_published', before: { published: true, collectionType: page.collectionType }, after: { published: false }, source,
+  });
+}
+
 async function rewriteArticle({ workspaceId, creds, page, audit, source }) {
   const seo = await shopify.getArticleSeo(creds, page.id).catch(() => ({}));
   const enhanced = await enhanceArticleForWorkspace(workspaceId, {
@@ -210,7 +254,9 @@ async function rewriteArticle({ workspaceId, creds, page, audit, source }) {
   });
 }
 
-const allowed = (settings) => ({ meta: settings.fix_meta, alt: settings.fix_alt, links: settings.fix_links, article: settings.fix_articles });
+const allowed = (settings) => ({
+  meta: settings.fix_meta, alt: settings.fix_alt, links: settings.fix_links, article: settings.fix_articles, claims: settings.fix_claims && Boolean(settings.store_facts),
+});
 
 const failure = (err) => (err.response?.data?.errors ? `Shopify refused the change: ${JSON.stringify(err.response.data.errors)}` : err.message);
 
@@ -229,10 +275,12 @@ async function fixPage({ workspaceId, creds, page, types, kinds, live, context, 
       console.error(`SEO fix ${kind} failed on ${page.url}: ${failure(err)}`);
     }
   };
+  await run('claims', () => fixClaims({ workspaceId, creds, page, context, audit, source })); // before meta: both edit the description
   await run('meta', () => fixMeta({ workspaceId, creds, page, context, audit, source, manual }));
   await run('alt', () => fixAlt({ workspaceId, creds, page, audit, source }));
   await run('links', () => fixLinks({ workspaceId, creds, page, live, audit, source }));
   await run('article', () => rewriteArticle({ workspaceId, creds, page, audit, source }));
+  await run('hide', () => hideCollection({ workspaceId, creds, page, audit, source }));
   if (done.length) await repo.markFixed(workspaceId, page.type, page.id, done.flatMap((kind) => TYPES_BY_FIX[kind]));
   return { done, errors };
 }
@@ -277,13 +325,14 @@ export async function applyFixes({ workspaceId, settings, creds, pages, issues, 
       article: aiRoom && rewrites < MAX_ARTICLE_REWRITES && canFix(key, 'article'),
       alt: ruleRoom && canFix(key, 'alt'),
       links: ruleRoom && canFix(key, 'links'),
+      claims: ruleRoom && canFix(key, 'claims'),
     };
     const wanted = Object.keys(pageKinds).filter((kind) => pageKinds[kind] && types.some((t) => ISSUE_TYPES[t].fix === kind));
     if (!wanted.length) continue;
     const usesAi = wanted.some((kind) => AI_KINDS.has(kind));
     const queries = usesAi ? await queriesFor?.(page.url).catch(() => []) : [];
     const { done } = await fixPage({
-      workspaceId, creds, page, types, kinds: pageKinds, live, audit, source: 'auto', context: { storeName, queries },
+      workspaceId, creds, page, types, kinds: pageKinds, live, audit, source: 'auto', context: { storeName, queries, facts: settings.store_facts },
     });
     if (usesAi) aiTries++;
     if (done.some((kind) => AI_KINDS.has(kind))) aiPages++;
@@ -296,11 +345,11 @@ export async function applyFixes({ workspaceId, settings, creds, pages, issues, 
 
 // One issue fixed on request. Ignores the automation's toggles: the owner just asked for it.
 // `manual` is the owner's own title and description, used instead of asking the AI.
-export async function fixOne({ workspaceId, creds, issue, page, live, storeName, manual }) {
+export async function fixOne({ workspaceId, creds, issue, page, live, storeName, facts, manual }) {
   const kind = ISSUE_TYPES[issue.type]?.fix;
-  const kinds = { meta: false, alt: false, links: false, article: false, [kind]: true };
+  const kinds = { [kind]: true };
   const { done, errors } = await fixPage({
-    workspaceId, creds, page, types: [issue.type], kinds, live, source: 'manual', context: { storeName }, manual: kind === 'meta' ? manual : undefined,
+    workspaceId, creds, page, types: [issue.type], kinds, live, source: 'manual', context: { storeName, facts }, manual: kind === 'meta' ? manual : undefined,
   });
   if (!done.length) throw Object.assign(new Error(errors[0] || "This fix couldn't be applied."), { status: 422 });
 }
@@ -321,6 +370,11 @@ export async function undoChange(workspaceId, creds, id) {
       await shopify.restoreResourceSeo(creds, 'article', change.resource_id, before);
     } else if (change.field === 'product_body') {
       await shopify.setProductBody(creds, change.resource_id, before.bodyHtml);
+    } else if (change.field === 'collection_published') {
+      await shopify.setCollectionPublished(creds, before.collectionType, change.resource_id, before.published);
+    } else if (change.field === 'theme_file') {
+      await shopify.putThemeAsset(creds, change.resource_id, before.key, before.value);
+      if (before.addedSnippet) await shopify.deleteThemeAsset(creds, change.resource_id, before.addedSnippet).catch(() => {});
     }
   } catch (err) {
     await repo.reopenChange(change.id);

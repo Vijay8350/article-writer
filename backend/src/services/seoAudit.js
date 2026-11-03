@@ -4,10 +4,10 @@ import * as stores from '../repositories/stores.js';
 import * as dnaRepo from '../repositories/dna.js';
 import * as shopify from './shopify.js';
 import * as gsc from './searchConsole.js';
-import { applyFixes } from './seoFixes.js';
+import { applyFixes, fixOne } from './seoFixes.js';
 import { mapLimit } from './igMedia.js';
 import { safeAxiosConfig } from '../lib/safeHttp.js';
-import { detectIssues, siteScore, readPage, liveHosts, suspectLinks } from '../lib/seoRules.js';
+import { detectIssues, siteScore, readPage, liveHosts, suspectLinks, ISSUE_TYPES } from '../lib/seoRules.js';
 import { calculateAeoScore } from '../lib/seo.js';
 import { stripTags } from '../lib/articleStructure.js';
 import { INTERNAL_COLLECTION_RE } from '../lib/articleCatalog.js';
@@ -33,12 +33,15 @@ const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // `confirmLinks` checks suspect article links on the live site, which only link fixes need.
 async function loadInventory(creds, domain, { confirmLinks = true } = {}) {
   const base = `https://${domain}`;
-  const [products, collections, blogs, shopPages, productCounts] = await Promise.all([
+  // Without these extras, empty collections and false promises just aren't flagged this run.
+  const optional = (label, promise) => promise.catch((err) => {
+    console.error(`SEO audit: ${label} failed: ${err.message}`);
+    return null;
+  });
+  const [products, collections, blogs, shopPages, productCounts, productExtras] = await Promise.all([
     shopify.getProducts(creds), shopify.getCollections(creds, { strict: true }), shopify.getBlogs(creds), shopify.getPages(creds),
-    shopify.getCollectionProductCounts(creds).catch((err) => { // without counts, empty collections just aren't flagged
-      console.error(`Collection product counts failed: ${err.message}`);
-      return null;
-    }),
+    optional('collection product counts', shopify.getCollectionProductCounts(creds)),
+    optional('product descriptions and reviews', shopify.getProductSeoAndReviews(creds)),
   ]);
   const articles = (await Promise.all(blogs.map(async (blog) => (await shopify.getArticles(creds, blog.id))
     .filter(isPublished).map((a) => ({ ...a, blogId: blog.id, blogHandle: blog.handle }))))).flat();
@@ -52,9 +55,11 @@ async function loadInventory(creds, domain, { confirmLinks = true } = {}) {
       type: 'product', id: p.id, handle: p.handle, name: p.title, url: `${base}/products/${p.handle}`, body: p.body_html,
       images: (p.images || []).map((i) => ({ id: i.id, alt: i.alt, position: i.position })),
       facts: [p.product_type, stripTags(p.body_html).slice(0, 300)].filter(Boolean).join('. '), // never the price: metadata outlives it
+      seoDescription: productExtras?.get(String(p.id))?.seoDescription, reviewCount: productExtras?.get(String(p.id))?.reviewCount,
     })),
     ...liveCollections.filter((c) => !INTERNAL_COLLECTION_RE.test(c.title)).map((c) => ({
-      type: 'collection', id: c.id, handle: c.handle, name: c.title, url: `${base}/collections/${c.handle}`, productCount: productCounts?.get(String(c.id)),
+      type: 'collection', id: c.id, handle: c.handle, name: c.title, url: `${base}/collections/${c.handle}`,
+      collectionType: c.type, productCount: productCounts?.get(String(c.id)),
     })),
     ...articles.map((a) => ({
       type: 'article', id: a.id, blogId: a.blogId, handle: a.handle, name: a.title, url: `${base}/blogs/${a.blogHandle}/${a.handle}`,
@@ -144,7 +149,9 @@ export async function runAudit(workspaceId, { trigger = 'schedule', applying = t
     const { pages, live } = await loadInventory(creds, dna.shop.domain);
     const checked = await crawl(pages);
     const search = await loadSearch(workspaceId, settings, pages, dna.shop.domain);
-    const issues = detectIssues(pages, { search, live, aeoScore: (page) => calculateAeoScore({ bodyHtml: page.body }).score });
+    const issues = detectIssues(pages, {
+      search, live, facts: settings.store_facts, aeoScore: (page) => calculateAeoScore({ bodyHtml: page.body }).score,
+    });
     await repo.syncIssues(workspaceId, audit.id, issues);
 
     const fixesApplied = applying ? await applyFixes({
@@ -169,6 +176,40 @@ export async function loadIssuePage(creds, domain, issue, { confirmLinks = issue
   const { pages, live } = await loadInventory(creds, domain, { confirmLinks });
   const page = pages.find((p) => p.type === issue.resource_type && String(p.id) === issue.resource_id);
   return { page, live };
+}
+
+// Only fixes that follow fixed rules can run in bulk; AI-written ones are reviewed one by one.
+const BULK_FIXES = new Set(['claims', 'alt', 'links']);
+export const canFixAll = (type) => BULK_FIXES.has(ISSUE_TYPES[type]?.fix);
+
+// Fixes every open problem of one type, loading the store once. Returns how many were
+// fixed and why any weren't.
+export async function fixAllOfType(workspaceId, type) {
+  if (!canFixAll(type)) throw Object.assign(new Error('This kind of problem is fixed one at a time.'), { status: 400 });
+  const [settings, creds, dna] = await Promise.all([repo.getSettings(workspaceId), stores.getDefaultStore(workspaceId), dnaRepo.getDna(workspaceId)]);
+  if (!creds) throw Object.assign(new Error('No Shopify store is connected.'), { status: 400 });
+  if (!dna?.shop?.domain) throw Object.assign(new Error('Fetch your Business DNA first, so the store domain is known.'), { status: 400 });
+  const issues = await repo.listIssues(workspaceId, 'open', { type, limit: 1000 });
+  if (!issues.length) return { fixed: 0, failed: [] };
+
+  const { pages, live } = await loadInventory(creds, dna.shop.domain, { confirmLinks: ISSUE_TYPES[type].fix === 'links' });
+  const lookup = new Map(pages.map((p) => [`${p.type}:${p.id}`, p]));
+  let fixed = 0;
+  const failed = [];
+  for (const issue of issues) {
+    const page = lookup.get(`${issue.resource_type}:${issue.resource_id}`);
+    if (!page) {
+      failed.push({ title: issue.title, error: 'No longer published.' });
+      continue;
+    }
+    try {
+      await fixOne({ workspaceId, creds, issue, page, live, storeName: dna.shop.name, facts: settings.store_facts });
+      fixed++;
+    } catch (err) {
+      failed.push({ title: issue.title, error: err.message });
+    }
+  }
+  return { fixed, failed };
 }
 
 // Scheduler hook: at most one workspace per call.

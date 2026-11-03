@@ -685,6 +685,12 @@ a:hover { color: var(--accent-primary-hover); }
 .seo-modal__close:hover { color: var(--text-primary); }
 .seo-modal__note { font-size: 13px; color: var(--accent-warning); background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 12px; }
 .seo-modal .form-textarea { min-height: 72px; }
+.seo-change { border: 1px solid var(--border-primary); border-radius: var(--radius-md); padding: 10px 12px; margin-bottom: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.seo-change__where { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 6px; }
+.seo-change__before { color: var(--text-muted); text-decoration: line-through; text-decoration-color: rgba(239, 68, 68, 0.6); margin-bottom: 4px; }
+.seo-change__after { color: var(--text-primary); }
+.seo-store-fix { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--border-primary); }
+.seo-store-fix:first-of-type { border-top: 0; padding-top: 0; }
 .seo-preview { background: #fff; border-radius: var(--radius-md); padding: 12px 14px; font-family: arial, sans-serif; }
 .seo-preview__url { font-size: 12px; color: #4d5156; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .seo-preview__title { font-size: 18px; color: #1a0dab; margin: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

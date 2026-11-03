@@ -1,6 +1,8 @@
 // What counts as an SEO problem, how much it matters, and what can fix it. Pure logic, so
 // the audit's judgement can be tested without a store.
 
+import { findClaims } from './seoClaims.js';
+
 export const LIMITS = {
   titleMin: 30, titleMax: 65, descriptionMin: 70, descriptionMax: 165,
   thinProductWords: 40, thinArticleWords: 300, lowAeo: 50,
@@ -12,7 +14,8 @@ export const LIMITS = {
 export const ISSUE_TYPES = {
   broken_page: { label: 'Page does not load', severity: 'critical', advice: 'Open the page. If it was deleted on purpose, add a URL redirect in Shopify (Online Store → Navigation → URL redirects).' },
   noindex: { label: 'Hidden from Google', severity: 'critical', advice: 'Remove the noindex setting for this page in your theme or SEO app, unless you want it hidden.' },
-  empty_collection: { label: 'Empty collection', severity: 'high', advice: 'Add products to this collection in Shopify, or hide it from your Online Store sales channel. An empty page hurts your site in Google.' },
+  empty_collection: { label: 'Empty collection', severity: 'high', fix: 'hide', advice: 'Add products to this collection in Shopify, or hide it from your store. An empty page hurts your site in Google.' },
+  false_claim: { label: 'Promise your store doesn\'t make', severity: 'high', fix: 'claims' },
   title_missing: { label: 'Missing page title', severity: 'high', fix: 'meta' },
   meta_missing: { label: 'Missing meta description', severity: 'high', fix: 'meta' },
   title_duplicate: { label: 'Duplicate page title', severity: 'high', fix: 'meta' },
@@ -100,12 +103,17 @@ export const deadLinks = (html, live) => suspectLinks(html, live).filter((href) 
 
 export const liveHosts = (...domains) => new Set(domains.filter(Boolean).map(bareHost));
 
-function pageIssues(page, seen, search, live, aeoScore) {
+function pageIssues(page, seen, search, live, aeoScore, facts) {
   const found = [];
   const { http } = page;
   if (!http?.status || http.status >= 400) return [issue(page, 'broken_page', http?.status ? `The page returned ${http.status}.` : 'The page did not respond.')];
   // Nothing on it to describe, so its title and description don't matter until it has products.
   if (page.type === 'collection' && page.productCount === 0) return [issue(page, 'empty_collection', 'This collection has no products, so shoppers and Google see an empty page.')];
+
+  if (page.type === 'product') {
+    const claims = [...new Set([...findClaims(page.seoDescription, facts), ...findClaims(page.body, facts)])];
+    if (claims.length) found.push(issue(page, 'false_claim', `Promises ${claims.map((c) => `"${c}"`).join(', ')}, which your store facts say you don't offer.`));
+  }
 
   if (http.noindex) found.push(issue(page, 'noindex', 'A noindex tag keeps this page out of Google.'));
 
@@ -155,7 +163,7 @@ function pageIssues(page, seen, search, live, aeoScore) {
 }
 
 // Pages the crawl was refused (`skipped`) say nothing about the site, so they're left out.
-export function detectIssues(pages, { search = null, live, aeoScore = null } = {}) {
+export function detectIssues(pages, { search = null, live, aeoScore = null, facts = null } = {}) {
   const checked = pages.filter((p) => !p.skipped);
   const tally = (read) => {
     const map = new Map();
@@ -166,7 +174,7 @@ export function detectIssues(pages, { search = null, live, aeoScore = null } = {
     return map;
   };
   const seen = { titles: tally((p) => p.http?.title), descriptions: tally((p) => p.http?.description) };
-  return checked.flatMap((page) => pageIssues(page, seen, search, live, aeoScore));
+  return checked.flatMap((page) => pageIssues(page, seen, search, live, aeoScore, facts));
 }
 
 // The site's score: the average page, where each problem takes points off that page.

@@ -7,8 +7,9 @@ import * as stores from '../repositories/stores.js';
 import * as dnaRepo from '../repositories/dna.js';
 import * as gsc from '../services/searchConsole.js';
 import { createState, verifyState } from '../services/facebookLogin.js';
-import { runAudit, loadIssuePage } from '../services/seoAudit.js';
-import { fixOne, undoChange, suggestMeta, cleanManualMeta } from '../services/seoFixes.js';
+import { runAudit, loadIssuePage, fixAllOfType, canFixAll } from '../services/seoAudit.js';
+import { fixOne, undoChange, suggestMeta, cleanManualMeta, planClaims } from '../services/seoFixes.js';
+import { ratingStatus, installRating } from '../services/seoTheme.js';
 import { ISSUE_TYPES } from '../lib/seoRules.js';
 
 // SEO automation (/api/seo). The Google callback is public, because Google calls it, and
@@ -22,6 +23,17 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const MAX_FIXES = 50;
 
 const isValidTimezone = (tz) => { try { Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch { return false; } };
+
+// The owner's store facts, cleaned up, or a message saying what's wrong with them.
+function readStoreFacts(input) {
+  if (input === null) return { facts: null };
+  const cod = input?.cod === true || input?.cod === false ? input.cod : null;
+  const freeShipping = ['none', 'all', 'over'].includes(input?.freeShipping) ? input.freeShipping : null;
+  const min = Number(input?.freeShippingMin);
+  if (freeShipping === 'over' && !(min > 0)) return { error: 'Enter the order amount that gets free shipping.' };
+  if (cod === null && freeShipping === null) return { facts: null };
+  return { facts: { cod, freeShipping, ...(freeShipping === 'over' ? { freeShippingMin: Math.round(min) } : {}) } };
+}
 const bad = (res, error, status = 400) => res.status(status).json({ success: false, error });
 
 function fail(res, next, err) {
@@ -90,9 +102,9 @@ async function issueContext(req, res) {
   const [creds, dna] = await Promise.all([stores.getDefaultStore(req.workspace.id), dnaRepo.getDna(req.workspace.id)]);
   if (!creds) return refuse('No Shopify store is connected.');
   if (!dna?.shop?.domain) return refuse('Fetch your Business DNA first, so the store domain is known.');
-  const { page, live } = await loadIssuePage(creds, dna.shop.domain, issue);
+  const [{ page, live }, settings] = await Promise.all([loadIssuePage(creds, dna.shop.domain, issue), repo.getSettings(req.workspace.id)]);
   if (!page) return refuse('This page is no longer published on your store.', 404);
-  return { issue, creds, page, live, storeName: dna.shop.name };
+  return { issue, creds, page, live, storeName: dna.shop.name, facts: settings.store_facts };
 }
 
 router.get('/overview', async (req, res, next) => {
@@ -120,10 +132,13 @@ router.put('/settings', manage, async (req, res, next) => {
     if (b.runTime !== undefined && !TIME_RE.test(b.runTime)) return bad(res, 'Run time must be HH:MM (24-hour)');
     if (b.timezone !== undefined && !isValidTimezone(b.timezone)) return bad(res, 'Invalid time zone');
     const flag = (v) => (v === undefined ? undefined : Boolean(v));
+    const storeFacts = b.storeFacts === undefined ? {} : readStoreFacts(b.storeFacts);
+    if (storeFacts.error) return bad(res, storeFacts.error);
     const settings = await repo.updateSettings(req.workspace.id, {
       enabled: flag(b.enabled), runTime: b.runTime, timezone: b.timezone,
       maxFixes: b.maxFixes === undefined ? undefined : Math.min(Math.max(parseInt(b.maxFixes) || 1, 1), MAX_FIXES),
       fixMeta: flag(b.fixMeta), fixAlt: flag(b.fixAlt), fixLinks: flag(b.fixLinks), fixArticles: flag(b.fixArticles),
+      fixClaims: flag(b.fixClaims), storeFacts: b.storeFacts === undefined ? undefined : storeFacts.facts,
     });
     res.json({ success: true, data: settings, message: 'SEO automation saved' });
   } catch (error) { next(error); }
@@ -169,15 +184,38 @@ router.post('/issues/:id/restore', manage, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-// The editor's starting point for a title or description problem. Changes nothing.
+// What a fix would do, before it's saved. Changes nothing. A title or description problem
+// gets the AI's suggestion to edit; a false promise gets the exact lines that would change.
 router.post('/issues/:id/suggest', manage, async (req, res, next) => {
   try {
     const ctx = await issueContext(req, res);
     if (!ctx) return undefined;
-    if (ISSUE_TYPES[ctx.issue.type].fix !== 'meta') return bad(res, 'Only title and description problems have an editor.');
+    const kind = ISSUE_TYPES[ctx.issue.type].fix;
+    const page = { name: ctx.page.name, url: ctx.page.url, type: ctx.page.type };
+    if (kind === 'claims') {
+      const plan = await planClaims(ctx.creds, ctx.page, ctx.facts);
+      return res.json({ success: true, data: { kind, page, changes: plan.changes || [], note: plan.error || null } });
+    }
+    if (kind !== 'meta') return bad(res, 'This kind of fix has no preview.');
     const result = await suggestMeta({ workspaceId: req.workspace.id, creds: ctx.creds, page: ctx.page, storeName: ctx.storeName });
-    res.json({ success: true, data: { ...result, storeName: ctx.storeName, page: { name: ctx.page.name, url: ctx.page.url, type: ctx.page.type } } });
-  } catch (err) { fail(res, next, err); }
+    return res.json({ success: true, data: { kind, ...result, storeName: ctx.storeName, page } });
+  } catch (err) { return fail(res, next, err); }
+});
+
+// Fixes every open problem of one rule-based type (false promises, alt text, dead links).
+router.post('/issues/fix-all', manage, async (req, res, next) => {
+  const type = req.body?.type;
+  if (!canFixAll(type)) return bad(res, 'This kind of problem is fixed one at a time.');
+  if (!(await repo.claimManual(req.workspace.id))) return bad(res, 'A site check is running. Try again when it finishes.', 409);
+  try {
+    const { fixed, failed } = await fixAllOfType(req.workspace.id, type);
+    const message = failed.length ? `Fixed ${fixed}. ${failed.length} need you: ${failed.slice(0, 3).map((f) => `${f.title} (${f.error})`).join('; ')}` : `Fixed ${fixed} on your store. Each one can be undone under Changes made.`;
+    return res.json({ success: true, data: { fixed, failed }, message });
+  } catch (err) {
+    return fail(res, next, err);
+  } finally {
+    await repo.releaseLock(req.workspace.id);
+  }
 });
 
 // Fixes one problem now. For a title or description, the body may carry the owner's own
@@ -187,7 +225,7 @@ router.post('/issues/:id/fix', manage, async (req, res, next) => {
     const manual = req.body?.seoTitle !== undefined || req.body?.seoDescription !== undefined ? cleanManualMeta(req.body) : undefined;
     const ctx = await issueContext(req, res);
     if (!ctx) return undefined;
-    await fixOne({ workspaceId: req.workspace.id, creds: ctx.creds, issue: ctx.issue, page: ctx.page, live: ctx.live, storeName: ctx.storeName, manual });
+    await fixOne({ workspaceId: req.workspace.id, creds: ctx.creds, issue: ctx.issue, page: ctx.page, live: ctx.live, storeName: ctx.storeName, facts: ctx.facts, manual });
     res.json({ success: true, message: 'Saved to your store. You can undo it under Changes made.' });
   } catch (err) { fail(res, next, err); }
 });
@@ -203,6 +241,30 @@ router.post('/changes/:id/undo', manage, async (req, res, next) => {
     if (!creds) return bad(res, 'No Shopify store is connected.');
     await undoChange(req.workspace.id, creds, req.params.id);
     res.json({ success: true, message: 'Change undone' });
+  } catch (err) { fail(res, next, err); }
+});
+
+// ─── Review stars (a change to the live theme) ───────────────────────────────
+
+async function storeOf(req) {
+  const [creds, dna] = await Promise.all([stores.getDefaultStore(req.workspace.id), dnaRepo.getDna(req.workspace.id)]);
+  if (!creds) throw Object.assign(new Error('No Shopify store is connected.'), { status: 400 });
+  if (!dna?.shop?.domain) throw Object.assign(new Error('Fetch your Business DNA first, so the store domain is known.'), { status: 400 });
+  return { creds, domain: dna.shop.domain };
+}
+
+router.get('/theme/rating', async (req, res, next) => {
+  try {
+    const { creds, domain } = await storeOf(req);
+    res.json({ success: true, data: await ratingStatus(creds, domain) });
+  } catch (err) { fail(res, next, err); }
+});
+
+router.post('/theme/rating', manage, async (req, res, next) => {
+  try {
+    const { creds, domain } = await storeOf(req);
+    const result = await installRating(req.workspace.id, creds, domain);
+    res.json({ success: true, data: result, message: `Review stars added for ${result.reviewed} reviewed products. Google shows them after it next crawls each page. Undo it under Changes made.` });
   } catch (err) { fail(res, next, err); }
 });
 

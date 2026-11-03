@@ -4,7 +4,7 @@ import { nextRunSql } from './instagram.js';
 
 const NEXT_RUN = nextRunSql('timezone', 'run_time');
 const SETTINGS_COLS = `workspace_id, enabled, to_char(run_time, 'HH24:MI') AS run_time, timezone, max_fixes, fix_meta, fix_alt,
-  fix_links, fix_articles, next_run_at, last_run_at, locked_until, google_email, google_site,
+  fix_links, fix_articles, fix_claims, store_facts, next_run_at, last_run_at, locked_until, google_email, google_site,
   (google_refresh_token_encrypted IS NOT NULL) AS google_connected`;
 
 export async function getSettings(workspaceId) {
@@ -13,7 +13,11 @@ export async function getSettings(workspaceId) {
   return rows[0];
 }
 
-const EDITABLE = { enabled: 'enabled', runTime: 'run_time', timezone: 'timezone', maxFixes: 'max_fixes', fixMeta: 'fix_meta', fixAlt: 'fix_alt', fixLinks: 'fix_links', fixArticles: 'fix_articles' };
+const EDITABLE = {
+  enabled: 'enabled', runTime: 'run_time', timezone: 'timezone', maxFixes: 'max_fixes', fixMeta: 'fix_meta', fixAlt: 'fix_alt',
+  fixLinks: 'fix_links', fixArticles: 'fix_articles', fixClaims: 'fix_claims', storeFacts: 'store_facts',
+};
+const CASTS = { run_time: '::time', store_facts: '::jsonb' };
 
 export async function updateSettings(workspaceId, changes) {
   await getSettings(workspaceId);
@@ -21,8 +25,8 @@ export async function updateSettings(workspaceId, changes) {
   const params = [workspaceId];
   for (const [key, col] of Object.entries(EDITABLE)) {
     if (changes[key] === undefined) continue;
-    params.push(changes[key]);
-    sets.push(`${col} = $${params.length}${col === 'run_time' ? '::time' : ''}`);
+    params.push(col === 'store_facts' && changes[key] !== null ? JSON.stringify(changes[key]) : changes[key]);
+    sets.push(`${col} = $${params.length}${CASTS[col] || ''}`);
   }
   if (sets.length) await query(`UPDATE seo_settings SET ${sets.join(', ')}, updated_at = now() WHERE workspace_id = $1`, params);
   await query(`UPDATE seo_settings SET next_run_at = CASE WHEN enabled THEN ${NEXT_RUN} END WHERE workspace_id = $1`, [workspaceId]);
@@ -75,6 +79,9 @@ export async function claimManual(workspaceId) {
   );
   return rowCount > 0;
 }
+
+// Ends a hold taken with claimManual for work that isn't a check (a bulk fix).
+export const releaseLock = (workspaceId) => query('UPDATE seo_settings SET locked_until = NULL WHERE workspace_id = $1', [workspaceId]);
 
 export const finishRun = (workspaceId) => query(
   `UPDATE seo_settings SET locked_until = NULL, last_run_at = now(), next_run_at = CASE WHEN enabled THEN ${NEXT_RUN} END WHERE workspace_id = $1`,
@@ -184,7 +191,7 @@ export async function logChange(workspaceId, c) {
 export async function listChanges(workspaceId, limit = 300) {
   const { rows } = await query(
     `SELECT id, resource_type, resource_id, url, title, field, source, status, created_at, undone_at,
-            CASE WHEN field IN ('article_body', 'product_body') THEN NULL ELSE before_value END AS before_value,
+            CASE WHEN field IN ('article_body', 'product_body', 'theme_file') THEN NULL ELSE before_value END AS before_value,
             CASE WHEN field = 'article_body' THEN NULL ELSE after_value END AS after_value
        FROM seo_changes WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT $2`,
     [workspaceId, limit]

@@ -302,24 +302,94 @@ export async function getCollections(creds, { strict = false } = {}) {
   return [...custom.map(shape('custom')), ...smart.map(shape('smart'))];
 }
 
-// How many products each collection holds, in one GraphQL query per 250 collections.
-export async function getCollectionProductCounts(creds) {
+// ─── GraphQL reads ──────────────────────────────────────────
+const GRAPHQL_VERSION = '2025-10';
+
+export async function graphql(creds, queryText, variables = {}) {
   ensure(creds);
   const host = String(creds.storeUrl || '').replace(/\/$/, '').replace(/^https?:\/\//, '');
-  const counts = new Map();
+  const { data } = await axios.post(`https://${host}/admin/api/${GRAPHQL_VERSION}/graphql.json`, { query: queryText, variables }, { headers: headers(creds), timeout: 30000 });
+  if (data.errors) throw new Error(data.errors[0]?.message || 'GraphQL error');
+  return data.data;
+}
+
+// Every page of a connection, 250 at a time. `pick` finds the connection in the result.
+async function allNodes(creds, queryText, pick) {
+  const nodes = [];
   let after = null;
   do {
-    const { data } = await axios.post(`https://${host}/admin/api/2025-10/graphql.json`, {
-      query: `query($after: String) { collections(first: 250, after: $after) {
-        nodes { legacyResourceId productsCount { count } } pageInfo { hasNextPage endCursor } } }`,
-      variables: { after },
-    }, { headers: headers(creds), timeout: 20000 });
-    if (data.errors) throw new Error(data.errors[0]?.message || 'GraphQL error');
-    const page = data.data.collections;
-    for (const c of page.nodes) counts.set(String(c.legacyResourceId), c.productsCount?.count ?? 0);
-    after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+    const connection = pick(await graphql(creds, queryText, { after }));
+    nodes.push(...connection.nodes);
+    after = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
   } while (after);
-  return counts;
+  return nodes;
+}
+
+// How many products each collection holds.
+export async function getCollectionProductCounts(creds) {
+  const nodes = await allNodes(creds, `query($after: String) { collections(first: 250, after: $after) {
+    nodes { legacyResourceId productsCount { count } } pageInfo { hasNextPage endCursor } } }`, (d) => d.collections);
+  return new Map(nodes.map((c) => [String(c.legacyResourceId), c.productsCount?.count ?? 0]));
+}
+
+// Each product's Google description and review count (Shopify's reviews.rating_count, which
+// review apps such as Judge.me keep up to date).
+export async function getProductSeoAndReviews(creds) {
+  const nodes = await allNodes(creds, `query($after: String) { products(first: 250, after: $after) {
+    nodes { legacyResourceId handle status seo { description } reviews: metafield(namespace: "reviews", key: "rating_count") { value } }
+    pageInfo { hasNextPage endCursor } } }`, (d) => d.products);
+  return new Map(nodes.map((p) => [String(p.legacyResourceId), {
+    handle: p.handle, active: p.status === 'ACTIVE', seoDescription: p.seo?.description || '', reviewCount: Number(p.reviews?.value) || 0,
+  }]));
+}
+
+// Shows or hides a collection on the Online Store.
+export async function setCollectionPublished(creds, collectionType, id, published) {
+  ensure(creds);
+  const resource = collectionType === 'smart' ? 'smart_collection' : 'custom_collection';
+  await axios.put(`${baseUrl(creds)}/${resource}s/${id}.json`, { [resource]: { id, published } }, { headers: headers(creds), timeout: 15000 });
+}
+
+// ─── Theme files (needs the read_themes / write_themes permission) ────────────
+export async function getAccessScopes(creds) {
+  ensure(creds);
+  const host = String(creds.storeUrl || '').replace(/\/$/, '').replace(/^https?:\/\//, '');
+  const { data } = await axios.get(`https://${host}/admin/oauth/access_scopes.json`, { headers: headers(creds), timeout: 15000 });
+  return (data.access_scopes || []).map((s) => s.handle);
+}
+
+export async function getMainTheme(creds) {
+  ensure(creds);
+  const { data } = await axios.get(`${baseUrl(creds)}/themes.json`, { headers: headers(creds), timeout: 15000 });
+  return (data.themes || []).find((t) => t.role === 'main') || null;
+}
+
+export async function listThemeAssetKeys(creds, themeId) {
+  ensure(creds);
+  const { data } = await axios.get(`${baseUrl(creds)}/themes/${themeId}/assets.json`, { params: { fields: 'key' }, headers: headers(creds), timeout: 20000 });
+  return (data.assets || []).map((a) => a.key);
+}
+
+export async function getThemeAsset(creds, themeId, key) {
+  ensure(creds);
+  try {
+    const { data } = await axios.get(`${baseUrl(creds)}/themes/${themeId}/assets.json`, { params: { 'asset[key]': key }, headers: headers(creds), timeout: 20000 });
+    return data.asset;
+  } catch (err) {
+    if (err.response?.status === 404) return null;
+    throw err;
+  }
+}
+
+export async function putThemeAsset(creds, themeId, key, value) {
+  ensure(creds);
+  const { data } = await axios.put(`${baseUrl(creds)}/themes/${themeId}/assets.json`, { asset: { key, value } }, { headers: headers(creds), timeout: 30000 });
+  return data.asset;
+}
+
+export async function deleteThemeAsset(creds, themeId, key) {
+  ensure(creds);
+  await axios.delete(`${baseUrl(creds)}/themes/${themeId}/assets.json`, { params: { 'asset[key]': key }, headers: headers(creds), timeout: 20000 });
 }
 
 // The names of a few products in a collection, which say what the page really holds.

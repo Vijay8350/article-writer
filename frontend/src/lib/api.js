@@ -88,6 +88,9 @@ export const suggestSeoFix = (id) => api.post(`/seo/issues/${id}/suggest`).then(
 export const fixSeoIssue = (id, wording) => api.post(`/seo/issues/${id}/fix`, wording || {}).then(r => r.data);
 export const ignoreSeoIssue = (id) => api.post(`/seo/issues/${id}/ignore`).then(r => r.data);
 export const restoreSeoIssue = (id) => api.post(`/seo/issues/${id}/restore`).then(r => r.data);
+export const fixAllSeoIssues = (type) => api.post('/seo/issues/fix-all', { type }).then(r => r.data);
+export const getRatingStatus = () => api.get('/seo/theme/rating').then(r => r.data);
+export const addReviewStars = () => api.post('/seo/theme/rating').then(r => r.data);
 export const getSeoChanges = () => api.get('/seo/changes').then(r => r.data);
 export const undoSeoChange = (id) => api.post(`/seo/changes/${id}/undo`).then(r => r.data);
 export const startGoogleConnect = () => api.post('/seo/google/start').then(r => r.data);

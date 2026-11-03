@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  SearchCheck, Loader2, Play, Sparkles, Power, Undo2, EyeOff, ExternalLink, Wrench, Link2, Unlink, Save, X, RefreshCw, RotateCcw,
+  SearchCheck, Loader2, Play, Sparkles, Power, Undo2, EyeOff, ExternalLink, Wrench, Link2, Unlink, Save, X, RefreshCw, RotateCcw, Star, CheckCheck,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
-  getSeoOverview, saveSeoSettings, runSeoAudit, getSeoIssues, suggestSeoFix, fixSeoIssue, ignoreSeoIssue, restoreSeoIssue,
-  getSeoChanges, undoSeoChange, startGoogleConnect, getGoogleSites, setGoogleSite, disconnectGoogle,
+  getSeoOverview, saveSeoSettings, runSeoAudit, getSeoIssues, suggestSeoFix, fixSeoIssue, fixAllSeoIssues, ignoreSeoIssue, restoreSeoIssue,
+  getSeoChanges, undoSeoChange, startGoogleConnect, getGoogleSites, setGoogleSite, disconnectGoogle, getRatingStatus, addReviewStars,
 } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { ColumnChart, BarList, Kpi, compact } from '../components/insights/Charts';
@@ -18,7 +18,12 @@ const ISSUE_VIEWS = [['open', 'Open'], ['fixed', 'Fixed'], ['resolved', 'Gone'],
 const POLL_MS = 5000;
 // What Google shows in full, and the most the server accepts from a person.
 const LIMITS = { seoTitle: [60, 70], seoDescription: [160, 200] };
-const FIX_LABELS = { meta: 'Fix', alt: 'Add alt text', links: 'Remove dead links', article: 'Rewrite' };
+const FIX_LABELS = { meta: 'Fix', alt: 'Add alt text', links: 'Remove dead links', article: 'Rewrite', claims: 'Fix', hide: 'Hide from store' };
+const BULK_KINDS = ['claims', 'alt', 'links']; // rule-based fixes, safe to run on every page at once
+const CONFIRM = {
+  article: 'Rewrite this whole article with AI? It keeps the images and links, and you can undo it under Changes made. This takes a minute or two.',
+  hide: 'Hide this collection from your online store? Shoppers and Google stop seeing it. You can undo it under Changes made.',
+};
 
 const errMsg = (err, fallback = 'Something went wrong') => err.response?.data?.error || fallback;
 const muted = { fontSize: 12, color: 'var(--text-muted)' };
@@ -51,17 +56,81 @@ function SearchSummary({ search }) {
   );
 }
 
-function OverviewTab({ data }) {
+const FREE_SHIPPING_TEXT = { none: 'no free shipping', all: 'free shipping on every order' };
+function describeFacts(facts) {
+  const cod = facts.cod === false ? 'Prepaid only, no Cash on Delivery' : facts.cod ? 'Cash on Delivery offered' : 'Cash on Delivery not set';
+  const free = facts.freeShipping === 'over' ? `free shipping over ₹${facts.freeShippingMin}` : FREE_SHIPPING_TEXT[facts.freeShipping] || 'free shipping not set';
+  return `${cod}; ${free}.`;
+}
+
+// Fixes that apply to the whole store rather than one page.
+function StoreFixes({ canManage, settings, onOpenSettings }) {
+  const [rating, setRating] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => getRatingStatus()
+    .then((res) => setRating(res.data))
+    .catch((err) => setRating({ state: 'error', message: errMsg(err, 'Could not check your theme.') })), []);
+  useEffect(() => { load(); }, [load]);
+
+  const addStars = async () => {
+    if (!window.confirm('Add review stars to your live theme? A backup is kept, a product page is checked straight after, and the theme is put back by itself if anything looks wrong. You can undo it under Changes made.')) return;
+    setBusy(true);
+    try {
+      toast.success((await addReviewStars()).message, { duration: 10000 });
+      await load();
+    } catch (err) { toast.error(errMsg(err), { duration: 12000 }); }
+    setBusy(false);
+  };
+
+  const facts = settings.store_facts;
+  return (
+    <div className="card mb-24">
+      <div className="card-body">
+        <h3 style={{ fontSize: 14, marginBottom: 12 }}>Store-wide fixes</h3>
+        <div className="seo-store-fix">
+          <div style={{ flex: '1 1 320px' }}>
+            <div className="flex gap-8" style={{ alignItems: 'center' }}><Star size={14} /> Review stars in Google</div>
+            <div style={muted}>
+              {!rating ? 'Checking your theme…' : rating.state === 'available'
+                ? `${rating.reviewed} products have reviews, but their pages don't give Google the rating, so no stars show in search results.`
+                : rating.message}
+            </div>
+          </div>
+          {rating?.state === 'installed' && <span className="badge badge-success">On</span>}
+          {canManage && rating?.state === 'available' && (
+            <button className="btn btn-sm btn-primary" disabled={busy} onClick={addStars}>
+              {busy ? <Loader2 size={13} className="spinning" /> : <Star size={13} />} {busy ? 'Adding and checking…' : 'Add review stars'}
+            </button>
+          )}
+        </div>
+        <div className="seo-store-fix">
+          <div style={{ flex: '1 1 320px' }}>
+            <div>Store facts</div>
+            <div style={muted}>{facts ? describeFacts(facts) : 'Tell the checker whether you offer Cash on Delivery and free shipping, so it can catch product text that promises otherwise.'}</div>
+          </div>
+          {canManage && <button className="btn btn-sm btn-secondary" onClick={onOpenSettings}>{facts ? 'Change' : 'Set store facts'}</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OverviewTab({ data, canManage, onOpenSettings }) {
   const { audits, counts, types } = data;
   const done = audits.filter((a) => a.status === 'done');
   const last = done[0];
+  const storeFixes = <StoreFixes canManage={canManage} settings={data.settings} onOpenSettings={onOpenSettings} />;
   if (!last) {
     return (
-      <div className="empty-state">
-        <SearchCheck />
-        <h3>No site check yet</h3>
-        <p>Press Check site now to see how your whole store looks to Google.</p>
-      </div>
+      <>
+        {storeFixes}
+        <div className="empty-state">
+          <SearchCheck />
+          <h3>No site check yet</h3>
+          <p>Press Check site now to see how your whole store looks to Google.</p>
+        </div>
+      </>
     );
   }
   const open = Object.values(counts).reduce((sum, n) => sum + n, 0);
@@ -74,6 +143,7 @@ function OverviewTab({ data }) {
         <Kpi label="Pages improved" value={compact(last.fixes_applied)} sub="in the last run" />
       </div>
       <SearchSummary search={last.search} />
+      {storeFixes}
       <div className="mb-24" style={twoColumns}>
         <div>
           <h3 style={{ fontSize: 14, marginBottom: 12 }}>SEO health by day</h3>
@@ -119,12 +189,7 @@ function MetaEditor({ issue, onClose, onSaved }) {
     setLoading(false);
   }, [issue.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { suggest(); }, [suggest]);
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && !saving) onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, saving]);
+  useEscape(onClose, saving);
 
   const save = async () => {
     setSaving(true);
@@ -195,12 +260,78 @@ function MetaEditor({ issue, onClose, onSaved }) {
   );
 }
 
-function IssuesTab({ canManage, refreshKey, onChanged }) {
+function useEscape(onClose, busy) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && !busy) onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose, busy]);
+}
+
+// A false promise: exactly which lines change, before anything is saved.
+function ClaimsPreview({ issue, onClose, onSaved }) {
+  const [plan, setPlan] = useState(null);
+  const [saving, setSaving] = useState(false);
+  useEscape(onClose, saving);
+
+  useEffect(() => {
+    suggestSeoFix(issue.id)
+      .then((res) => setPlan(res.data))
+      .catch((err) => { toast.error(errMsg(err), { duration: 8000 }); onClose(); });
+  }, [issue.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      toast.success((await fixSeoIssue(issue.id)).message);
+      onSaved();
+    } catch (err) {
+      toast.error(errMsg(err), { duration: 8000 });
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="seo-modal" role="dialog" aria-modal="true" aria-label="Remove a false promise" onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
+      <div className="seo-modal__card">
+        <button className="seo-modal__close" onClick={onClose} disabled={saving} aria-label="Close"><X size={18} /></button>
+        <h3 style={{ marginBottom: 4 }}>Remove a promise you don't make</h3>
+        <a href={issue.url} target="_blank" rel="noreferrer" style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{issue.title} <ExternalLink size={11} /></a>
+        <div style={{ ...muted, margin: '4px 0 16px' }}>{issue.detail}</div>
+        {!plan ? (
+          <div className="flex gap-8" style={{ alignItems: 'center', padding: '24px 0' }}><Loader2 size={16} className="spinning" /> Reading this product from Shopify…</div>
+        ) : (
+          <>
+            {plan.note && <div className="seo-modal__note">{plan.note}</div>}
+            {plan.changes.map((c, i) => (
+              <div key={i} className="seo-change">
+                <div className="seo-change__where">{c.where}</div>
+                <div className="seo-change__before">{c.before}</div>
+                <div className="seo-change__after">{c.after === null ? 'This line is removed.' : c.after}</div>
+              </div>
+            ))}
+          </>
+        )}
+        <div className="flex gap-8 mt-16" style={{ flexWrap: 'wrap' }}>
+          <button className="btn btn-primary" disabled={!plan || !!plan.note || saving} onClick={save}>{saving ? <Loader2 size={15} className="spinning" /> : <Save size={15} />} Save to store</button>
+          <button className="btn btn-ghost" disabled={saving} onClick={onClose}>Cancel</button>
+        </div>
+        <p className="form-helper" style={{ marginTop: 8 }}>Only the promise is taken out. Every other word stays, and you can undo it under Changes made.</p>
+      </div>
+    </div>
+  );
+}
+
+const inspectUrl = (site, url) => `https://search.google.com/search-console/inspect?resource_id=${encodeURIComponent(site)}&id=${encodeURIComponent(url)}`;
+
+function IssuesTab({ canManage, refreshKey, onChanged, googleSite }) {
   const [view, setView] = useState('open');
   const [type, setType] = useState('');
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [bulk, setBulk] = useState(false);
+  const closeEditor = useCallback(() => setEditing(null), []);
 
   const load = useCallback(async () => {
     try { setResult(await getSeoIssues(view, type)); }
@@ -219,8 +350,8 @@ function IssuesTab({ canManage, refreshKey, onChanged }) {
     setBusy(null);
   };
   const fix = (issue) => {
-    if (issue.fixKind === 'meta') return setEditing(issue);
-    if (issue.fixKind === 'article' && !window.confirm('Rewrite this whole article with AI? It keeps the images and links, and you can undo it under Changes made. This takes a minute or two.')) return undefined;
+    if (issue.fixKind === 'meta' || issue.fixKind === 'claims') return setEditing(issue);
+    if (CONFIRM[issue.fixKind] && !window.confirm(CONFIRM[issue.fixKind])) return undefined;
     return act(issue.id, (id) => fixSeoIssue(id));
   };
 
@@ -228,6 +359,21 @@ function IssuesTab({ canManage, refreshKey, onChanged }) {
   const types = result?.types || [];
   const total = types.reduce((sum, t) => sum + t.n, 0);
   const shownTotal = type ? types.find((t) => t.type === type)?.n || 0 : total;
+  const typeLabel = types.find((t) => t.type === type)?.label;
+  const bulkKind = type && view === 'open' && canManage ? issues?.[0]?.fixKind : null;
+  const Editor = editing ? (editing.fixKind === 'claims' ? ClaimsPreview : MetaEditor) : null;
+
+  const fixAll = async () => {
+    if (!window.confirm(`Fix all ${shownTotal} "${typeLabel}" problems on your store now? Each change is listed under Changes made, where it can be undone.`)) return;
+    setBulk(true);
+    try {
+      const res = await fixAllSeoIssues(type);
+      (res.data.failed.length ? toast : toast.success)(res.message, { duration: 10000 });
+      await load();
+      onChanged();
+    } catch (err) { toast.error(errMsg(err), { duration: 10000 }); }
+    setBulk(false);
+  };
 
   return (
     <>
@@ -240,6 +386,11 @@ function IssuesTab({ canManage, refreshKey, onChanged }) {
             <option value="">All problems ({total})</option>
             {types.map((t) => <option key={t.type} value={t.type}>{t.label} ({t.n})</option>)}
           </select>
+        )}
+        {BULK_KINDS.includes(bulkKind) && shownTotal > 0 && (
+          <button className="btn btn-sm btn-primary" disabled={bulk || !!busy} onClick={fixAll} title="Fix every problem of this type now">
+            {bulk ? <Loader2 size={13} className="spinning" /> : <CheckCheck size={13} />} {bulk ? 'Fixing…' : `Fix all ${shownTotal}`}
+          </button>
         )}
       </div>
       {!issues ? <div className="spinner" /> : issues.length === 0 ? (
@@ -259,8 +410,11 @@ function IssuesTab({ canManage, refreshKey, onChanged }) {
                       <td>
                         <div>{issue.label}</div>
                         <div style={{ ...muted, overflowWrap: 'anywhere' }}>{issue.detail}</div>
-                        {!issue.fixable && issue.advice && view === 'open' && (
+                        {issue.advice && view === 'open' && (
                           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4, overflowWrap: 'anywhere' }}><strong>What to do:</strong> {issue.advice}</div>
+                        )}
+                        {issue.type === 'not_indexed' && googleSite && (
+                          <a href={inspectUrl(googleSite, issue.url)} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>Check it in Search Console <ExternalLink size={11} /></a>
                         )}
                       </td>
                       <td>
@@ -292,13 +446,7 @@ function IssuesTab({ canManage, refreshKey, onChanged }) {
           </div>
         </>
       )}
-      {editing && (
-        <MetaEditor
-          issue={editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); load(); onChanged(); }}
-        />
-      )}
+      {Editor && <Editor issue={editing} onClose={closeEditor} onSaved={() => { setEditing(null); load(); onChanged(); }} />}
     </>
   );
 }
@@ -324,6 +472,11 @@ function ChangeDetail({ item }) {
         {after?.removed?.length > 0 && <div style={{ ...muted, overflowWrap: 'anywhere' }}>Removed: {after.removed.join(' · ')}</div>}
       </>
     );
+  }
+  if (item.field === 'collection_published') return <>Hidden from your online store</>;
+  if (item.field === 'theme_file') {
+    const r = after?.rating;
+    return <>Review stars added to your theme ({after?.key}){r ? <div style={muted}>Checked on this page: {r.ratingValue} of {r.bestRating} from {r.reviewCount} reviews</div> : null}</>;
   }
   return <>Article rewritten for search and AI answers</>;
 }
@@ -442,13 +595,23 @@ function GoogleTab({ data, canManage, onChanged }) {
 
 const SETTING_FIELDS = (s) => ({
   runTime: s.run_time, timezone: s.timezone, maxFixes: s.max_fixes,
-  fixMeta: s.fix_meta, fixAlt: s.fix_alt, fixLinks: s.fix_links, fixArticles: s.fix_articles,
+  fixMeta: s.fix_meta, fixAlt: s.fix_alt, fixLinks: s.fix_links, fixArticles: s.fix_articles, fixClaims: s.fix_claims,
+  cod: s.store_facts?.cod === true ? 'yes' : s.store_facts?.cod === false ? 'no' : '',
+  freeShipping: s.store_facts?.freeShipping || '',
+  freeShippingMin: s.store_facts?.freeShippingMin || '',
+});
+// The form's store-facts fields as the API takes them.
+const toStoreFacts = (f) => ({
+  cod: f.cod === 'yes' ? true : f.cod === 'no' ? false : null,
+  freeShipping: f.freeShipping || null,
+  freeShippingMin: f.freeShipping === 'over' ? Number(f.freeShippingMin) : undefined,
 });
 const FIX_OPTIONS = [
   ['fixMeta', 'Meta titles and descriptions', 'Written by DeepSeek from the page\'s own facts. Pages with almost no text, and empty collections, are left for you.'],
   ['fixAlt', 'Product image alt text', 'Taken from the product name. Every product that needs it, each run.'],
   ['fixLinks', 'Dead links in articles', 'Removes the link and keeps the words. Only links your live site says are gone.'],
   ['fixArticles', 'Rewrite weak articles', 'Changes your published text, one article a day. Check these yourself: the AI can get facts wrong.'],
+  ['fixClaims', 'Promises your store doesn\'t make', 'Takes "free shipping" and "Cash on Delivery" promises out of product text when your store facts below say otherwise. Every other word stays.'],
 ];
 
 function SettingsTab({ settings, canManage, onChanged }) {
@@ -458,7 +621,8 @@ function SettingsTab({ settings, canManage, onChanged }) {
 
   const save = async () => {
     setSaving(true);
-    try { toast.success((await saveSeoSettings(form)).message); onChanged(); }
+    const { cod, freeShipping, freeShippingMin, ...rest } = form;
+    try { toast.success((await saveSeoSettings({ ...rest, storeFacts: toStoreFacts(form) })).message); onChanged(); }
     catch (err) { toast.error(errMsg(err)); }
     setSaving(false);
   };
@@ -489,6 +653,33 @@ function SettingsTab({ settings, canManage, onChanged }) {
           <label htmlFor={key}>{label}<div style={muted}>{help}</div></label>
         </div>
       ))}
+      <label className="form-label mt-16" style={{ display: 'block' }}>Store facts</label>
+      <p className="form-helper" style={{ marginTop: 0, marginBottom: 12 }}>The truth about your store. Product text that promises otherwise is flagged, and fixed if the option above is on.</p>
+      <div style={twoColumns}>
+        <div className="form-group">
+          <label className="form-label" htmlFor="cod">Cash on Delivery</label>
+          <select id="cod" className="form-select" value={form.cod} disabled={!canManage} onChange={(e) => set('cod', e.target.value)}>
+            <option value="">Not set</option>
+            <option value="yes">We offer Cash on Delivery</option>
+            <option value="no">Prepaid only, no COD</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label" htmlFor="freeShipping">Free shipping</label>
+          <select id="freeShipping" className="form-select" value={form.freeShipping} disabled={!canManage} onChange={(e) => set('freeShipping', e.target.value)}>
+            <option value="">Not set</option>
+            <option value="none">No free shipping</option>
+            <option value="all">Free on every order</option>
+            <option value="over">Free over an amount</option>
+          </select>
+        </div>
+      </div>
+      {form.freeShipping === 'over' && (
+        <div className="form-group" style={{ maxWidth: 240 }}>
+          <label className="form-label" htmlFor="freeShippingMin">Free shipping on orders over (₹)</label>
+          <input id="freeShippingMin" type="number" min="1" className="form-input" value={form.freeShippingMin} disabled={!canManage} onChange={(e) => set('freeShippingMin', e.target.value)} />
+        </div>
+      )}
       {canManage && <button className="btn btn-primary mt-16" disabled={saving} onClick={save}>{saving ? <Loader2 size={15} className="spinning" /> : <Save size={15} />} Save</button>}
     </div>
   );
@@ -581,8 +772,8 @@ export default function SeoAutomation() {
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab data={data} />}
-      {tab === 'issues' && <IssuesTab canManage={canManage} refreshKey={latest?.finished_at} onChanged={load} />}
+      {tab === 'overview' && <OverviewTab data={data} canManage={canManage} onOpenSettings={() => setTab('settings')} />}
+      {tab === 'issues' && <IssuesTab canManage={canManage} refreshKey={latest?.finished_at} onChanged={load} googleSite={settings.google_site} />}
       {tab === 'changes' && <ChangesTab canManage={canManage} refreshKey={latest?.finished_at} />}
       {tab === 'google' && <GoogleTab data={data} canManage={canManage} onChanged={load} />}
       {tab === 'settings' && <SettingsTab settings={settings} canManage={canManage} onChanged={load} />}
