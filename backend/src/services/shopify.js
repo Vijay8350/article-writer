@@ -229,6 +229,11 @@ export async function restoreResourceSeo(creds, type, id, before) {
   }
 }
 
+export async function setProductBody(creds, productId, bodyHtml) {
+  ensure(creds);
+  await axios.put(`${baseUrl(creds)}/products/${productId}.json`, { product: { id: productId, body_html: bodyHtml } }, { headers: headers(creds), timeout: 15000 });
+}
+
 export async function setImageAlt(creds, productId, imageId, alt) {
   ensure(creds);
   await axios.put(`${baseUrl(creds)}/products/${productId}/images/${imageId}.json`, { image: { id: imageId, alt } }, { headers: headers(creds), timeout: 15000 });

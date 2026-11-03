@@ -319,6 +319,8 @@ export async function undoChange(workspaceId, creds, id) {
     } else if (change.field === 'article_body') {
       await shopify.updateArticle(creds, change.blog_id, change.resource_id, { title: before.title, bodyHtml: before.bodyHtml });
       await shopify.restoreResourceSeo(creds, 'article', change.resource_id, before);
+    } else if (change.field === 'product_body') {
+      await shopify.setProductBody(creds, change.resource_id, before.bodyHtml);
     }
   } catch (err) {
     await repo.reopenChange(change.id);

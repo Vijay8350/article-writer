@@ -317,6 +317,14 @@ function ChangeDetail({ item }) {
   }
   if (item.field === 'image_alt') return <>Alt text added to {after?.length} image(s)</>;
   if (item.field === 'article_links') return <>Removed {after?.links?.length} dead link(s), kept the words</>;
+  if (item.field === 'product_body') {
+    return (
+      <>
+        Product text corrected
+        {after?.removed?.length > 0 && <div style={{ ...muted, overflowWrap: 'anywhere' }}>Removed: {after.removed.join(' · ')}</div>}
+      </>
+    );
+  }
   return <>Article rewritten for search and AI answers</>;
 }
 

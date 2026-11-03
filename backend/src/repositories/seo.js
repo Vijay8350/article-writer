@@ -184,7 +184,7 @@ export async function logChange(workspaceId, c) {
 export async function listChanges(workspaceId, limit = 300) {
   const { rows } = await query(
     `SELECT id, resource_type, resource_id, url, title, field, source, status, created_at, undone_at,
-            CASE WHEN field = 'article_body' THEN NULL ELSE before_value END AS before_value,
+            CASE WHEN field IN ('article_body', 'product_body') THEN NULL ELSE before_value END AS before_value,
             CASE WHEN field = 'article_body' THEN NULL ELSE after_value END AS after_value
        FROM seo_changes WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT $2`,
     [workspaceId, limit]
