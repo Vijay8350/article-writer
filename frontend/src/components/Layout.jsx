@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink, Outlet, Link } from 'react-router-dom';
+import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2, Instagram, AlarmClock, MessageCircle, Sparkles, Megaphone, BarChart3, ImagePlus, SearchCheck } from 'lucide-react';
-import { getSettings } from '../lib/api';
+import { getSettings, adminGetUsers, adminGetUpgradeRequests } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
 // Items without a `path` are planned features, shown greyed out with a "Soon" tag.
@@ -54,6 +54,17 @@ export default function Layout() {
   const { user, logout, workspaces, activeWorkspaceId, activeRole, switchWorkspace } = useAuth();
   const [connected, setConnected] = useState(false);
   const [storeName, setStoreName] = useState('');
+  const [waiting, setWaiting] = useState({ users: 0, upgrades: 0 });
+  const { pathname } = useLocation();
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
+
+  // Sign-ups and upgrade requests waiting for an admin, shown on the Admin link.
+  useEffect(() => {
+    if (!isAdmin) return;
+    Promise.all([adminGetUsers(), adminGetUpgradeRequests()])
+      .then(([u, r]) => setWaiting({ users: (u.data || []).filter(x => x.status === 'pending').length, upgrades: (r.data || []).length }))
+      .catch(() => {});
+  }, [isAdmin, pathname]);
 
   useEffect(() => {
     if (!activeWorkspaceId) return;
@@ -118,10 +129,18 @@ export default function Layout() {
               )))}
             </React.Fragment>
           ))}
-          {user?.role === 'admin' && (
-            <NavLink to="/admin" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+          {isAdmin && (
+            <NavLink
+              to={waiting.users ? '/admin?tab=pending' : waiting.upgrades ? '/admin?tab=upgrades' : '/admin'}
+              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+            >
               <Shield />
               Admin
+              {waiting.users + waiting.upgrades > 0 && (
+                <span className="nav-soon" style={{ background: 'var(--accent-warning)', color: '#111' }} title="Sign-ups and upgrade requests waiting for you">
+                  {waiting.users + waiting.upgrades}
+                </span>
+              )}
             </NavLink>
           )}
         </nav>

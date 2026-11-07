@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Loader2, UserPlus, CheckCircle2, Ban, RotateCcw, Activity as ActivityIcon, Building2, KeyRound, Settings2, X, Copy, Trash2, Plus, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
@@ -195,7 +196,9 @@ function UserPanel({ userId, workspaces, canManage, onClose, onChanged }) {
 export default function Admin() {
   const { user: me } = useAuth();
   const isSuper = me?.role === 'superadmin';
-  const [tab, setTab] = useState('workspaces');
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(params.get('tab') || 'workspaces');
+  useEffect(() => { if (params.get('tab')) setTab(params.get('tab')); }, [params]);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [workspaces, setWorkspaces] = useState([]);
