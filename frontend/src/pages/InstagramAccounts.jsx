@@ -292,6 +292,10 @@ export default function InstagramAccounts() {
             Connects every Instagram Business or Creator account linked to the Facebook Pages you choose — no token to copy.
             Or paste a token below.
           </div>
+          <div className="form-helper">
+            If Facebook says "Feature unavailable", the app is still waiting for Meta's approval. Until then only Facebook
+            accounts added to the app (under App roles in Meta for Developers) can connect.
+          </div>
         </div>
         {showHelp && <SetupHelp />}
         <form onSubmit={handleConnect}>
