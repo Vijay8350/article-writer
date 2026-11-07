@@ -21,9 +21,10 @@ function signToken(user) {
 // POST /api/auth/register
 router.post('/register', async (req, res, next) => {
   try {
-    const { email, password, name, workspaceName } = req.body || {};
+    const { password, name, workspaceName } = req.body || {};
+    const email = String(req.body?.email || '').trim();
 
-    if (!email || !EMAIL_RE.test(email)) return res.status(400).json({ success: false, error: 'A valid email is required' });
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ success: false, error: 'A valid email is required' });
     if (!password || password.length < 8) return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
 
     const exists = await query('SELECT 1 FROM users WHERE email = $1', [email]);
@@ -56,7 +57,8 @@ router.post('/register', async (req, res, next) => {
 // POST /api/auth/login
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body || {};
+    const { password } = req.body || {};
+    const email = String(req.body?.email || '').trim(); // emails are citext, so case doesn't matter
     if (!email || !password) return res.status(400).json({ success: false, error: 'Email and password are required' });
 
     const { rows } = await query(

@@ -54,6 +54,19 @@ export async function createForOwner(ownerUserId, name) {
   throw new Error('Could not generate a unique workspace slug');
 }
 
+// Keeps workspaces.owner_user_id pointing at a current owner after memberships change:
+// the earliest remaining owner takes over if the recorded one left or was demoted.
+export async function syncOwner(id) {
+  await query(
+    `UPDATE workspaces w SET owner_user_id = (
+        SELECT m.user_id FROM memberships m WHERE m.workspace_id = w.id AND m.role = 'owner' ORDER BY m.created_at ASC LIMIT 1)
+      WHERE w.id = $1 AND NOT EXISTS (
+        SELECT 1 FROM memberships m WHERE m.workspace_id = w.id AND m.user_id = w.owner_user_id AND m.role = 'owner')
+        AND EXISTS (SELECT 1 FROM memberships m WHERE m.workspace_id = w.id AND m.role = 'owner')`,
+    [id]
+  );
+}
+
 export async function rename(id, name) {
   await query('UPDATE workspaces SET name = $2 WHERE id = $1', [id, name]);
 }

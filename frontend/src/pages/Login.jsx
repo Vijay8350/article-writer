@@ -91,7 +91,7 @@ export default function Login() {
           <button
             type="button"
             className="link-btn"
-            onClick={() => toast('Password reset is coming soon. Email support meanwhile.', { icon: '📧' })}
+            onClick={() => toast('Ask your administrator to set a new password for you from the Admin console.', { icon: '🔑', duration: 6000 })}
           >
             Forgot password?
           </button>

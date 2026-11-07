@@ -216,6 +216,10 @@ export const adminSetRole = (userId, role) =>
 export const adminApproveUser = (userId) => api.post(`/admin/users/${userId}/approve`).then(r => r.data);
 export const adminSuspendUser = (userId) => api.post(`/admin/users/${userId}/suspend`).then(r => r.data);
 export const adminReactivateUser = (userId) => api.post(`/admin/users/${userId}/reactivate`).then(r => r.data);
+export const adminSetPassword = (userId, password) => api.post(`/admin/users/${userId}/password`, { password: password || undefined }).then(r => r.data);
+export const adminAddToWorkspace = (userId, workspaceId, role) => api.post(`/admin/users/${userId}/workspaces`, { workspaceId, role }).then(r => r.data);
+export const adminSetWorkspaceRole = (userId, workspaceId, role) => api.patch(`/admin/users/${userId}/workspaces/${workspaceId}`, { role }).then(r => r.data);
+export const adminRemoveFromWorkspace = (userId, workspaceId) => api.delete(`/admin/users/${userId}/workspaces/${workspaceId}`).then(r => r.data);
 // Workspaces (plans/usage/suspend are at the WORKSPACE level now)
 export const adminGetWorkspaces = () => api.get('/admin/workspaces').then(r => r.data);
 export const adminSetWorkspacePlan = (wsId, planId) =>
