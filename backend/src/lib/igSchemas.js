@@ -68,7 +68,7 @@ export function parseVerdict(raw) {
     pass: raw.pass,
     score: Math.round(score),
     reasons: (Array.isArray(raw.reasons) ? raw.reasons : []).map((r) => toText(r).trim()).filter(Boolean).slice(0, 10),
-    renderedText: optText(raw.rendered_text, 500),
+    renderedText: optText(raw.rendered_text, 2000), // product posts check every promised line in it
   };
 }
 

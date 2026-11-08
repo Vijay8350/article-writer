@@ -49,7 +49,11 @@ function ImageCard({ item, accounts, styles, busy, canManage, onRegenerate, onPu
   return (
     <div className="ig-post">
       {item.image_url ? (
-        <a href={item.image_url} target="_blank" rel="noreferrer"><img className="ig-post-img" src={item.image_url} alt={item.product_title || 'Generated product'} loading="lazy" /></a>
+        <a href={item.image_url} target="_blank" rel="noreferrer">
+          {/* The box follows the image itself (4:5 posts; older ones are square). */}
+          <img className={`ig-post-img${item.variant?.canvas === 'portrait' && item.status !== 'generating' ? ' portrait' : ''}`} src={item.image_url} alt={item.product_title || 'Generated product'} loading="lazy"
+            onLoad={(e) => e.currentTarget.classList.toggle('portrait', e.currentTarget.naturalHeight > e.currentTarget.naturalWidth)} />
+        </a>
       ) : (
         <div className="ig-post-placeholder">
           {item.status === 'generating' ? <><Loader2 size={22} className="spinning" /> Making the image and checking it…</> : <><ImagePlus size={22} /> No image</>}
@@ -64,7 +68,7 @@ function ImageCard({ item, accounts, styles, busy, canManage, onRegenerate, onPu
           <span className={`badge ${cls}`} style={{ flex: '0 0 auto' }}>{label}</span>
         </div>
         <div style={muted}>
-          {styleLabel || 'Mixed style'}{item.automation_id ? ' · daily job' : ''}{item.username ? ` · @${item.username}` : ''}
+          {[styleLabel || 'Mixed style', item.image_url && item.status !== 'generating' ? item.design_label : null].filter(Boolean).join(' · ')}{item.automation_id ? ' · daily job' : ''}{item.username ? ` · @${item.username}` : ''}
         </div>
         {item.qa_score != null && (
           <div style={{ fontSize: 12, color: item.status === 'qa_failed' ? 'var(--accent-danger)' : 'var(--text-secondary)' }}>
@@ -227,7 +231,7 @@ function CreateTab({ status, accounts, canManage }) {
                   ))}
                   <button type="button" className={`chip ${style === 'auto' ? 'active' : ''}`} onClick={() => setStyle('auto')}>Surprise me</button>
                 </div>
-                <div className="form-helper">Every post gets a fresh layout, design and wording, so your feed never looks repeated. Your product photo is never redrawn.</div>
+                <div className="form-helper">Every post gets a new look (colours, backdrop, typography) and a new frame for your photo (arch, circle, gallery frame, split screen…), in Instagram's tall 4:5 size. Your product photo is never redrawn.</div>
               </div>
 
               <div className="form-group">

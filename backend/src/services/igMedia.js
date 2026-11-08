@@ -49,8 +49,17 @@ export async function geminiKeyFor(workspaceId) {
   return key;
 }
 
+// How a 4:5 portrait is asked of an engine. gpt-image-2 (Codex and the API) and Gemini
+// make 4:5 themselves; older gpt-image models only offer 2:3, which is cut to its centre
+// 4:5 afterwards (the guide marks the bands that go: postCompositor.guideImage).
+function portraitOf(provider) {
+  if (provider === 'gemini') return { size: null, frame: '4:5' };
+  const model = provider === 'codex' ? config.images.codex.imageModel : config.images.openai.imageModel;
+  return /^gpt-image-2/i.test(model) ? { size: '1024x1280', frame: '4:5' } : { size: '1024x1536', frame: '2:3' };
+}
+
 // The backend that makes and inspects this workspace's images:
-// { provider, generate(prompt, references, { format }) → finished JPEG,
+// { provider, portraitFrame, generate(prompt, references, { format }) → finished JPEG,
 //   inspect(prompt, jpegs) → verdict, score(jpeg, intended, dna) → verdict, check() }.
 // IG_IMAGE_PROVIDER=auto takes the first one that's set up: codex → openai → gemini.
 export async function imageBackend(workspaceId) {
@@ -67,10 +76,13 @@ export async function imageBackend(workspaceId) {
       try { return await checkGeminiModels(await key()); } catch (err) { return { ok: false, detail: err.message }; }
     },
   } : (pick === 'codex' ? openai.codexBackend : openai.openaiBackend);
+  const portrait = portraitOf(pick);
 
   return {
     provider: pick,
+    portraitFrame: portrait.frame,
     generate: async (prompt, references = [], { format = 'square' } = {}) => {
+      if (format === 'portrait') return toPortraitJpeg(await engine.generate(prompt, references, portrait.size, '4:5'));
       const { size, aspect, finish } = IMAGE_FORMATS[format];
       return finish(await engine.generate(prompt, references, size, aspect));
     },
@@ -99,7 +111,9 @@ export async function mapLimit(items, limit, fn) {
 // the last try. Returns the final attempt either way; the caller decides what a fail means.
 // `compareTo` is what the gate sees beside the result (by default the references), and
 // `finish` runs on each image before the gate, so it judges the final picture.
-export async function generateUntilPassed(images, { prompt, gatePrompt, references = [], compareTo = references, format, attempts = 1, finish = null }) {
+// `check(verdict)` is a code check after the model's: any problems it returns fail the
+// image even if the model passed it (fail closed).
+export async function generateUntilPassed(images, { prompt, gatePrompt, references = [], compareTo = references, format, attempts = 1, finish = null, check = null }) {
   const originals = compareTo.map((r) => Buffer.from(r.data, 'base64'));
   let jpeg = null;
   let verdict = null;
@@ -110,6 +124,8 @@ export async function generateUntilPassed(images, { prompt, gatePrompt, referenc
     jpeg = await images.generate(`${prompt}${fixes}`, references, { format });
     if (finish) jpeg = await finish(jpeg);
     verdict = await images.inspect(gatePrompt, [jpeg, ...originals]);
+    const problems = verdict.pass && check ? check(verdict) : [];
+    if (problems.length) verdict = { ...verdict, pass: false, reasons: [...problems, ...verdict.reasons].slice(0, 10) };
   }
   return { jpeg, verdict, attempts: tried };
 }
@@ -140,6 +156,22 @@ export function toInstagramJpeg(bytes) {
     .flatten({ background: '#ffffff' })
     .jpeg({ quality: 90, mozjpeg: true })
     .toBuffer();
+}
+
+// Product posts: Instagram's tallest feed shape, 1080×1350 (4:5). A 2:3 engine image
+// loses the bands its guide marked; a near-4:5 one (Gemini's is close, not exact) is
+// trimmed by a few pixels. Any other shape would no longer line up with its guide.
+export async function toPortraitJpeg(bytes) {
+  const { width, height } = await sharp(bytes).metadata();
+  const ratio = width / height;
+  let img = sharp(bytes).rotate();
+  if (Math.abs(ratio - 2 / 3) < 0.02) {
+    const keep = Math.round(width / 0.8);
+    img = img.extract({ left: 0, top: Math.round((height - keep) / 2), width, height: keep });
+  } else if (Math.abs(ratio - 0.8) > 0.03) {
+    throw new Error(`The image engine returned ${width}x${height}, not a 4:5 portrait.`);
+  }
+  return img.resize(1080, 1350, { fit: 'cover' }).flatten({ background: '#ffffff' }).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
 }
 
 // Blog images: a 3:2 JPEG sized for article columns, small enough to load fast.
@@ -253,7 +285,8 @@ export async function generateImage(prompt, apiKey, references = [], { aspect = 
     const parts = [{ text: prompt }, ...references.map((r) => ({ inlineData: { mimeType: r.mimeType, data: r.data } }))];
     const { data } = await geminiHttp.post(`/models/${config.gemini.imageModel}:generateContent`, {
       contents: [{ role: 'user', parts }],
-      generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+      // Square and 3:2 images follow their reference; a portrait has to be asked for.
+      generationConfig: { responseModalities: ['TEXT', 'IMAGE'], ...(aspect === '4:5' ? { imageConfig: { aspectRatio: aspect } } : {}) },
     }, { headers });
     const img = findImage(data?.candidates);
     if (!img) throw new Error('Gemini image: no image in the response');

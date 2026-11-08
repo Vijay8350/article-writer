@@ -64,9 +64,9 @@ const FRAMES = [
   { key: 'outlined', radius: 24, outline: true },
 ];
 
-const CTAS = ['Shop now', 'Buy now', 'Order now', 'Grab yours', 'Get yours today'];
+export const CTAS = ['Shop now', 'Buy now', 'Order now', 'Grab yours', 'Get yours today'];
 
-const PRICE_FORMS = {
+export const PRICE_FORMS = {
   plain: (price) => price,
   only: (price) => `Only ${price}`,
   just: (price) => `Just ${price}`,
@@ -76,7 +76,7 @@ const PRICE_FORMS = {
 const keysOf = (list) => list.map((item) => item.key);
 
 // The option not seen for longest in `recent` (newest first). Ties are broken at random.
-function freshest(options, recent, field) {
+export function freshest(options, recent, field) {
   const age = (key) => {
     const at = recent.findIndex((v) => v?.[field] === key);
     return at < 0 ? Infinity : at;
@@ -108,11 +108,4 @@ export function describeVariant(variant = {}) {
     cta: variant.cta || CTAS[0],
     priceText: PRICE_FORMS[variant.price] || PRICE_FORMS.plain,
   };
-}
-
-// The next layouts after the cover's, so a carousel's slides differ from each other.
-export function layoutsAfter(key, count) {
-  const keys = keysOf(SQUARE_LAYOUTS);
-  const start = keys.indexOf(key);
-  return Array.from({ length: count }, (_, i) => keys[(start + 1 + i) % keys.length]);
 }

@@ -179,15 +179,11 @@ export const PRODUCT_IMAGE_STYLES = [
 
 export const isProductStyle = (key) => key === 'auto' || PRODUCT_IMAGE_STYLES.some((s) => s.key === key);
 
-// The chosen style, a different one each time for 'auto', and the banner otherwise.
+// A style by key; anything else is the promo banner. ('auto' is turned into the next
+// style in turn by lib/postDesigns.js pickDesign before it gets here.)
 export function resolveProductStyle(key) {
-  if (key === 'auto') return PRODUCT_IMAGE_STYLES[Math.floor(Math.random() * PRODUCT_IMAGE_STYLES.length)];
   return PRODUCT_IMAGE_STYLES.find((s) => s.key === key) || PRODUCT_IMAGE_STYLES[0];
 }
-
-// The extra slides of a carousel show the product differently, never another banner.
-export const extraSlideStyles = (coverKey) =>
-  PRODUCT_IMAGE_STYLES.filter((s) => !s.banner && s.key !== 'festive' && s.key !== coverKey);
 
 // What a promo banner says: short enough to read at phone size and to render exactly.
 export function productBannerCopy(product, { price, discount, storeName, cta }) {
@@ -197,26 +193,70 @@ export function productBannerCopy(product, { price, discount, storeName, cta }) 
 
 export const bannerCopyLines = (copy) => [copy.headline, copy.price, copy.discount, copy.cta, copy.storeName].filter(Boolean);
 
-export function buildProductImagePrompt(product, { storeName, style, notes, copy, slide, design } = {}) {
+// ─── Product posts: a look + a format on the 4:5 canvas (lib/postDesigns.js) ─────
+
+const POST_GUIDE = "The attached layout guide shows the whole canvas. Its light grey shapes mark exactly where the store's real product photos and their frames are placed afterwards. Replace all of the grey: let the background continue smoothly through those zones with nothing important in them, and do not draw any frame, card, box, arch, circle, outline, shadow or object there.";
+const POST_BANDS = 'The dark bands across the very top and bottom of the guide are cut off afterwards: fill them with background only, never text.';
+const PREMIUM = "Make it look like a post from a premium brand's Instagram feed, art-directed by a senior designer: one clear focal point, a limited palette, refined detail and generous margins. No clutter, no clip-art, no stock-photo look.";
+const PROMO_TYPE = 'Keep the type clean and instantly readable on a phone: crisp, high-contrast lettering in at most two typefaces, with nothing cramped or crowded near the edges.';
+
+// `look` is the art direction (lib/postDesigns.js LOOKS); a text-free style keeps its own
+// scene and takes only the look's palette. `layout` is the format's text sentence;
+// `tall` means the engine draws 2:3 and loses the guide's dark bands.
+export function buildPostPrompt(product, { storeName, style, look, layout, copy, notes, productColour, slide, tall = false } = {}) {
+  const promo = Boolean(copy);
   return [
-    `Design a square, attractive Instagram ${copy ? 'promo banner' : 'image'}${storeName ? ` for ${storeName}` : ''}, for this product: ${product.title}.`,
-    ...BANNER_RULES,
-    RESERVED_CARD,
+    `Design a portrait (4:5) Instagram ${promo ? 'promo post' : 'post'}${storeName ? ` for ${storeName}` : ''}, for this product: ${product.title}.`,
+    PREMIUM,
+    promo ? PROMO_TYPE : '',
+    POST_GUIDE,
+    tall ? POST_BANDS : '',
     NO_PRODUCT_DRAWN,
-    `Design: ${style.direction || design.concept.direction}. Choose colours that flatter this product.`,
-    copy ? `Layout: ${design.layout.text}` : '',
-    slide ? `This is slide ${slide.index} of ${slide.total} in one swipeable carousel. The last attached image is slide 1: match its colour palette and mood, without copying its text.` : '',
-    notes ? `Instructions from the store owner (follow these first): ${notes}.` : '',
-    ...(copy ? [
-      'Render this text in the space around the card, spelled EXACTLY as written, including currency symbols:',
+    style.direction ? `Scene: ${style.direction}. Colour palette: ${look.palette}.` : `Look: ${look.scene}.`,
+    promo ? `Typography: ${look.type}.` : '',
+    productColour ? `The product in the photo is mainly ${productColour}: choose colours that make it stand out.` : 'Choose colours that flatter the product.',
+    promo && layout ? `Text layout: ${layout} Keep every word at least 60 px in from the left and right edges.` : '',
+    slide ? `This is slide ${slide.index} of ${slide.total} in one swipeable carousel. The second attached image is slide 1: use the same palette, light and mood so they read as one series.` : '',
+    notes && slide ? `Instructions from the store owner, for the look only (this slide carries no words): ${notes}.` : '',
+    notes && !slide ? `Instructions from the store owner (follow these first${promo ? '; they may add words, but every text line listed below must still appear exactly as written' : ''}): ${notes}.` : '',
+    ...(promo ? [
+      'Render this text, spelled EXACTLY as written, including currency symbols:',
       `Headline: "${copy.headline}"`,
-      copy.price ? `Price, in a bold eye-catching badge: "${copy.price}"` : '',
+      copy.price ? `Price, in the price badge: "${copy.price}"` : '',
       copy.discount ? `Discount tag: "${copy.discount}"` : '',
-      `Button-style call to action: "${copy.cta}"`,
+      `Call to action: "${copy.cta}"`,
       copy.storeName ? `Small brand name: "${copy.storeName}"` : '',
       'Add no other words unless the store owner asked for them, and no fake logos or watermarks.',
-    ] : ['Add no text, logos or watermarks unless the store owner asked for them above.']),
+    ] : [slide ? 'Add no text, logos or watermarks.' : 'Add no text, logos or watermarks unless the store owner asked for them above.']),
   ].filter(Boolean).join('\n');
+}
+
+// The gate for product posts. `decor` names the frames the compositor drew on purpose,
+// so they aren't mistaken for an empty box. The text it reads is checked again in code.
+// `slide`: a later carousel slide, which carries no words whatever the owner asked.
+export function buildPostGatePrompt({ texts = [], brief, decor, slide = false } = {}) {
+  const textRule = texts.length
+    ? "every line above appears, spelled exactly, with the right numbers and currency symbols. Fail on misspelled, garbled, duplicated, missing or invented words. Letter case, letter-spacing and line breaks don't matter, and the brand name is meant to be small. Text asked for in the owner's instructions may be added, but it never replaces a listed line."
+    : slide ? 'fail on any text at all.' : 'fail on any text, unless the owner asked for it.';
+  return `You are a strict quality inspector for marketing images in an unattended auto-poster. Inspect the attached image. Its photo areas hold REAL product photos, placed there unchanged: do not judge the photos themselves. Intentional around them: ${decor ? `${decor}, and ` : ''}soft shadows under the photos.
+
+${texts.length ? `This text must appear on it, spelled exactly:
+"""
+${texts.join('\n')}
+"""` : slide ? 'This is a later slide of a carousel: it must carry no words at all.' : 'This image should carry no text.'}
+${brief ? `\nThe owner's instructions${slide ? ' (for this slide they decide only the look; any words they ask for belong on the first slide)' : ''}:\n"""\n${brief}\n"""\n` : ''}
+Fail it if an empty placeholder (a blank card, frame, box or grey shape that looks like a missing photo) shows behind or beside a photo. Background shapes, patterns and line art that belong to the design are fine.
+
+Evaluate, in order of importance:
+1. TEXT FIDELITY (most important): ${textRule} Report all the text you read outside the photo areas, word for word, in rendered_text.
+2. NOTHING INVENTED: fail if any product, jewellery or item for sale is drawn anywhere outside the photo areas.
+3. LAYOUT: fail if any text is hidden, cut off, overlapping or touching a photo area, or closer than about 40 px to the left or right edge.
+4. DESIGN: it looks like a post from a premium brand, attractive and easy to read on a phone. Fail if it is cluttered, amateurish or low contrast, or if any text is too small.
+5. INSTRUCTIONS: ${slide ? "its look follows the owner's instructions, if there are any." : "it follows the owner's instructions, if there are any."}
+6. SAFETY: no NSFW, offensive or nonsensical content.
+
+Be conservative: when uncertain, FAIL. Respond ONLY with JSON:
+{ "pass": boolean, "score": number (0-100), "reasons": string[], "rendered_text": string }`;
 }
 
 // The gate for designed images. `hasCard` means a real product photo sits on a card: that

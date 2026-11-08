@@ -2,23 +2,31 @@ import config from '../config/env.js';
 import * as repo from '../repositories/productImages.js';
 import * as igRepo from '../repositories/instagram.js';
 import * as media from './igMedia.js';
+import * as compositor from './postCompositor.js';
 import * as storefront from './storefront.js';
 import { publishPost } from './instagram.js';
 import { buildCaption } from './productCaption.js';
 import { resolveAi } from './ai.js';
 import { assertCanGenerateIgPost, incrementIgUsage } from './usage.js';
 import {
-  buildProductImagePrompt, buildBannerVisionPrompt, resolveProductStyle, extraSlideStyles, productBannerCopy, bannerCopyLines,
+  buildPostPrompt, buildPostGatePrompt, resolveProductStyle, productBannerCopy, bannerCopyLines,
 } from '../lib/igPrompts.js';
-import { pickVariant, describeVariant, layoutsAfter } from '../lib/imageVariety.js';
+import {
+  pickDesign, variantOf, planSlides, layoutSentence, lookOf, describeDesign, textProblems,
+} from '../lib/postDesigns.js';
+import { PRICE_FORMS } from '../lib/imageVariety.js';
 
-// A product on a store's website → a designed image → Instagram. The model only designs
-// around an empty card: the store's real photo is placed on it afterwards, so the
-// product's design can't change. Only images that pass the gate (status = 'ready') can
-// be posted: fail closed.
+// A product on a store's website → a designed 4:5 post → Instagram. The model only
+// designs around empty zones: the store's real photos are placed in them afterwards, so
+// the product's design can't change. Every post takes a new look and format
+// (lib/postDesigns.js). Only images that pass the gate (status = 'ready') can be
+// posted: fail closed.
 
 const SLIDE_PARALLEL = 3;
 const MAX_CAPTION = 2200;
+const PHOTO_SIZE = 1350; // big enough for a full-width photo without enlarging it
+const COLLAGE_PHOTOS = 3; // the lookbook trio shows three of the store's photos
+const DESIGN_HISTORY = 40; // enough of an account's past posts to rotate every look
 
 const badRequest = (message, status = 400) => Object.assign(new Error(message), { status });
 const errText = (e) => (e instanceof Error ? e.message : String(e)).slice(0, 500);
@@ -27,7 +35,7 @@ export const imageUrlsOf = (row) => allFiles(row).map(media.publicImageUrl);
 export const withUrl = (row) => {
   if (!row) return row;
   const [imageUrl = null, ...extraUrls] = imageUrlsOf(row);
-  return { ...row, image_url: imageUrl, extra_urls: extraUrls };
+  return { ...row, image_url: imageUrl, extra_urls: extraUrls, design_label: describeDesign(row.variant) };
 };
 
 async function findProduct(siteUrl, productId) {
@@ -40,33 +48,46 @@ async function findProduct(siteUrl, productId) {
 function bannerCopy(product, row, design) {
   const was = Number(product.compareAtPrice);
   const price = storefront.formatPrice(product.price, row.currency);
+  const priceText = PRICE_FORMS[design.price] || PRICE_FORMS.plain;
   return productBannerCopy(product, {
-    price: price ? design.priceText(price) : null,
+    price: price ? priceText(price) : null,
     discount: was > Number(product.price) ? `${Math.round((1 - product.price / was) * 100)}% OFF` : null,
     storeName: row.site_name,
     cta: design.cta,
   });
 }
 
-// The slides after the cover: the store's other photos of the product on new
-// backgrounds. One that fails its check is left out.
-async function renderExtraSlides({ images, row, product, photos, cover, coverStyle, variant, design }) {
+// The store's photos of the product, cover first, each with what the compositor needs
+// to know about it (lib/postDesigns.js plans from that). Unreadable photos are skipped.
+async function loadPhotos(product, count) {
+  const want = Math.min(product.images.length, Math.max(count, COLLAGE_PHOTOS));
+  const refs = await media.loadReferenceImages(product.images.slice(0, want), { maxSize: PHOTO_SIZE, limit: want });
+  const photos = refs.map((r) => Buffer.from(r.data, 'base64'));
+  const analyses = [];
+  for (const photo of photos) analyses.push(await compositor.analysePhoto(photo)); // one at a time: small server
+  return { photos, analyses };
+}
+
+// The product's main colour, when the photo is clean enough to tell.
+const colourOf = (info) => (info?.plain ? info.colour : null);
+
+// The slides after the cover: the store's other photos of the product, in the cover's
+// look, each in a different frame. One that fails its check is left out.
+async function renderExtraSlides({ images, row, product, photos, analyses, cover, style, look }) {
   const count = row.images_per_post - 1;
   if (count < 1) return { files: [], skipped: 0 };
-  const styles = extraSlideStyles(coverStyle.key);
-  const layouts = layoutsAfter(variant.layout, count);
   const coverRef = { data: cover.toString('base64'), mimeType: 'image/jpeg' };
-  const results = await media.mapLimit(layouts, SLIDE_PARALLEL, async (layout, i) => {
-    const photo = photos[(i + 1) % photos.length];
+  const results = await media.mapLimit(planSlides(analyses, count), SLIDE_PARALLEL, async ({ photo, plan }, i) => {
     const { jpeg, verdict } = await media.generateUntilPassed(images, {
-      prompt: buildProductImagePrompt(product, {
-        storeName: row.site_name, style: styles[i % styles.length], slide: { index: i + 2, total: count + 1 }, design,
+      prompt: buildPostPrompt(product, {
+        storeName: row.site_name, style, look, notes: row.notes, productColour: colourOf(analyses[photo]),
+        slide: { index: i + 2, total: count + 1 }, tall: images.portraitFrame === '2:3',
       }),
-      gatePrompt: buildBannerVisionPrompt({ hasCard: true }),
-      references: [await media.layoutTemplate(layout), coverRef],
+      gatePrompt: buildPostGatePrompt({ brief: row.notes, decor: plan.decor, slide: true }),
+      references: [await compositor.guideImage(plan, images.portraitFrame), coverRef],
       compareTo: [],
-      finish: (art) => media.placeRealPhoto(art, photo, layout, variant.frame),
-      format: 'square',
+      finish: (art) => compositor.composePost(art, plan, [photos[photo]], [analyses[photo]], look),
+      format: 'portrait',
       attempts: config.instagram.maxRegenAttempts,
     });
     if (!verdict.pass) throw new Error(verdict.reasons[0] || `score ${verdict.score}`);
@@ -80,28 +101,37 @@ async function renderExtraSlides({ images, row, product, photos, cover, coverSty
 // once against the plan's Instagram post limit, however many images it took.
 async function render(workspaceId, row, product) {
   const images = await media.imageBackend(workspaceId);
-  const photos = await media.loadReferenceImages(product.images.slice(0, row.images_per_post), { maxSize: 1024, limit: row.images_per_post });
+  const { photos, analyses } = await loadPhotos(product, row.images_per_post);
   if (!photos.length) throw new Error(`Couldn't download the photo of "${product.title}".`);
 
-  // A new look each time, recorded first so a job right behind this one can't pick the same.
-  const variant = pickVariant(await repo.recentDesigns(workspaceId, row.account_id));
-  await repo.update(row.id, { variant });
-  const design = describeVariant(variant);
+  // A new look and format each time, recorded first so a job right behind this one
+  // can't pick the same. A carousel already shows several photos, so no trio cover.
+  const design = pickDesign(await repo.recentDesigns(workspaceId, row.account_id, DESIGN_HISTORY), {
+    style: row.style, notes: row.notes, analyses, allowCollage: row.images_per_post <= 1,
+  });
+  if (design.error) throw new Error(`No layout can show the photo of "${product.title}" well: ${design.error}.`);
+  await repo.update(row.id, { variant: variantOf(design) });
 
-  const style = resolveProductStyle(row.style);
+  const style = resolveProductStyle(design.style);
+  const look = lookOf(design.look);
   const copy = style.banner ? bannerCopy(product, row, design) : null;
+  const used = design.plan.plans.length; // photos on the cover (three for the lookbook trio)
   const { jpeg, verdict, attempts } = await media.generateUntilPassed(images, {
-    prompt: buildProductImagePrompt(product, { storeName: row.site_name, style, notes: row.notes, copy, design }),
-    gatePrompt: buildBannerVisionPrompt({ texts: copy ? bannerCopyLines(copy) : [], brief: row.notes, hasCard: true }),
-    references: [await media.layoutTemplate(variant.layout)],
+    prompt: buildPostPrompt(product, {
+      storeName: row.site_name, style, look, copy, notes: row.notes, productColour: colourOf(analyses[0]),
+      layout: layoutSentence(design.plan, { discount: Boolean(copy?.discount), frame: images.portraitFrame }), tall: images.portraitFrame === '2:3',
+    }),
+    gatePrompt: buildPostGatePrompt({ texts: copy ? bannerCopyLines(copy) : [], brief: row.notes, decor: design.plan.decor }),
+    references: [await compositor.guideImage(design.plan, images.portraitFrame)],
     compareTo: [],
-    finish: (art) => media.placeRealPhoto(art, photos[0], variant.layout, variant.frame),
-    format: 'square',
+    finish: (art) => compositor.composePost(art, design.plan, photos.slice(0, used), analyses.slice(0, used), look),
+    format: 'portrait',
     attempts: config.instagram.maxRegenAttempts,
+    check: copy ? (v) => textProblems(v.renderedText, [copy.headline, copy.price, copy.discount, copy.cta], { brand: copy.storeName }) : null,
   });
 
   const extras = verdict.pass
-    ? await renderExtraSlides({ images, row, product, photos, cover: jpeg, coverStyle: style, variant, design })
+    ? await renderExtraSlides({ images, row, product, photos, analyses, cover: jpeg, style, look })
     : { files: [], skipped: 0 };
   const file = await media.saveImage(jpeg); // the last attempt is kept either way, so a failure can be reviewed
   await Promise.all(allFiles(row).map(media.deleteImage));
@@ -118,13 +148,14 @@ async function render(workspaceId, row, product) {
 }
 
 // Renders a claimed row and writes its caption. A failure lands on the row, which
-// goes back to where it was if it already had an image.
+// goes back to where it was (its image and that image's design) if it had one.
 async function fill(workspaceId, row, product, captionContext) {
   let done;
   try {
     done = await render(workspaceId, row, product);
   } catch (err) {
-    return repo.update(row.id, { status: row.image_file && row.prev_status ? row.prev_status : 'failed', error: errText(err) });
+    const back = row.image_file && row.prev_status;
+    return repo.update(row.id, { status: back ? row.prev_status : 'failed', error: errText(err), ...(back ? { variant: row.variant || {} } : {}) });
   }
   if (done.caption) return done;
   try {

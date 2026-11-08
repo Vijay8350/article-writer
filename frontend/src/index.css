@@ -630,6 +630,7 @@ a:hover { color: var(--accent-primary-hover); }
 .ig-post-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; }
 .ig-post { border: 1px solid var(--border-secondary); border-radius: var(--radius-md); overflow: hidden; background: var(--bg-glass); display: flex; flex-direction: column; }
 .ig-post-img { aspect-ratio: 1 / 1; width: 100%; object-fit: cover; display: block; background: var(--bg-tertiary); }
+.ig-post-img.portrait { aspect-ratio: 4 / 5; }
 .ig-post-placeholder { aspect-ratio: 1 / 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px; text-align: center; background: var(--bg-tertiary); color: var(--text-muted); font-size: 13px; }
 .ig-post-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
 .ig-check { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--border-secondary); font-size: 13px; }

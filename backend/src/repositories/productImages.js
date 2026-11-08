@@ -67,15 +67,16 @@ export async function update(id, patch) {
 }
 
 // The designs an account used most recently, newest first, across product images and
-// Studio posts. Without an account yet, the whole workspace counts.
+// Studio posts. Without an account yet, the whole workspace counts. A design records
+// when it was chosen (variant.at), so a regenerated post's new design counts as newest.
 export async function recentDesigns(workspaceId, accountId, limit = 12) {
   const { rows } = await query(
-    `SELECT variant, created_at FROM ig_product_images
+    `SELECT variant, COALESCE((variant->>'at')::timestamptz, created_at) AS chosen_at FROM ig_product_images
       WHERE workspace_id = $1 AND ($2::uuid IS NULL OR account_id = $2) AND variant <> '{}'
      UNION ALL
-     SELECT variant, created_at FROM ig_generated_posts
+     SELECT variant, COALESCE((variant->>'at')::timestamptz, created_at) FROM ig_generated_posts
       WHERE workspace_id = $1 AND ($2::uuid IS NULL OR account_id = $2) AND variant <> '{}'
-     ORDER BY created_at DESC LIMIT $3`,
+     ORDER BY chosen_at DESC LIMIT $3`,
     [workspaceId, accountId || null, limit]
   );
   return rows.map((r) => r.variant);
