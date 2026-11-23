@@ -231,7 +231,7 @@ function CreateTab({ status, accounts, canManage }) {
                   ))}
                   <button type="button" className={`chip ${style === 'auto' ? 'active' : ''}`} onClick={() => setStyle('auto')}>Surprise me</button>
                 </div>
-                <div className="form-helper">Every post gets a new look (colours, backdrop, typography) and a new frame for your photo (arch, circle, gallery frame, split screen…), in Instagram's tall 4:5 size. Your product photo is never redrawn.</div>
+                <div className="form-helper">Every post gets a new look (colours, typography) and a scene the AI designs fresh around your product (a plinth, an arch, silk, flowers…), in Instagram's tall 4:5 size. The product itself always stays exactly as in your photo; only what's around it changes.</div>
               </div>
 
               <div className="form-group">

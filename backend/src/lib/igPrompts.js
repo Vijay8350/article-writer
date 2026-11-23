@@ -259,6 +259,88 @@ Be conservative: when uncertain, FAIL. Respond ONLY with JSON:
 { "pass": boolean, "score": number (0-100), "reasons": string[], "rendered_text": string }`;
 }
 
+// ─── Scene posts: the model designs everything around the real product ──────
+// (services/productScene.js lays the real product's pixels back afterwards.)
+
+const SCENE_KEEP = 'Keep the product exactly as it is: the same position, size, angle, shape, colours and every detail. Do not move, resize, redraw, restyle, recolour, crop or cover any part of it, and do not add a second one.';
+const SCENE_BANDS = 'The dark bands across the very top and bottom of the image are cut off afterwards: carry the scene through them, but never put words there.';
+// A product the photographer cut off at an edge enters the post from that edge.
+const ENTERS = {
+  top: 'The product enters from the top edge of the post and hangs down: keep it that way.',
+  bottom: 'The product rises from the bottom edge of the post: keep it that way, with nothing drawn under it.',
+  left: 'The product enters from the left edge of the post: keep it that way.',
+  right: 'The product enters from the right edge of the post: keep it that way.',
+};
+const KEEP_LETTERING = ' (any lettering already on the product stays as it is)';
+// Lettering on the product itself is part of it, never "text on the post".
+const OWN_LETTERING = 'Letters, numbers, logos or engravings that are part of the product itself, as in its photo, are not post text: never fail on them, and leave them out of rendered_text.';
+
+// `set` and `plan` come from lib/postScenes.js; `look` from lib/postDesigns.js; a
+// text-free style keeps its own setting and takes the look's palette. `layout` is the
+// stage's text sentence; `tall` means the engine draws 2:3 with bands that are cut off.
+export function buildScenePrompt(product, { storeName, style, look, set, plan, layout, copy, notes, slide, tall = false, backdrop = 'white' } = {}) {
+  const promo = Boolean(copy);
+  return [
+    `Edit the attached image into a finished portrait (4:5) Instagram ${promo ? 'promo post' : 'post'}${storeName ? ` for ${storeName}` : ''}.`,
+    `It shows the store's real product, ${product.title}, photographed on a plain ${backdrop} backdrop.`,
+    SCENE_KEEP,
+    "Replace the whole backdrop, including every gap inside or between the pieces and the photo's own shadows and reflections, with a new art-directed scene built around the product where it already is.",
+    style.direction ? `Setting: ${style.direction}. Colour palette: ${look.palette}.` : `Look: ${look.scene}.`,
+    `Set: ${set.text}.`,
+    ...(plan.enters || (plan.hanging ? ['top'] : [])).map((side) => ENTERS[side]),
+    set.support === 'rest' && !(plan.enters || []).some((side) => side === 'top' || side === 'bottom')
+      ? "Light the scene to match the product's own lighting, with a soft natural contact shadow where it rests, so it sits in the scene instead of floating."
+      : "Light the scene to match the product's own lighting, with a soft shadow behind it, so it belongs in the scene.",
+    "Make it look like a post from a premium brand's Instagram feed, art-directed by a senior designer: one clear focal point, a limited palette, refined detail and generous margins. No clutter, no clip-art, no stock-photo look. No other jewellery or products anywhere.",
+    promo ? PROMO_TYPE : '',
+    promo ? `Typography: ${look.type}.` : '',
+    promo && layout ? `Text layout: ${layout} Keep every word at least 60 px in from the left and right edges, and never over the product.` : '',
+    tall ? SCENE_BANDS : '',
+    slide ? `This is slide ${slide.index} of ${slide.total} in one swipeable carousel: keep to the same look, palette and light as the rest of the series.` : '',
+    notes && slide ? `Instructions from the store owner, for the look only (this slide carries no words): ${notes}.` : '',
+    notes && !slide ? `Instructions from the store owner (follow these first, but the product itself never changes${promo ? '; they may add words, but every text line listed below must still appear exactly as written' : ''}): ${notes}.` : '',
+    ...(promo ? [
+      'Render this text, spelled EXACTLY as written, including currency symbols:',
+      `Headline: "${copy.headline}"`,
+      copy.price ? `Price, in the price badge: "${copy.price}"` : '',
+      copy.discount ? `Discount tag: "${copy.discount}"` : '',
+      `Call to action: "${copy.cta}"`,
+      copy.storeName ? `Small brand name: "${copy.storeName}"` : '',
+      `Add no other words unless the store owner asked for them, and no fake logos or watermarks${KEEP_LETTERING}.`,
+    ] : [slide ? `Add no text, logos or watermarks${KEEP_LETTERING}.` : `Add no text, logos or watermarks unless the store owner asked for them above${KEEP_LETTERING}.`]),
+  ].filter(Boolean).join('\n');
+}
+
+// The gate for scene posts. The first image is the post, the second the store's own
+// photo of the product, so the gate can tell the product is the same one, unchanged.
+export function buildSceneGatePrompt({ texts = [], brief, slide = false } = {}) {
+  const textRule = texts.length
+    ? "every line above appears, spelled exactly, with the right numbers and currency symbols. Fail on misspelled, garbled, duplicated, missing or invented words. Letter case, letter-spacing and line breaks don't matter, and the brand name is meant to be small. Text asked for in the owner's instructions may be added, but it never replaces a listed line."
+    : slide ? 'fail on any text at all.' : 'fail on any text, unless the owner asked for it.';
+  return `You are a strict quality inspector for marketing images in an unattended auto-poster. The FIRST attached image is the post to inspect. The SECOND is the store's own photo of the product, for comparison only: never judge the second image itself.
+In the post, the product is that photo's real product, placed in a newly designed scene. The scene's backdrop, set, frame, props and light are new on purpose.
+
+${texts.length ? `This text must appear on the post, spelled exactly:
+"""
+${texts.join('\n')}
+"""` : slide ? 'This is a later slide of a carousel: it must carry no words at all.' : 'This post should carry no text.'}
+${brief ? `\nThe owner's instructions${slide ? ' (for this slide they decide only the look; any words they ask for belong on the first slide)' : ''}:\n"""\n${brief}\n"""\n` : ''}
+${OWN_LETTERING}
+
+Evaluate, in order of importance:
+1. TEXT FIDELITY (most important): ${textRule} Report all the text you read on the post (apart from the product's own lettering), word for word, in rendered_text.
+2. THE PRODUCT: it must be the same product as in the photo: same shape, colours, parts, stones and details, nothing missing, added or cut off, and it appears exactly once. Fail on any ghost outline or double edge around it, on a leftover patch, box, halo or rim of the photo's old plain background around or inside it, or on anything covering part of it.
+3. NOTHING INVENTED: fail if any other product, jewellery or item for sale appears anywhere. Props such as fabric, flowers, stones, plinths and frames are fine.
+4. NATURAL: the product sits naturally in the scene, resting on its surface or hanging believably, in matching light. Fail if it looks cut out and pasted on, or floats oddly.
+5. LAYOUT: fail if any text is hidden, cut off, overlapping the product, or closer than about 40 px to the left or right edge.
+6. DESIGN: it looks like a post from a premium brand, attractive and easy to read on a phone. Fail if it is cluttered, amateurish or low contrast, or if any text is too small.
+7. INSTRUCTIONS: ${slide ? "its look follows the owner's instructions, if there are any." : "it follows the owner's instructions, if there are any."}
+8. SAFETY: no NSFW, offensive or nonsensical content.
+
+Be conservative: when uncertain, FAIL. Respond ONLY with JSON:
+{ "pass": boolean, "score": number (0-100), "reasons": string[], "rendered_text": string }`;
+}
+
 // The gate for designed images. `hasCard` means a real product photo sits on a card: that
 // part is final, so the gate looks for anything drawn around it instead.
 export function buildBannerVisionPrompt({ texts = [], brief, hasCard = false }) {

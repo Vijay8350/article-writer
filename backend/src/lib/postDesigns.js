@@ -6,6 +6,7 @@
 // consecutive days never repeat either. Pure: geometry and choices only, no pixels.
 
 import { freshest, CTAS, PRICE_FORMS } from './imageVariety.js';
+import { STAGES, planStage, setsFor, setOf, namedNotNegated } from './postScenes.js';
 
 export const CANVAS = { w: 1080, h: 1350 };
 
@@ -562,15 +563,8 @@ function byFreshness(options, recent, field) {
 
 // A festival named in the owner's instructions, unless it's ruled out ("nothing festive",
 // "no Diwali theme", "avoid wedding vibes").
-const NEGATION_RE = /\b(no|not|nothing|without|avoid|avoiding|don'?t|never|skip|non|instead of)\b/i;
 export function isFestive(style, notes) {
-  if (style === 'festive') return true;
-  const text = String(notes || '');
-  for (const m of text.matchAll(new RegExp(FESTIVE_RE.source, 'gi'))) {
-    const clause = text.slice(0, m.index).split(/[.,;:!?\n]/).pop();
-    if (!NEGATION_RE.test(clause.trim().split(/\s+/).slice(-4).join(' '))) return true;
-  }
-  return false;
+  return style === 'festive' || namedNotNegated(notes, FESTIVE_RE);
 }
 
 // The looks a post may take: festive ones only when asked for; a text-free style keeps
@@ -586,16 +580,56 @@ export function looksFor(style, notes) {
   return pool.length ? pool : LOOKS.filter((l) => !l.festiveOnly);
 }
 
+// A scene post (lib/postScenes.js): the model designs everything around the product of
+// the first plain-backdrop photo. Look, stage and set each the least recently used; the
+// fresh pass also avoids the last post's. → design, or { error }.
+function pickScene(recent, { style, notes, analyses, looks, last }) {
+  const photo = analyses.findIndex((a) => a?.plain && a.box);
+  if (photo < 0) return { error: 'no photo on a plain background' };
+  const info = analyses[photo];
+  const promo = style === 'banner';
+  const festive = isFestive(style, notes);
+  const stages = byFreshness(Object.keys(STAGES), recent, 'stage');
+  const reasons = [];
+  for (const pass of [{ fresh: true }, { fresh: false }, { lenient: true }]) {
+    for (const lookKey of looks) {
+      if (pass.fresh && lookKey === last.look) continue;
+      const look = lookOf(lookKey);
+      for (const stage of stages) {
+        if (pass.fresh && stage === last.stage) continue;
+        const plan = planStage(info, stage, { promo, lenient: Boolean(pass.lenient) });
+        if (plan.error) { reasons.push(plan.error); continue; }
+        const sets = byFreshness(setsFor({ style, moods: look.moods, festive, support: plan.support, notes }).map((s) => s.key), recent, 'set');
+        const set = sets.find((k) => !pass.fresh || k !== last.set);
+        if (!set) continue;
+        return {
+          mode: 'scene', style, look: lookKey, set, stage, photo, plan,
+          cta: freshest(CTAS, recent, 'cta'), price: freshest(Object.keys(PRICE_FORMS), recent, 'price'),
+        };
+      }
+    }
+  }
+  const counts = reasons.reduce((m, r) => m.set(r, (m.get(r) || 0) + 1), new Map());
+  const [top] = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  return { error: top ? top[0] : 'no stage fits this photo' };
+}
+
 // The next post's design for an account: its style (for 'auto', the next in turn),
-// look, format and wording, each the one used least recently. `analyses` describe the
-// store's photos, cover first; formats that can't show them safely are skipped.
-// `recent` is the account's newest-first design history. Tries, in turn: a look and a
-// format both different from the last post's; then any; then without the size limits
-// (a product that's small in its photo). → design, or { error } saying why none fits.
-export function pickDesign(recent = [], { style, notes, analyses, allowCollage = true } = {}) {
+// look and wording, each the one used least recently, and how the product is shown:
+// a scene designed around the real product when a photo has a plain backdrop, else the
+// photo in a format's frame. `analyses` describe the store's photos, cover first;
+// formats that can't show them safely are skipped. `recent` is the account's newest-first
+// design history. Tries, in turn: a look and a format both different from the last
+// post's; then any; then without the size limits (a product that's small in its photo).
+// → design, or { error } saying why none fits.
+export function pickDesign(recent = [], { style, notes, analyses, allowCollage = true, scenes = true } = {}) {
   const resolved = style === 'auto' ? freshest(AUTO_STYLES, recent, 'style') : (style || 'banner');
   const looks = byFreshness(looksFor(resolved, notes).map((l) => l.key), recent, 'look');
   const last = recent.find((v) => v?.look || v?.format) || {};
+  if (scenes) {
+    const scene = pickScene(recent, { style: resolved, notes, analyses, looks, last });
+    if (!scene.error) return scene;
+  }
   const plans = new Map();
   const planOf = (format, mirror, lenient) => {
     const key = `${format}:${mirror}:${lenient}`;
@@ -632,7 +666,9 @@ export function pickDesign(recent = [], { style, notes, analyses, allowCollage =
 
 // What gets stored on the row (variant jsonb): enough to label it and to steer the next.
 // `at` is when the design was chosen: a regenerated post's new design counts as the newest.
-export const variantOf = (d) => ({
+export const variantOf = (d) => (d.mode === 'scene' ? {
+  canvas: 'portrait', mode: 'scene', style: d.style, look: d.look, set: d.set, stage: d.stage, photo: d.photo, cta: d.cta, price: d.price, at: new Date().toISOString(),
+} : {
   canvas: 'portrait', style: d.style, look: d.look, format: d.format, mirror: d.mirror, cta: d.cta, price: d.price, at: new Date().toISOString(),
 });
 
@@ -651,11 +687,64 @@ export function planSlides(analyses, count) {
   return slides;
 }
 
-// A short label for the UI, e.g. "Noir & gold · Arch window".
+// The slides after a scene cover: the store's other photos (cycling). Up to SCENE_SLIDES
+// plain-backdrop ones get a scene of their own (the cover's look; a set the cover and the
+// earlier slides didn't use, freshest first; slides carry no words); any other photo is
+// framed like planSlides does (quicker, and the carousel stays within its time).
+// → [{ photo, scene, set } | { photo, plan }].
+export const SCENE_SLIDES = 2;
+const SLIDE_STAGES = ['center', 'high', 'low', 'hero', 'hang', 'rise'];
+export function planSceneSlides(analyses, count, { cover, notes, recent = [] }) {
+  const others = analyses.map((_, i) => i).filter((i) => i !== cover.photo);
+  const order = others.length ? others : [cover.photo];
+  const festive = isFestive(cover.style, notes);
+  const look = lookOf(cover.look);
+  const stages = byFreshness(SLIDE_STAGES, recent, 'stage');
+  const used = new Set([cover.set]);
+  const slides = [];
+  let scenes = 0;
+  for (let i = 0; i < count; i++) {
+    const photo = order[i % order.length];
+    const info = analyses[photo];
+    let scene = null;
+    if (scenes < SCENE_SLIDES) {
+      for (const lenient of [false, true]) {
+        for (let j = 0; j < stages.length && !scene; j++) {
+          const plan = planStage(info, stages[(i + j) % stages.length], { promo: false, lenient });
+          if (!plan.error) scene = plan;
+        }
+        if (scene) break;
+      }
+    }
+    if (scene) {
+      const pool = byFreshness(setsFor({ style: cover.style, moods: look.moods, festive, support: scene.support, notes }).map((s) => s.key), recent, 'set');
+      const set = pool.find((k) => !used.has(k)) || pool.find((k) => k !== cover.set) || pool[0];
+      used.add(set); scenes++;
+      slides.push({ photo, scene, set });
+      continue;
+    }
+    const plan = framedSlidePlan(info, i);
+    if (plan) slides.push({ photo, plan });
+  }
+  return slides;
+}
+
+// The first slide format, starting at the i-th, that shows this photo safely (or null).
+export function framedSlidePlan(info, i = 0) {
+  for (let j = 0; j < SLIDE_ORDER.length; j++) {
+    const plan = planLayout(SLIDE_ORDER[(i + j) % SLIDE_ORDER.length], [info], { slide: true });
+    if (!plan.error) return plan;
+  }
+  return null;
+}
+
+// A short label for the UI, e.g. "Noir & gold · Arch window" or "Noir & gold · Stone plinth".
 export function describeDesign(variant) {
-  if (!variant?.look || !variant?.format) return null;
-  const look = LOOK_BY_KEY[variant.look]; const format = FORMATS[variant.format];
-  return look && format ? `${look.label} · ${format.label}` : null;
+  const look = LOOK_BY_KEY[variant?.look];
+  if (!look) return null;
+  if (variant.mode === 'scene') return variant.set ? `${look.label} · ${setOf(variant.set).label}` : null;
+  const format = FORMATS[variant.format];
+  return format ? `${look.label} · ${format.label}` : null;
 }
 
 // ─── The text check (code, not a model) ─────────────────────────────────────

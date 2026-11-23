@@ -90,7 +90,7 @@ export function JobFields({ value, onChange, accounts, styles = [] }) {
             {styles.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
             <option value="auto">Mix promo and styled posts</option>
           </select>
-          <div className="form-helper">Every day gets a new look and a new frame for the photo, so no two posts in a row look alike. Your product photo is never redrawn.</div>
+          <div className="form-helper">Every day gets a new look and a new scene the AI designs around your product, so no two posts in a row look alike. The product itself always stays exactly as in your photo.</div>
         </div>
         <ImagesPerPost value={value.imagesPerPost} onChange={(imagesPerPost) => onChange({ ...value, imagesPerPost })} />
         <ScheduleWindow startsAt={value.startsAt} endsAt={value.endsAt} onChange={(change) => onChange({ ...value, ...change })} />
@@ -253,8 +253,9 @@ export default function InstagramScheduler() {
         <div>
           <h1>🗓️ Instagram Scheduler</h1>
           <p>
-            Add as many posting jobs as you like. Each job takes the next product from a website, places its real photos on
-            designed backgrounds, and posts them to Instagram every day at its time with a caption written by DeepSeek.
+            Add as many posting jobs as you like. Each job takes the next product from a website, sets it in a scene the AI
+            designs around it (the product itself stays exactly as photographed), and posts it to Instagram every day at its time
+            with a caption written by DeepSeek.
           </p>
         </div>
         {accounts.length > 0 && !showForm && (

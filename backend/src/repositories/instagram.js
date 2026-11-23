@@ -265,6 +265,12 @@ export async function claimById(workspaceId, id) {
   return rows[0] || null;
 }
 
+// A long render (a carousel of AI images) keeps its lease between images, so the job
+// isn't claimed again while it's still running. Never re-locks a released job.
+export async function extendLease(id) {
+  await query(`UPDATE instagram_automations SET locked_until = now() + interval '10 minutes' WHERE id = $1 AND locked_until IS NOT NULL`, [id]);
+}
+
 // Jobs past their end date stop until someone extends and resumes them.
 export async function finishExpiredAutomations() {
   await query(`UPDATE instagram_automations SET status = 'done' WHERE status = 'active' AND ends_at IS NOT NULL AND ends_at <= now()`);

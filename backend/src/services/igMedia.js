@@ -110,7 +110,8 @@ export async function mapLimit(items, limit, fn) {
 // Generate → inspect, up to `attempts` times, telling the model what was wrong with
 // the last try. Returns the final attempt either way; the caller decides what a fail means.
 // `compareTo` is what the gate sees beside the result (by default the references), and
-// `finish` runs on each image before the gate, so it judges the final picture.
+// `finish` runs on each image before the gate, so it judges the final picture; it returns
+// the image, or { jpeg, problems } (any problem fails that attempt without a gate call).
 // `check(verdict)` is a code check after the model's: any problems it returns fail the
 // image even if the model passed it (fail closed).
 export async function generateUntilPassed(images, { prompt, gatePrompt, references = [], compareTo = references, format, attempts = 1, finish = null, check = null }) {
@@ -122,7 +123,14 @@ export async function generateUntilPassed(images, { prompt, gatePrompt, referenc
     tried++;
     const fixes = verdict?.reasons?.length ? `\n\nThe previous attempt was rejected. Fix these problems: ${verdict.reasons.join('; ')}` : '';
     jpeg = await images.generate(`${prompt}${fixes}`, references, { format });
-    if (finish) jpeg = await finish(jpeg);
+    if (finish) {
+      const done = await finish(jpeg);
+      jpeg = Buffer.isBuffer(done) ? done : done.jpeg;
+      if (done.problems?.length) {
+        verdict = { pass: false, score: 0, reasons: done.problems.slice(0, 10), renderedText: null };
+        continue;
+      }
+    }
     verdict = await images.inspect(gatePrompt, [jpeg, ...originals]);
     const problems = verdict.pass && check ? check(verdict) : [];
     if (problems.length) verdict = { ...verdict, pass: false, reasons: [...problems, ...verdict.reasons].slice(0, 10) };
@@ -159,8 +167,11 @@ export function toInstagramJpeg(bytes) {
 }
 
 // Product posts: Instagram's tallest feed shape, 1080×1350 (4:5). A 2:3 engine image
-// loses the bands its guide marked; a near-4:5 one (Gemini's is close, not exact) is
-// trimmed by a few pixels. Any other shape would no longer line up with its guide.
+// loses the bands its guide marked; a near-4:5 one (Gemini's 896×1152 is close, not
+// exact) is stretched back the last few percent, not cropped: an engine redraws the
+// picture it was given into its own frame, so this keeps the guide's zones and the
+// product exactly where they were given, and loses no text at the edges. Any other
+// shape would no longer line up with its guide.
 export async function toPortraitJpeg(bytes) {
   const { width, height } = await sharp(bytes).metadata();
   const ratio = width / height;
@@ -171,7 +182,7 @@ export async function toPortraitJpeg(bytes) {
   } else if (Math.abs(ratio - 0.8) > 0.03) {
     throw new Error(`The image engine returned ${width}x${height}, not a 4:5 portrait.`);
   }
-  return img.resize(1080, 1350, { fit: 'cover' }).flatten({ background: '#ffffff' }).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+  return img.resize(1080, 1350, { fit: 'fill' }).flatten({ background: '#ffffff' }).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
 }
 
 // Blog images: a 3:2 JPEG sized for article columns, small enough to load fast.
