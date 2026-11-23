@@ -237,3 +237,6 @@ export const adminCheckCodexLogin = (id) => api.post(`/admin/image-engine/codex-
 export const adminTestImageEngine = () => api.post('/admin/image-engine/test', {}, { timeout: 240000 }).then(r => r.data);
 
 export default api;
+// Admin overview: sign-ups, plans, usage, and every account with its plan
+export const adminGetOverview = () => api.get('/admin/overview').then(r => r.data);
+export const adminGetCustomers = () => api.get('/admin/customers').then(r => r.data);

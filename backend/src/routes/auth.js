@@ -8,6 +8,7 @@ import * as activity from '../repositories/activity.js';
 import * as workspaces from '../repositories/workspaces.js';
 import * as memberships from '../repositories/memberships.js';
 import * as usersRepo from '../repositories/users.js';
+import { rateLimit } from '../lib/rateLimit.js';
 
 const router = Router();
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -18,44 +19,55 @@ function signToken(user) {
   });
 }
 
-// POST /api/auth/register
-router.post('/register', async (req, res, next) => {
+// Public sign-up and login, so each visitor gets a few tries only.
+const signupLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: 'Too many sign-ups from your connection. Try again in an hour.' });
+const loginLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: 'Too many sign-in attempts. Wait a few minutes and try again.' });
+const loginEmailLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10, message: 'Too many sign-in attempts for this account. Wait a few minutes and try again.',
+  key: (req) => `email:${String(req.body?.email || '').trim().toLowerCase()}`,
+});
+
+// What the app needs right after signing in: a token, who you are, your workspaces.
+async function session(user) {
+  return {
+    token: signToken(user),
+    user: { id: user.id, email: user.email, name: user.name, role: user.role, status: user.status },
+    workspaces: await workspaces.listForUser(user.id),
+  };
+}
+
+// POST /api/auth/register — anyone can sign up and starts at once in a workspace of
+// their own, on the Free plan (its limits cap what an account can use; a vendor admin
+// can suspend it).
+router.post('/register', signupLimit, async (req, res, next) => {
   try {
-    const { password, name, workspaceName } = req.body || {};
+    const { password, workspaceName } = req.body || {};
     const email = String(req.body?.email || '').trim();
+    const name = String(req.body?.name || '').trim().slice(0, 100) || null;
 
-    if (!EMAIL_RE.test(email)) return res.status(400).json({ success: false, error: 'A valid email is required' });
+    if (!EMAIL_RE.test(email) || email.length > 254) return res.status(400).json({ success: false, error: 'A valid email is required' });
     if (!password || password.length < 8) return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
+    if (password.length > 200) return res.status(400).json({ success: false, error: 'That password is too long' });
 
-    const exists = await query('SELECT 1 FROM users WHERE email = $1', [email]);
-    if (exists.rowCount > 0) return res.status(409).json({ success: false, error: 'An account with this email already exists' });
+    if (await usersRepo.emailExists(email)) return res.status(409).json({ success: false, error: 'An account with this email already exists. Sign in instead.' });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    // New signups are 'pending' — admin approval required.
-    const { rows } = await query(
-      `INSERT INTO users (email, password_hash, name)
-       VALUES ($1, $2, $3)
-       RETURNING id, email, name, role, status, created_at`,
-      [email, passwordHash, name || null]
-    );
-    const user = rows[0];
+    const user = await usersRepo.createUser({ email, passwordHash, name, role: 'user', status: 'active' });
 
-    // Auto-create a personal workspace so the account isn't tenant-less once approved.
-    const wsName = (workspaceName && String(workspaceName).trim()) || (name ? `${name}'s Workspace` : `${email.split('@')[0]}'s Workspace`);
+    // Every account starts with a workspace of its own (its store, its data, its plan).
+    const wsName = (workspaceName && String(workspaceName).trim().slice(0, 100)) || (name ? `${name}'s Workspace` : `${email.split('@')[0]}'s Workspace`);
     await workspaces.createForOwner(user.id, wsName);
 
     activity.log(user.id, 'signup', user.email);
-    res.status(201).json({
-      success: true,
-      pending: true,
-      message: 'Account created. An administrator will review and approve your account shortly.',
-      data: { user: { id: user.id, email: user.email, status: user.status } },
-    });
-  } catch (error) { next(error); }
+    res.status(201).json({ success: true, data: await session(user) });
+  } catch (error) {
+    if (error.code === '23505') return res.status(409).json({ success: false, error: 'An account with this email already exists. Sign in instead.' });
+    next(error);
+  }
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res, next) => {
+router.post('/login', loginLimit, loginEmailLimit, async (req, res, next) => {
   try {
     const { password } = req.body || {};
     const email = String(req.body?.email || '').trim(); // emails are citext, so case doesn't matter
@@ -69,20 +81,12 @@ router.post('/login', async (req, res, next) => {
     const ok = user && (await bcrypt.compare(password, user.password_hash));
     if (!ok) return res.status(401).json({ success: false, error: 'Invalid email or password' });
 
-    if (user.status === 'pending') return res.status(403).json({ success: false, code: 'PENDING', error: 'Your account is awaiting administrator approval.' });
     if (user.status === 'suspended') return res.status(403).json({ success: false, code: 'SUSPENDED', error: 'Your account has been suspended.' });
+    // Sign-ups no longer wait for approval: an account still waiting from before starts now.
+    if (user.status === 'pending') { await usersRepo.setStatus(user.id, 'active'); user.status = 'active'; }
 
     activity.log(user.id, 'login', user.email);
-    const token = signToken(user);
-    const ws = await workspaces.listForUser(user.id);
-    res.json({
-      success: true,
-      data: {
-        token,
-        user: { id: user.id, email: user.email, name: user.name, role: user.role, status: user.status },
-        workspaces: ws,
-      },
-    });
+    res.json({ success: true, data: await session(user) });
   } catch (error) { next(error); }
 });
 

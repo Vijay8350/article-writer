@@ -27,8 +27,7 @@ export default function Login() {
     } catch (err) {
       const code = err.response?.data?.code;
       const msg = err.response?.data?.error
-        || (code === 'PENDING' ? 'Your account is awaiting approval.'
-          : code === 'SUSPENDED' ? 'Your account has been suspended.'
+        || (code === 'SUSPENDED' ? 'Your account has been suspended.'
           : 'Login failed');
       toast.error(msg);
     }

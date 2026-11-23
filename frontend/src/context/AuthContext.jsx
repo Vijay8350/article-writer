@@ -48,8 +48,15 @@ export function AuthProvider({ children }) {
     return res.data.user;
   }, []);
 
+  // Sign-up signs you straight in, in the workspace made for you.
   const register = useCallback(async (email, password, name, workspaceName) => {
-    return api.register(email, password, name, workspaceName);
+    const res = await api.register(email, password, name, workspaceName);
+    api.setToken(res.data.token);
+    setUser(res.data.user);
+    const ws = res.data.workspaces || [];
+    setWorkspaces(ws);
+    reconcileActive(ws, null);
+    return res.data.user;
   }, []);
 
   const logout = useCallback(() => {

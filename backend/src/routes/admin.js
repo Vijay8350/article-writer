@@ -8,6 +8,7 @@ import * as workspacesRepo from '../repositories/workspaces.js';
 import * as memberships from '../repositories/memberships.js';
 import * as activity from '../repositories/activity.js';
 import * as upgrades from '../repositories/upgradeRequests.js';
+import * as adminStats from '../repositories/adminStats.js';
 import config from '../config/env.js';
 import * as media from '../services/igMedia.js';
 import * as openaiImages from '../services/openaiImages.js';
@@ -45,6 +46,18 @@ async function ensureCanManageTarget(req, res, targetId) {
 }
 
 // ─── Users ──────────────────────────────────────────────────
+// The console's overview: sign-ups, activity, plans and usage.
+router.get('/overview', async (req, res, next) => {
+  try { res.json({ success: true, data: await adminStats.overview() }); }
+  catch (error) { next(error); }
+});
+
+// Every account with its workspaces, plans and this month's usage.
+router.get('/customers', async (req, res, next) => {
+  try { res.json({ success: true, data: await adminStats.customers() }); }
+  catch (error) { next(error); }
+});
+
 router.get('/users', async (req, res, next) => {
   try { res.json({ success: true, data: await users.listAll() }); }
   catch (error) { next(error); }

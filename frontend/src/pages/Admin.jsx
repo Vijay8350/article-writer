@@ -10,7 +10,9 @@ import {
   adminGetWorkspaces, adminSetWorkspacePlan, adminSuspendWorkspace, adminReactivateWorkspace,
   adminSetPassword, adminAddToWorkspace, adminSetWorkspaceRole, adminRemoveFromWorkspace,
   adminGetImageEngine, adminStartCodexLogin, adminCheckCodexLogin, adminTestImageEngine,
+  adminGetOverview, adminGetCustomers,
 } from '../lib/api';
+import { ColumnChart, BarList, Kpi, compact } from '../components/insights/Charts';
 
 const STATUS_BADGE = { active: 'badge-success', pending: 'badge-warning', suspended: 'badge-danger' };
 const ROLE_BADGE = { superadmin: 'badge-danger', admin: 'badge-warning', user: 'badge-purple' };
@@ -24,7 +26,8 @@ const muted = { color: 'var(--text-muted)', fontSize: 11 };
 const PLATFORM_PERMISSIONS = [
   ['Use the app in their own workspaces', true, true, true],
   ['Open this Admin console', false, true, true],
-  ['Approve, suspend and reactivate users', false, 'Users only', true],
+  ['See customers, their plans and usage', false, true, true],
+  ['Suspend and reactivate users', false, 'Users only', true],
   ['Set a user\'s password', false, 'Users only', true],
   ['Add users to workspaces, change or remove their workspace role', false, 'Users only', true],
   ['Create user accounts', false, 'Users only', 'Any role'],
@@ -196,6 +199,169 @@ function UserPanel({ userId, workspaces, canManage, onClose, onChanged }) {
 }
 
 const when = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
+const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const ago = (iso) => {
+  if (!iso) return 'never';
+  const mins = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (mins < 60) return `${Math.max(mins, 1)}m ago`;
+  if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
+  return `${Math.round(mins / 1440)}d ago`;
+};
+const rupees = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+const PLAN_BADGE = { free: 'badge-info', pro: 'badge-purple', business: 'badge-success' };
+
+// The last 30 days, one bar per day (days without sign-ups show as 0).
+function signupDays(rows) {
+  const byDay = Object.fromEntries((rows || []).map((r) => [r.day, r.signups]));
+  return Array.from({ length: 30 }, (_, k) => {
+    const d = new Date(); d.setDate(d.getDate() - (29 - k));
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const label = d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    return { key, label, title: label, value: byDay[key] || 0 };
+  });
+}
+
+// Usage of one limit, e.g. "3 / 5", red when it's used up.
+const Used = ({ used, limit }) => (
+  <span style={{ fontVariantNumeric: 'tabular-nums', color: limit && used >= limit ? 'var(--accent-danger)' : undefined }}>{used} / {limit ?? '—'}</span>
+);
+
+// Overview: how many people signed up and use the app, which plans they're on, and every
+// account with its plan and this month's usage. `onManage` opens an account's panel.
+function Overview({ onManage }) {
+  const [data, setData] = useState(null);
+  const [people, setPeople] = useState([]);
+  const [search, setSearch] = useState('');
+  const [plan, setPlan] = useState('');
+  const [status, setStatus] = useState('');
+  const load = useCallback(() => {
+    Promise.all([adminGetOverview(), adminGetCustomers()])
+      .then(([o, c]) => { setData(o.data); setPeople(c.data || []); })
+      .catch((err) => toast.error(errMsg(err)));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  if (!data) return <div className="card"><div className="card-body"><div className="spinner" /></div></div>;
+
+  const u = data.users;
+  const q = search.trim().toLowerCase();
+  const shown = people.filter((p) => (!q || `${p.email} ${p.name || ''} ${p.workspaces.map((w) => w.name).join(' ')}`.toLowerCase().includes(q))
+    && (!plan || p.workspaces.some((w) => w.plan_id === plan))
+    && (!status || p.status === status));
+  const planRows = data.plans.map((p) => ({ key: p.id, label: `${p.name} · ${rupees(p.price_inr)}/mo`, value: p.active }));
+
+  return (
+    <>
+      <div className="flex items-center justify-between mb-16">
+        <p className="form-helper" style={{ margin: 0 }}>Customers are accounts that signed up themselves (platform role "user"); your own admin accounts aren't counted.</p>
+        <button className="btn btn-ghost btn-sm" onClick={load}><RotateCcw size={14} /> Refresh</button>
+      </div>
+      <div className="kpi-grid mb-24">
+        <Kpi label="Customers" value={compact(u.total)} sub={`+${u.new_today} today · +${u.new_week} this week · +${u.new_month} in 30 days`} />
+        <Kpi label="Active this week" value={compact(u.active_week)} sub={`${u.active_day} in the last 24 hours`} hint="Customers who signed in or did anything in the last 7 days" />
+        <Kpi label="Paying workspaces" value={compact(data.paying)} sub={`of ${data.workspaces} workspaces · ${u.suspended} suspended accounts`} />
+        <Kpi label="Monthly plan value" value={rupees(data.monthly_value_inr)} sub="active paid plans, at list price" />
+        <Kpi label={`Used this month (${data.period})`} value={compact(data.usage.articles)} sub={`articles · ${compact(data.usage.ig_posts)} AI Instagram images`} />
+      </div>
+      {data.pending_upgrades > 0 && (
+        <div className="card mb-16"><div className="card-body" style={{ fontSize: 14 }}>
+          {data.pending_upgrades} plan upgrade request{data.pending_upgrades === 1 ? '' : 's'} waiting: see the <strong>Upgrade requests</strong> tab.
+        </div></div>
+      )}
+      <div className="ig-two-col mb-24">
+        <div className="card">
+          <div className="card-header"><h3>New sign-ups per day</h3><span className="badge badge-info">30 days</span></div>
+          <div className="card-body">
+            {data.signups.length ? <ColumnChart data={signupDays(data.signups)} label="Day" valueLabel="Sign-ups" /> : <p className="form-helper">No sign-ups in the last 30 days.</p>}
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-header"><h3>Active workspaces per plan</h3></div>
+          <div className="card-body">
+            <BarList rows={planRows} total={planRows.reduce((n, r) => n + r.value, 0)} label="Workspaces per plan" />
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 12 }}>
+              <thead><tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}><th style={cell}>Plan</th><th style={cell}>Price</th><th style={cell}>Articles / mo</th><th style={cell}>AI images / mo</th></tr></thead>
+              <tbody>{data.plans.map((p) => (
+                <tr key={p.id} style={{ borderTop: '1px solid var(--border-color)' }}>
+                  <td style={cell}><span className={`badge ${PLAN_BADGE[p.id] || 'badge-info'}`}>{p.name}</span></td>
+                  <td style={cell}>{rupees(p.price_inr)}</td><td style={cell}>{p.monthly_article_limit}</td><td style={cell}>{p.monthly_ig_post_limit}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header"><h2>Users & plans ({shown.length})</h2></div>
+        <div className="card-body">
+          <div className="flex gap-8 mb-16" style={{ flexWrap: 'wrap' }}>
+            <input className="form-input" style={{ maxWidth: 280 }} placeholder="Search email, name or workspace" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <select className="form-select" style={{ maxWidth: 160 }} value={plan} onChange={(e) => setPlan(e.target.value)}>
+              <option value="">All plans</option>
+              {data.plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <select className="form-select" style={{ maxWidth: 160 }} value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">Any status</option><option value="active">Active</option><option value="suspended">Suspended</option>
+            </select>
+          </div>
+          {!shown.length ? <div className="empty-state"><p>No accounts match.</p></div> : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead><tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                  <th style={cell}>Account</th><th style={cell}>Joined</th><th style={cell}>Last sign-in</th>
+                  <th style={cell}>Workspace · plan</th><th style={cell}>Articles</th><th style={cell}>AI images</th><th style={cell}>Connected</th><th style={cell} />
+                </tr></thead>
+                <tbody>
+                  {shown.map((p) => {
+                    const rows = p.workspaces.length ? p.workspaces : [null];
+                    return rows.map((w, k) => (
+                      <tr key={`${p.id}-${w?.id || 'none'}`} style={{ borderTop: k ? '1px dashed var(--border-color)' : '1px solid var(--border-color)', verticalAlign: 'top' }}>
+                        {k === 0 && (
+                          <>
+                            <td style={cell} rowSpan={rows.length}>
+                              <div style={{ fontWeight: 600 }}>{p.name || p.email.split('@')[0]}</div>
+                              <div style={muted}>{p.email}</div>
+                              <div className="flex gap-8" style={{ marginTop: 4 }}>
+                                <span className={`badge ${STATUS_BADGE[p.status] || ''}`}>{p.status}</span>
+                                {p.role !== 'user' && <span className={`badge ${ROLE_BADGE[p.role] || ''}`}>{p.role}</span>}
+                              </div>
+                            </td>
+                            <td style={cell} rowSpan={rows.length}>{day(p.created_at)}</td>
+                            <td style={cell} rowSpan={rows.length} title={when(p.last_login)}>{ago(p.last_login)}</td>
+                          </>
+                        )}
+                        {w ? (
+                          <>
+                            <td style={cell}>
+                              <div>{w.name}{w.role !== 'owner' && <span style={muted}> ({w.role})</span>}</div>
+                              <span className={`badge ${PLAN_BADGE[w.plan_id] || 'badge-info'}`}>{w.plan_name || w.plan_id}{Number(w.price_inr) > 0 ? ` · ${rupees(w.price_inr)}` : ''}</span>
+                              {w.status !== 'active' && <span className="badge badge-danger" style={{ marginLeft: 6 }}>{w.status}</span>}
+                            </td>
+                            <td style={cell}><Used used={w.articles_used} limit={w.articles_limit} /></td>
+                            <td style={cell}><Used used={w.ig_used} limit={w.ig_limit} /></td>
+                            <td style={cell}>
+                              <div style={muted}>{w.store ? '✓ Shopify store' : '— no store'}</div>
+                              <div style={muted}>{w.instagram ? `✓ ${w.instagram} Instagram` : '— no Instagram'}</div>
+                            </td>
+                          </>
+                        ) : <td style={cell} colSpan={4}><span style={muted}>No workspace</span></td>}
+                        {k === 0 && (
+                          <td style={cell} rowSpan={rows.length}>
+                            <button className="btn btn-secondary btn-sm" onClick={() => onManage(p)}><Settings2 size={14} /> Manage</button>
+                          </td>
+                        )}
+                      </tr>
+                    ));
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
 
 // Superadmin: the platform's image engine. Codex makes the app's images with a ChatGPT
 // plan; this signs the server in to it with OpenAI's one-time code (no shell needed)
@@ -319,7 +485,7 @@ export default function Admin() {
   const { user: me } = useAuth();
   const isSuper = me?.role === 'superadmin';
   const [params] = useSearchParams();
-  const [tab, setTab] = useState(params.get('tab') || 'workspaces');
+  const [tab, setTab] = useState(params.get('tab') || 'overview');
   useEffect(() => { if (params.get('tab')) setTab(params.get('tab')); }, [params]);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
@@ -391,13 +557,14 @@ export default function Admin() {
     <div className="page-container fade-in">
       <div className="page-header">
         <h1>🛡️ Admin Console</h1>
-        <p>{isSuper ? 'Superadmin — full control over workspaces, users, and plans' : 'Manage workspaces, users, and upgrade requests'}</p>
+        <p>Who signed up, which plans they're on and how much they use{isSuper ? ' — superadmin: full control over workspaces, users and plans' : ''}</p>
       </div>
 
       <div className="flex gap-8 mb-24" style={{ flexWrap: 'wrap' }}>
+        <Tab id="overview" label="Overview" />
         <Tab id="workspaces" label="Workspaces" count={workspaces.length} />
         <Tab id="users" label="Users" count={users.length} />
-        <Tab id="pending" label="Pending users" count={pendingUsers.length} />
+        {pendingUsers.length > 0 && <Tab id="pending" label="Pending users" count={pendingUsers.length} />}
         <Tab id="upgrades" label="Upgrade requests" count={requests.length} />
         <Tab id="activity" label="Activity" />
         <Tab id="roles" label="Roles & permissions" />
@@ -405,6 +572,7 @@ export default function Admin() {
         <Tab id="create" label="+ Create user" />
       </div>
 
+      {tab === 'overview' && <Overview onManage={(u) => setManaging(u)} />}
       {tab === 'engine' && isSuper && <ImageEngine />}
 
       {/* ROLES & PERMISSIONS */}

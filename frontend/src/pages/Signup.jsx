@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { UserPlus, Loader2, MailCheck, Eye, EyeOff } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { UserPlus, Loader2, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import AuthCard from '../components/AuthCard';
@@ -14,14 +14,15 @@ export default function Signup() {
   const planParam = params.get('plan');
   const planLabel = planParam && PLAN_LABELS[planParam];
 
+  const navigate = useNavigate();
   const [name, setName] = useState('');
+  const [store, setStore] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [terms, setTerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,28 +33,14 @@ export default function Signup() {
 
     setSubmitting(true);
     try {
-      await register(email.trim(), password, name.trim() || undefined);
-      setSubmitted(true);
+      await register(email.trim(), password, name.trim() || undefined, store.trim() || undefined);
+      toast.success('Welcome! Your workspace is ready.');
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       toast.error(err.response?.data?.error || 'Sign up failed');
+      setSubmitting(false);
     }
-    setSubmitting(false);
   };
-
-  if (submitted) {
-    return (
-      <AuthCard
-        title="Account created"
-        subtitle="Your account is awaiting administrator approval. You'll be able to sign in once it's approved."
-        badge={planLabel ? `Signed up for: ${planLabel}` : null}
-        footer={<Link to="/login">Back to Sign In</Link>}
-      >
-        <div style={{ textAlign: 'center', padding: '20px 0' }}>
-          <MailCheck size={48} style={{ color: 'var(--accent-success)' }} />
-        </div>
-      </AuthCard>
-    );
-  }
 
   return (
     <AuthCard
@@ -79,6 +66,19 @@ export default function Signup() {
             autoComplete="name"
             autoFocus
           />
+        </div>
+        <div className="form-group">
+          <label className="form-label" htmlFor="su-store">Store or business name <span style={{ color: 'var(--text-muted)' }}>(optional)</span></label>
+          <input
+            id="su-store"
+            className="form-input"
+            value={store}
+            onChange={e => setStore(e.target.value)}
+            placeholder="e.g. Glowfinch"
+            autoComplete="organization"
+            maxLength={100}
+          />
+          <div className="form-helper">Your workspace gets this name. Everything you make is kept in it, private to you and the people you invite.</div>
         </div>
         <div className="form-group">
           <label className="form-label" htmlFor="su-email">Email</label>
