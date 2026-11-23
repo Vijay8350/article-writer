@@ -230,5 +230,10 @@ export const adminGetActivity = () => api.get('/admin/activity').then(r => r.dat
 export const adminGetUpgradeRequests = () => api.get('/admin/upgrade-requests').then(r => r.data);
 export const adminApproveUpgrade = (id) => api.post(`/admin/upgrade-requests/${id}/approve`).then(r => r.data);
 export const adminRejectUpgrade = (id) => api.post(`/admin/upgrade-requests/${id}/reject`).then(r => r.data);
+// Image engine (superadmin): the server's Codex / ChatGPT sign-in
+export const adminGetImageEngine = () => api.get('/admin/image-engine').then(r => r.data);
+export const adminStartCodexLogin = () => api.post('/admin/image-engine/codex-login').then(r => r.data);
+export const adminCheckCodexLogin = (id) => api.post(`/admin/image-engine/codex-login/${id}`).then(r => r.data);
+export const adminTestImageEngine = () => api.post('/admin/image-engine/test', {}, { timeout: 240000 }).then(r => r.data);
 
 export default api;

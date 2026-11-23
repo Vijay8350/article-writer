@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Loader2, UserPlus, CheckCircle2, Ban, RotateCcw, Activity as ActivityIcon, Building2, KeyRound, Settings2, X, Copy, Trash2, Plus, ShieldCheck } from 'lucide-react';
+import { Loader2, UserPlus, CheckCircle2, Ban, RotateCcw, Activity as ActivityIcon, Building2, KeyRound, Settings2, X, Copy, Trash2, Plus, ShieldCheck, LogIn, ExternalLink, Image as ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -9,6 +9,7 @@ import {
   adminGetUpgradeRequests, adminApproveUpgrade, adminRejectUpgrade,
   adminGetWorkspaces, adminSetWorkspacePlan, adminSuspendWorkspace, adminReactivateWorkspace,
   adminSetPassword, adminAddToWorkspace, adminSetWorkspaceRole, adminRemoveFromWorkspace,
+  adminGetImageEngine, adminStartCodexLogin, adminCheckCodexLogin, adminTestImageEngine,
 } from '../lib/api';
 
 const STATUS_BADGE = { active: 'badge-success', pending: 'badge-warning', suspended: 'badge-danger' };
@@ -29,6 +30,7 @@ const PLATFORM_PERMISSIONS = [
   ['Create user accounts', false, 'Users only', 'Any role'],
   ['Change plans, suspend workspaces, handle upgrade requests', false, true, true],
   ['Change platform roles (user / admin / superadmin)', false, false, true],
+  ['Sign the image engine in to ChatGPT and test it', false, false, true],
 ];
 const WORKSPACE_PERMISSIONS = [
   ['See everything in the workspace', true, true, true],
@@ -193,6 +195,126 @@ function UserPanel({ userId, workspaces, canManage, onClose, onChanged }) {
   );
 }
 
+const when = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
+
+// Superadmin: the platform's image engine. Codex makes the app's images with a ChatGPT
+// plan; this signs the server in to it with OpenAI's one-time code (no shell needed)
+// and makes a test image to prove it works.
+function ImageEngine() {
+  const [info, setInfo] = useState(null);
+  const [login, setLogin] = useState(null); // { id, userCode, verificationUrl, interval, expiresAt }
+  const [state, setState] = useState('');   // '' | 'starting' | 'waiting' | 'done' | 'expired' | 'error'
+  const [test, setTest] = useState(null);
+  const [testing, setTesting] = useState(false);
+  const load = useCallback(() => adminGetImageEngine().then((r) => setInfo(r.data)).catch((err) => toast.error(errMsg(err))), []);
+  useEffect(() => { load(); }, [load]);
+
+  // While a code waits for approval, ask the server every few seconds whether it went through.
+  useEffect(() => {
+    if (!login || state !== 'waiting') return undefined;
+    let timer;
+    let stopped = false;
+    const tick = async () => {
+      if (stopped) return;
+      try {
+        const r = await adminCheckCodexLogin(login.id);
+        if (stopped) return;
+        if (r.data.status === 'done') { setState('done'); toast.success(`Signed in${r.data.account?.email ? ` as ${r.data.account.email}` : ''}`); load(); return; }
+        if (r.data.status === 'expired') { setState('expired'); return; }
+      } catch (err) { if (!stopped) { setState('error'); toast.error(errMsg(err)); } return; }
+      timer = setTimeout(tick, login.interval * 1000);
+    };
+    timer = setTimeout(tick, login.interval * 1000);
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [login, state, load]);
+
+  const start = async () => {
+    setState('starting'); setTest(null);
+    try { const r = await adminStartCodexLogin(); setLogin(r.data); setState('waiting'); }
+    catch (err) { setState('error'); toast.error(errMsg(err)); }
+  };
+  const copyCode = () => navigator.clipboard?.writeText(login.userCode).then(() => toast.success('Code copied'));
+  const runTest = async () => {
+    setTesting(true); setTest(null);
+    try { const r = await adminTestImageEngine(); setTest(r.data); }
+    catch (err) { setTest({ error: errMsg(err) }); }
+    setTesting(false);
+  };
+
+  if (!info) return <div className="card"><div className="card-body"><div className="spinner" /></div></div>;
+  const codex = info.codex || {};
+  return (
+    <>
+      <div className="card mb-16">
+        <div className="card-header"><h2><ImageIcon size={16} /> Image engine</h2></div>
+        <div className="card-body">
+          <p className="form-helper mb-16">
+            Every AI image in the app (Instagram product posts, Studio posts, blog images) is made by this engine.
+            It is <strong>{info.provider}</strong>{info.configured !== info.provider ? ` (setting: ${info.configured})` : ''}.
+            {info.provider !== 'codex' && ' The ChatGPT sign-in below is only used when the server is set to Codex.'}
+          </p>
+          <table style={{ fontSize: 13, borderCollapse: 'collapse' }}>
+            <tbody>
+              <tr><td style={{ ...cell, color: 'var(--text-muted)' }}>ChatGPT sign-in</td><td style={cell}>{codex.signedIn ? <span className="badge badge-success">Signed in</span> : <span className="badge badge-danger">Not signed in</span>}</td></tr>
+              {codex.signedIn && <>
+                <tr><td style={{ ...cell, color: 'var(--text-muted)' }}>Account</td><td style={cell}>{codex.email || '—'}{codex.plan ? ` · ${codex.plan} plan` : ''}</td></tr>
+                <tr><td style={{ ...cell, color: 'var(--text-muted)' }}>Access renewed</td><td style={cell}>{when(codex.lastRefresh)} (renews itself; valid until {when(codex.tokenExpiresAt)})</td></tr>
+              </>}
+              {!codex.signedIn && codex.detail && <tr><td style={{ ...cell, color: 'var(--text-muted)' }}>Detail</td><td style={cell}>{codex.detail}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card mb-16">
+        <div className="card-header"><h2><LogIn size={16} /> Sign in with ChatGPT</h2></div>
+        <div className="card-body">
+          <p className="form-helper mb-16">
+            Use a ChatGPT account whose plan includes image generation (Plus, Pro or Business). Its image limits are shared with
+            that account's own ChatGPT use. You type your password only on OpenAI's page; the server keeps the sign-in, never your password.
+          </p>
+          {(state === 'waiting' && login) ? (
+            <div>
+              <div className="mb-16"><strong>1.</strong> Open OpenAI's sign-in page and log in with the ChatGPT account:{' '}
+                <a className="btn btn-sm btn-primary" href={login.verificationUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} /> Open sign-in page</a>
+              </div>
+              <div className="mb-16"><strong>2.</strong> Enter this one-time code there:
+                <div className="flex items-center gap-8" style={{ marginTop: 8 }}>
+                  <code style={{ fontSize: 26, letterSpacing: 4, padding: '6px 14px', border: '1px solid var(--border-color)', borderRadius: 8 }}>{login.userCode}</code>
+                  <button className="btn btn-sm btn-ghost" onClick={copyCode}><Copy size={14} /> Copy</button>
+                </div>
+              </div>
+              <div className="flex items-center gap-8"><Loader2 size={14} className="spinning" /> Waiting for you to approve it… (the code expires at {new Date(login.expiresAt).toLocaleTimeString()})
+                <button className="btn btn-sm btn-ghost" onClick={() => { setState(''); setLogin(null); }}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-8" style={{ flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={start} disabled={state === 'starting'}>
+                {state === 'starting' ? <Loader2 size={14} className="spinning" /> : <LogIn size={14} />} {codex.signedIn ? 'Sign in again (or with another account)' : 'Sign in with ChatGPT'}
+              </button>
+              {state === 'done' && <span style={{ color: 'var(--accent-success)' }}><CheckCircle2 size={14} /> Signed in. Make a test image to check it can draw.</span>}
+              {state === 'expired' && <span className="form-helper">The code expired before it was approved. Start again.</span>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header"><h2><ImageIcon size={16} /> Test</h2></div>
+        <div className="card-body">
+          <p className="form-helper mb-16">Makes one small image with the engine (uses one image from its limit) to prove it works.</p>
+          <button className="btn btn-secondary" onClick={runTest} disabled={testing}>
+            {testing ? <><Loader2 size={14} className="spinning" /> Drawing… (up to a minute)</> : 'Make a test image'}
+          </button>
+          {test?.image && <div style={{ marginTop: 16 }}><img src={test.image} alt="Test from the image engine" style={{ width: 220, borderRadius: 8 }} /><div style={{ ...muted, marginTop: 6 }}>Made by {test.provider}: the engine works.</div></div>}
+          {test?.error && <div style={{ marginTop: 16, color: 'var(--accent-danger)' }}>The engine failed: {test.error}</div>}
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function Admin() {
   const { user: me } = useAuth();
   const isSuper = me?.role === 'superadmin';
@@ -279,8 +401,11 @@ export default function Admin() {
         <Tab id="upgrades" label="Upgrade requests" count={requests.length} />
         <Tab id="activity" label="Activity" />
         <Tab id="roles" label="Roles & permissions" />
+        {isSuper && <Tab id="engine" label="Image engine" />}
         <Tab id="create" label="+ Create user" />
       </div>
+
+      {tab === 'engine' && isSuper && <ImageEngine />}
 
       {/* ROLES & PERMISSIONS */}
       {tab === 'roles' && (

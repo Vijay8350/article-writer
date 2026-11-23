@@ -1,4 +1,5 @@
-import { readFile, writeFile, rename, stat } from 'fs/promises';
+import { readFile, writeFile, rename, stat, mkdir } from 'fs/promises';
+import { dirname } from 'path';
 import { randomBytes } from 'crypto';
 import config from '../config/env.js';
 import { parseVerdict } from '../lib/igSchemas.js';
@@ -259,6 +260,43 @@ async function checkOpenai() {
 }
 
 export const codexConfigured = () => stat(config.images.codex.authFile).then(() => true, () => false);
+
+// ─── Signing in from the Admin console (no shell needed) ────────────────────
+
+// Who the server's Codex sign-in belongs to, read from auth.json (never the tokens).
+export async function codexAccount() {
+  let auth;
+  try { auth = await readAuth(); } catch (err) { return { signedIn: false, detail: err.message }; }
+  const id = jwtClaims(auth.tokens.id_token);
+  const claims = { ...authClaims(auth.tokens.access_token), ...authClaims(auth.tokens.id_token) };
+  return {
+    signedIn: true,
+    email: id.email || id['https://api.openai.com/profile']?.email || null,
+    plan: claims.chatgpt_plan_type || null,
+    accountId: auth.tokens.account_id || claims.chatgpt_account_id || null,
+    tokenExpiresAt: tokenExpiry(auth) ? new Date(tokenExpiry(auth)).toISOString() : null,
+    lastRefresh: auth.tokens.last_refresh || auth.last_refresh || null,
+  };
+}
+
+// Saves a fresh ChatGPT sign-in as auth.json (the file `codex login` writes), atomically
+// and readable by this user only. → the account it now belongs to.
+export async function saveCodexTokens({ id_token: idToken, access_token: accessToken, refresh_token: refreshToken }) {
+  if (!idToken || !accessToken || !refreshToken) throw new Error('The sign-in returned incomplete tokens.');
+  const claims = { ...authClaims(accessToken), ...authClaims(idToken) };
+  const now = new Date().toISOString();
+  const auth = {
+    OPENAI_API_KEY: null,
+    tokens: { id_token: idToken, access_token: accessToken, refresh_token: refreshToken, account_id: claims.chatgpt_account_id || null, last_refresh: now },
+    last_refresh: now,
+  };
+  const file = config.images.codex.authFile;
+  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+  const tmp = `${file}.${randomBytes(4).toString('hex')}.tmp`;
+  await writeFile(tmp, JSON.stringify(auth, null, 2), { mode: 0o600 });
+  await rename(tmp, file);
+  return codexAccount();
+}
 export const openaiConfigured = () => Boolean(config.images.openai.apiKey);
 
 export const codexBackend = { provider: 'codex', generate: codexGenerate, inspect: codexInspect, check: checkCodex };

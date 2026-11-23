@@ -8,6 +8,10 @@ import * as workspacesRepo from '../repositories/workspaces.js';
 import * as memberships from '../repositories/memberships.js';
 import * as activity from '../repositories/activity.js';
 import * as upgrades from '../repositories/upgradeRequests.js';
+import config from '../config/env.js';
+import * as media from '../services/igMedia.js';
+import * as openaiImages from '../services/openaiImages.js';
+import * as codexLogin from '../services/codexLogin.js';
 
 // The vendor console. Admins manage ordinary users (role "user"); only a superadmin can
 // manage admin and superadmin accounts or change platform roles.
@@ -300,6 +304,48 @@ router.post('/upgrade-requests/:id/reject', async (req, res, next) => {
     activity.log(req.user.id, 'admin_reject_upgrade', r.workspace_id);
     res.json({ success: true, message: 'Upgrade rejected' });
   } catch (error) { next(error); }
+});
+
+// ─── Image engine (superadmin): the platform's image sign-in, tested in place ──
+
+const sendError = (res, next, error) => (error.status ? res.status(error.status).json({ success: false, error: error.message }) : next(error));
+
+// Which engine makes the app's images, and whose ChatGPT sign-in Codex uses.
+router.get('/image-engine', requireSuperadmin, async (req, res, next) => {
+  try {
+    const images = await media.imageBackend(null);
+    res.json({ success: true, data: { provider: images.provider, configured: config.images.provider, codex: await openaiImages.codexAccount() } });
+  } catch (error) { sendError(res, next, error); }
+});
+
+// Start signing Codex in with a ChatGPT account: a one-time code to approve on OpenAI's page.
+router.post('/image-engine/codex-login', requireSuperadmin, async (req, res, next) => {
+  try {
+    const login = await codexLogin.startLogin();
+    activity.log(req.user.id, 'admin_codex_login_start', null);
+    res.json({ success: true, data: login });
+  } catch (error) { sendError(res, next, error); }
+});
+
+// Has the code been approved yet? Saves the sign-in when it has.
+router.post('/image-engine/codex-login/:loginId', requireSuperadmin, async (req, res, next) => {
+  try {
+    if (!codexLogin.isLoginId(req.params.loginId)) return notFound(res);
+    const result = await codexLogin.checkLogin(req.params.loginId);
+    if (result.status === 'done') activity.log(req.user.id, 'admin_codex_login', result.account?.email || null);
+    res.json({ success: true, data: result });
+  } catch (error) { sendError(res, next, error); }
+});
+
+// One real test image (uses one image from the engine's quota), shown back to the admin.
+router.post('/image-engine/test', requireSuperadmin, async (req, res, next) => {
+  try {
+    const images = await media.imageBackend(null);
+    const jpeg = await images.generate('A simple product photo test: one plain gold ring on a soft cream background, centred, studio light. No text.', [], { format: 'square' });
+    res.json({ success: true, data: { provider: images.provider, image: `data:image/jpeg;base64,${jpeg.toString('base64')}` } });
+  } catch (error) {
+    res.json({ success: true, data: { provider: config.images.provider, error: String(error.message || error).slice(0, 300) } });
+  }
 });
 
 export default router;
