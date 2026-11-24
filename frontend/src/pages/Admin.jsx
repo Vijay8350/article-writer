@@ -204,7 +204,7 @@ function WorkspacePlan({ workspaceId, plans, catalogue, canManage, onChanged }) 
 // A plan as the editor holds it (strings for the number fields).
 function planDraft(p, catalogue) {
   return {
-    name: p.name, price_inr: String(p.price_inr ?? 0), description: p.description || '', is_active: p.is_active !== false,
+    name: p.name, price_inr: String(p.price_inr ?? 0), price_usd: p.price_usd == null ? '' : String(Number(p.price_usd)), description: p.description || '', is_active: p.is_active !== false,
     features: { ...p.features },
     limits: Object.fromEntries(catalogue.limits.map((l) => [l.key, p.limits[l.key] === null || p.limits[l.key] === undefined ? '' : String(p.limits[l.key])])),
   };
@@ -214,7 +214,7 @@ function planDraft(p, catalogue) {
 function draftChanged(d, p, catalogue) {
   if (!d || !catalogue) return false;
   const o = planDraft(p, catalogue);
-  if (d.name !== o.name || d.price_inr !== o.price_inr || d.description !== o.description || d.is_active !== o.is_active) return true;
+  if (d.name !== o.name || d.price_inr !== o.price_inr || d.price_usd !== o.price_usd || d.description !== o.description || d.is_active !== o.is_active) return true;
   if (catalogue.features.some((f) => (d.features?.[f.key] !== false) !== (o.features[f.key] !== false))) return true;
   return catalogue.limits.some((l) => (d.limits?.[l.key] ?? '') !== o.limits[l.key]);
 }
@@ -243,7 +243,7 @@ function PlansEditor({ plans, catalogue, isSuper, onSaved }) {
     }
     setBusy(id);
     try {
-      const r = await adminUpdatePlan(id, { name: d.name, price_inr: Number(d.price_inr || 0), description: d.description, is_active: d.is_active, features: d.features, limits });
+      const r = await adminUpdatePlan(id, { name: d.name, price_inr: Number(d.price_inr || 0), price_usd: d.price_usd === '' ? null : d.price_usd, description: d.description, is_active: d.is_active, features: d.features, limits });
       toast.success(r.message || 'Saved'); onSaved();
     } catch (err) { toast.error(errMsg(err)); }
     setBusy(null);
@@ -303,6 +303,10 @@ function PlansEditor({ plans, catalogue, isSuper, onSaved }) {
               <tr>
                 <th scope="row">Price (₹ / month)</th>
                 {plans.map((p) => <td key={p.id}><input className="form-input" inputMode="numeric" disabled={ro} value={draft[p.id]?.price_inr || ''} onChange={(e) => set(p.id, { price_inr: e.target.value.replace(/\D/g, '') })} aria-label={`${p.id} price`} /></td>)}
+              </tr>
+              <tr>
+                <th scope="row">Price on Shopify ($ / month)<div className="form-helper" style={{ fontWeight: 400 }}>Shopify Billing for stores outside India; blank = not sold there</div></th>
+                {plans.map((p) => <td key={p.id}><input className="form-input" inputMode="decimal" disabled={ro || p.id === 'free'} placeholder={p.id === 'free' ? 'Free' : 'e.g. 12'} value={draft[p.id]?.price_usd || ''} onChange={(e) => set(p.id, { price_usd: e.target.value.replace(/[^\d.]/g, '') })} aria-label={`${p.id} price in US dollars`} /></td>)}
               </tr>
               <tr>
                 <th scope="row">Short description</th>
@@ -667,6 +671,9 @@ function Overview({ onManage, onOpenTab, onCreate }) {
                               <div className="admin-badges">
                                 <span className={`badge ${STATUS_BADGE[p.status] || ''}`}>{p.status}</span>
                                 {p.role !== 'user' && <span className={`badge ${ROLE_BADGE[p.role] || ''}`}>{p.role}</span>}
+                                {p.kind === 'shopify'
+                                  ? <span className="badge badge-info" title="Installed the app from Shopify">Shopify app</span>
+                                  : <span className="badge badge-purple" title="Signed up on the website">Website</span>}
                               </div>
                             </td>
                             <td rowSpan={rows.length} className="admin-nowrap">{day(p.created_at)}</td>

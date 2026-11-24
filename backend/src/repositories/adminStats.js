@@ -55,7 +55,7 @@ export async function overview() {
 // store and Instagram are connected, and when it last signed in or did anything.
 export async function customers() {
   const { rows } = await query(
-    `SELECT u.id, u.email, u.name, u.role, u.status, u.created_at,
+    `SELECT u.id, u.email, u.name, u.role, u.status, u.created_at, u.kind,
             (SELECT MAX(a.created_at) FROM activity_log a WHERE a.user_id = u.id AND a.action = 'login') AS last_login,
             (SELECT MAX(a.created_at) FROM activity_log a WHERE a.user_id = u.id) AS last_active,
             COALESCE(json_agg(json_build_object(
@@ -64,6 +64,7 @@ export async function customers() {
               'articles_used', COALESCE(uc.articles_generated, 0), 'articles_limit', p.monthly_article_limit,
               'ig_used', COALESCE(uc.ig_posts_generated, 0), 'ig_limit', p.monthly_ig_post_limit,
               'store', EXISTS (SELECT 1 FROM shopify_stores st WHERE st.workspace_id = w.id),
+              'origin', w.origin, 'shop', w.shopify_shop, 'billing', s.billing_source,
               'instagram', (SELECT COUNT(*)::int FROM instagram_accounts ia WHERE ia.workspace_id = w.id)
             ) ORDER BY w.created_at) FILTER (WHERE w.id IS NOT NULL), '[]') AS workspaces
        FROM users u

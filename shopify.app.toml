@@ -1,0 +1,37 @@
+# Article Writer — Shopify app configuration.
+# Used by Shopify CLI:  shopify app config link   (pick the app you created)
+#                       shopify app deploy        (pushes this config as a new app version)
+# See deploy/SHOPIFY_APP.md for the full setup.
+
+client_id = "2a61c8cd89e1dbf6ff5dbaa0cd9a3e99"
+name = "Article Writer"
+handle = "article-writer-seo"
+application_url = "https://app.jsyxi.com/shopify"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = false
+
+# Shopify managed installation: merchants approve these scopes when they install.
+# Keep in sync with SHOPIFY_SCOPES on the server.
+[access_scopes]
+scopes = "read_products,write_products,read_content,write_content,write_files,read_themes,read_publications,write_publications"
+
+# Website visitors connect their store through this redirect ("Connect with Shopify").
+[auth]
+redirect_urls = [ "https://app.jsyxi.com/api/shopify/callback" ]
+
+[webhooks]
+api_version = "2026-10"
+
+[[webhooks.subscriptions]]
+topics = [ "app/uninstalled", "app/scopes_update", "app_subscriptions/update" ]
+uri = "https://app.jsyxi.com/api/shopify/webhooks"
+
+# Mandatory privacy webhooks for every App Store app.
+[[webhooks.subscriptions]]
+compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+uri = "https://app.jsyxi.com/api/shopify/webhooks"
+
+[pos]
+embedded = false

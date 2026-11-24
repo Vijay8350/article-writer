@@ -8,6 +8,7 @@ import {
 import { getSettings, getUsage, adminGetUsers, adminGetUpgradeRequests } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { ThemeSwitch, ThemeToggle } from './ThemeSwitch';
+import { isEmbedded, EMBEDDED_BASE } from '../lib/embedded';
 
 // The app menu. `feature` ties an item to a plan feature: when the workspace's plan
 // doesn't include it, the item shows a lock and leads to Plan & usage instead.
@@ -118,6 +119,27 @@ export default function Layout() {
   }, [menuOpen]);
 
   const waitingCount = waiting.users + waiting.upgrades;
+
+  // Inside the Shopify admin: the admin draws the menu from <ui-nav-menu>; no sidebar of our own.
+  if (isEmbedded()) {
+    const hidden = new Set(['/workspaces', '/members']);
+    const items = navSections.flatMap((s) => s.items).filter((i) => i.path && !hidden.has(i.path));
+    const label = (i) => (i.path === '/instagram-campaigns' ? 'Instagram campaigns' : i.path === '/instagram' ? 'Instagram accounts' : i.path === '/plan' ? 'Plan & billing' : i.label);
+    return (
+      <div className="app-layout app-layout--embedded">
+        <ui-nav-menu>
+          {items.map((i) => {
+            const locked = i.feature && features[i.feature] === false;
+            const to = locked ? `/plan?locked=${i.feature}` : i.path;
+            return <a key={i.path} href={`${EMBEDDED_BASE}${to}`} rel={i.path === '/dashboard' ? 'home' : undefined}>{label(i)}</a>;
+          })}
+        </ui-nav-menu>
+        <main className="main-content">
+          <Outlet context={{ connected, setConnected, storeName, setStoreName }} />
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={`app-layout ${collapsed ? 'is-collapsed' : ''}`}>

@@ -5,6 +5,8 @@ import toast from 'react-hot-toast';
 import { getUsage, getUpgradePlans, getMyUpgradeRequests, requestUpgrade } from '../lib/api';
 import { PageHeader, Section } from '../components/ui';
 import '../styles/workspace.css';
+import ShopifyBilling from '../components/ShopifyBilling';
+import { isEmbedded } from '../lib/embedded';
 
 // Used vs limit, green until it gets close to the limit.
 function UsageMeter({ label, used, limit, unit, note, full, ariaLabel }) {
@@ -140,6 +142,9 @@ export default function PlanUsage() {
           </Section>
         )}
 
+        {isEmbedded() ? (
+          <ShopifyBilling locked={locked} onChanged={() => getUsage().then((u) => setUsage(u.data)).catch(() => {})} />
+        ) : (
         <Section
           title="Upgrade your plan"
           description={pendingRequest ? null : 'Request a plan. An admin approves it and it applies straight away.'}
@@ -189,6 +194,7 @@ export default function PlanUsage() {
             </div>
           )}
         </Section>
+        )}
       </div>
     </div>
   );

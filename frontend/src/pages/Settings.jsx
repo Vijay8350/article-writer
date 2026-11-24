@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useOutletContext } from 'react-router-dom';
-import { Link2, Unlink, CheckCircle2, XCircle, Loader2, Save, Trash2, PlugZap, Info } from 'lucide-react';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
+import { Link2, Unlink, CheckCircle2, XCircle, Loader2, Save, Trash2, PlugZap, Info, ShoppingBag, AlertTriangle } from 'lucide-react';
 import {
-  getSettings, connectShopify, disconnectShopify, saveAiKeys, removeAiKey, saveAiPreferences, getDeepseekModels,
+  getSettings, connectShopify, disconnectShopify, saveAiKeys, removeAiKey, saveAiPreferences, getDeepseekModels, startShopifyConnect,
 } from '../lib/api';
+import { isEmbedded } from '../lib/embedded';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { PageHeader, Section, SettingRow } from '../components/ui';
@@ -35,6 +36,12 @@ export default function Settings() {
   const [shopInfo, setShopInfo] = useState(null);
   const [connecting, setConnecting] = useState(false);
   const [loading, setLoading] = useState(true);
+  // How the store is connected: 'token' (pasted), 'oauth' (Connect with Shopify), 'app' (installed from Shopify)
+  const [connectedVia, setConnectedVia] = useState(null);
+  const [needsReconnect, setNeedsReconnect] = useState(false);
+  const [shopifyAppReady, setShopifyAppReady] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const embedded = isEmbedded();
 
   // Per-workspace AI keys (optional overrides of the platform keys)
   const [geminiKey, setGeminiKey] = useState('');
@@ -55,6 +62,9 @@ export default function Settings() {
       const data = res.data || {};
       setStoreUrl(data.storeUrl || '');
       setIsConnected(data.connected || false);
+      setConnectedVia(data.connectedVia || null);
+      setNeedsReconnect(!!data.needsReconnect);
+      setShopifyAppReady(!!data.shopifyApp);
       setKeyPresence(data.aiKeys || { hasGemini: false, hasDeepseek: false });
       if (data.platformKeys) setPlatformKeys(data.platformKeys);
       if (data.ai) setAiPrefs(data.ai);
@@ -65,6 +75,29 @@ export default function Settings() {
       }
     }).catch(() => setLoading(false));
   }, []);
+
+  // Back from Shopify's approval page.
+  useEffect(() => {
+    const ok = params.get('shopify');
+    const error = params.get('shopify_error');
+    if (!ok && !error) return;
+    if (ok === 'connected') toast.success(`Connected to ${params.get('shop') || 'your Shopify store'}`);
+    if (error) toast.error(error, { duration: 8000 });
+    setParams({}, { replace: true });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Connect with Shopify": Shopify's own approval page, then back here.
+  const handleShopifyConnect = async (shop = storeUrl) => {
+    if (!String(shop || '').trim()) return toast.error("Enter your store's address, like mystore.myshopify.com");
+    setConnecting(true);
+    try {
+      const res = await startShopifyConnect(String(shop).trim());
+      window.location.href = res.data.url;
+    } catch (err) {
+      toast.error(err.response?.data?.error || err.message);
+      setConnecting(false);
+    }
+  };
 
   const hasKey = (provider) =>
     (provider === 'gemini' ? keyPresence.hasGemini : keyPresence.hasDeepseek) || platformKeys[provider];
@@ -225,8 +258,16 @@ export default function Settings() {
         >
           {isConnected ? (
             <>
+              {needsReconnect && (
+                <div className="callout callout--warning mb-16">
+                  <AlertTriangle size={16} />
+                  <span>Shopify ended this connection (the app may have been removed from the store). Reconnect so articles, SEO fixes and posts can reach your store again.</span>
+                </div>
+              )}
               <dl className="kv">
                 <dt>Store URL</dt><dd>{storeUrl || '—'}</dd>
+                <dt>Connected with</dt>
+                <dd>{connectedVia === 'token' ? 'An Admin API access token' : connectedVia === 'app' ? 'The Article Writer app in Shopify' : 'Connect with Shopify'}</dd>
                 {shopInfo && (
                   <>
                     <dt>Store name</dt><dd>{shopInfo.name}</dd>
@@ -236,11 +277,57 @@ export default function Settings() {
                   </>
                 )}
               </dl>
+              {embedded ? (
+                <p className="form-helper" style={{ marginTop: 16 }}>To disconnect, uninstall Article Writer from your Shopify admin (Settings → Apps).</p>
+              ) : (
+                <div className="form-actions wk-actions">
+                  {canManage && shopifyAppReady && (connectedVia === 'token' || needsReconnect) && (
+                    <button type="button" className="btn btn-primary" onClick={() => handleShopifyConnect(storeUrl)} disabled={connecting}>
+                      {connecting ? <Loader2 size={16} className="spinning" /> : <ShoppingBag size={16} />} {needsReconnect ? 'Reconnect with Shopify' : 'Switch to Connect with Shopify'}
+                    </button>
+                  )}
+                  <button type="button" className="btn btn-danger" onClick={confirmDisconnect}>
+                    <Unlink size={16} /> Disconnect store
+                  </button>
+                </div>
+              )}
+            </>
+          ) : shopifyAppReady && !embedded ? (
+            <>
+              <div className="form-group">
+                <label className="form-label" htmlFor="shop-domain">Your store's Shopify address</label>
+                <input
+                  id="shop-domain"
+                  className="form-input"
+                  value={storeUrl}
+                  onChange={e => setStoreUrl(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleShopifyConnect(); }}
+                  placeholder="your-store.myshopify.com"
+                  autoComplete="off"
+                />
+                <div className="form-helper">You'll approve access on Shopify, then come straight back here.</div>
+              </div>
               <div className="form-actions wk-actions">
-                <button type="button" className="btn btn-danger" onClick={confirmDisconnect}>
-                  <Unlink size={16} /> Disconnect store
+                <button type="button" className="btn btn-primary" onClick={() => handleShopifyConnect()} disabled={connecting || !canManage}>
+                  {connecting ? <><Loader2 size={16} className="spinning" /> Opening Shopify…</> : <><ShoppingBag size={16} /> Connect with Shopify</>}
                 </button>
               </div>
+              <details className="settings-token-alt" style={{ marginTop: 20 }}>
+                <summary className="form-helper" style={{ cursor: 'pointer' }}>Use an Admin API access token instead (stores with an older custom app)</summary>
+                <div style={{ marginTop: 16 }}>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="shop-token">Admin API access token</label>
+                    <input id="shop-token" className="form-input" type="password" autoComplete="off" value={accessToken}
+                      onChange={e => setAccessToken(e.target.value)} placeholder="shpat_xxxxxxxxxxxxxxxxxxxxx" />
+                    <div className="form-helper">Starts with shpat_. It's stored encrypted.</div>
+                  </div>
+                  <div className="form-actions wk-actions">
+                    <button type="button" className="btn btn-secondary" onClick={handleConnect} disabled={connecting}>
+                      <Link2 size={16} /> Connect with token
+                    </button>
+                  </div>
+                </div>
+              </details>
             </>
           ) : (
             <>

@@ -74,11 +74,12 @@ router.post('/login', loginLimit, loginEmailLimit, async (req, res, next) => {
     if (!email || !password) return res.status(400).json({ success: false, error: 'Email and password are required' });
 
     const { rows } = await query(
-      'SELECT id, email, name, role, status, password_hash FROM users WHERE email = $1',
+      'SELECT id, email, name, role, status, password_hash, kind FROM users WHERE email = $1',
       [email]
     );
     const user = rows[0];
-    const ok = user && (await bcrypt.compare(password, user.password_hash));
+    // Accounts behind a Shopify install have no password; they open from the Shopify admin only.
+    const ok = user && user.kind !== 'shopify' && (await bcrypt.compare(String(password || ''), user.password_hash).catch(() => false));
     if (!ok) return res.status(401).json({ success: false, error: 'Invalid email or password' });
 
     if (user.status === 'suspended') return res.status(403).json({ success: false, code: 'SUSPENDED', error: 'Your account has been suspended.' });

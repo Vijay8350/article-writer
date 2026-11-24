@@ -69,6 +69,7 @@ async function readProductData(domain, handle) {
 }
 
 const MESSAGES = {
+  unavailable: shopify.THEME_WRITE_UNAVAILABLE_MESSAGE,
   no_permission: 'Your Shopify connection needs the read_themes and write_themes permissions. Add them to the app in Shopify, then try again.',
   unsupported: "Your theme prints product data in a way this can't change safely. A developer can add the rating by hand.",
   no_reviews: 'None of your products has reviews in Shopify yet. Once a review app records some, stars can be added.',
@@ -77,6 +78,8 @@ const MESSAGES = {
 };
 
 export async function ratingStatus(creds, domain) {
+  // The Shopify app isn't granted write_themes: say so instead of offering the button.
+  if (!shopify.canWriteThemes(creds)) return { state: 'unavailable', message: MESSAGES.unavailable };
   const scopes = await shopify.getAccessScopes(creds);
   if (!scopes.includes('write_themes') || !scopes.includes('read_themes')) return { state: 'no_permission', message: MESSAGES.no_permission };
   const theme = await shopify.getMainTheme(creds);

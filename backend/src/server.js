@@ -22,6 +22,9 @@ import seoRouter from './routes/seo.js';
 import igStudioRouter from './routes/igStudio.js';
 import dashboardRouter from './routes/dashboard.js';
 import metaRouter from './routes/meta.js';
+import shopifyAppRouter from './routes/shopifyApp.js';
+import shopifyWebhooksRouter from './routes/shopifyWebhooks.js';
+import { serveEmbeddedApp } from './routes/shopifyEmbed.js';
 import { MEDIA_DIR } from './services/igMedia.js';
 import { startScheduler } from './workers/scheduler.js';
 import * as gemini from './services/gemini.js';
@@ -33,7 +36,12 @@ const app = express();
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: config.frontendUrl, credentials: true }));
 app.use(morgan('dev'));
+// Shopify webhooks need the raw bytes for their HMAC, so they come before the JSON parser.
+app.use('/api/shopify/webhooks', express.raw({ type: '*/*', limit: '2mb' }), shopifyWebhooksRouter);
 app.use(express.json({ limit: '10mb' }));
+
+// The app inside the Shopify admin (an iframe): its page, framed only by that shop's admin.
+app.get(['/shopify', '/shopify/*'], serveEmbeddedApp);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -47,6 +55,7 @@ app.use('/api/media/ig', (req, res) => res.status(404).json({ success: false, er
 
 // Routes
 app.use('/api/meta', metaRouter); // public OAuth / data-deletion callbacks — before any authed router
+app.use('/api/shopify', shopifyAppRouter); // the Shopify app: connect, callback, embedded session, billing
 app.use('/api/ig', igStudioRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/settings', settingsRouter);

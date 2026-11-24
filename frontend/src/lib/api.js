@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { isEmbedded } from './embedded';
 
 const api = axios.create({ baseURL: '/api', timeout: 600000 }); // 10 minutes: articles with AI images take a while
 
@@ -51,6 +52,12 @@ api.interceptors.response.use(
   (r) => r,
   (error) => {
     if (error && !error.response?.data?.error && error.code !== 'ERR_CANCELED') error.message = friendlyMessage(error);
+    if (error.response?.status === 401 && isEmbedded()) {
+      // Inside the Shopify admin: the session is renewed from Shopify on reload (at most once a minute).
+      const last = Number(sessionStorage.getItem('aw_embedded_reload') || 0);
+      if (Date.now() - last > 60000) { sessionStorage.setItem('aw_embedded_reload', String(Date.now())); window.location.reload(); }
+      return Promise.reject(error);
+    }
     if (error.response?.status === 401) {
       setToken(null);
       const path = window.location.pathname;
@@ -267,3 +274,10 @@ export const adminUpdatePlan = (planId, body) => api.put(`/admin/plans/${planId}
 export const adminCreatePlan = (body) => api.post('/admin/plans', body).then(r => r.data);
 export const adminGetWorkspacePlan = (workspaceId) => api.get(`/admin/workspaces/${workspaceId}/plan`).then(r => r.data);
 export const adminSetWorkspaceOverrides = (workspaceId, body) => api.put(`/admin/workspaces/${workspaceId}/overrides`, body).then(r => r.data);
+
+// ─── Shopify app ────────────────────────────────────────────
+export const getShopifyAppStatus = () => api.get('/shopify/status').then(r => r.data);
+export const startShopifyConnect = (shop) => api.post('/shopify/connect', { shop }).then(r => r.data);
+export const getShopifyBilling = () => api.get('/shopify/billing').then(r => r.data);
+export const shopifySubscribe = (planId) => api.post('/shopify/billing/subscribe', { planId }).then(r => r.data);
+export const shopifySyncBilling = () => api.post('/shopify/billing/sync').then(r => r.data);

@@ -24,7 +24,19 @@ const config = {
   encryptionKey: process.env.ENCRYPTION_KEY || '',
 
   shopify: {
-    apiVersion: '2024-01',
+    // Admin API version (GraphQL). Each version is supported for about a year.
+    apiVersion: process.env.SHOPIFY_API_VERSION || '2026-10',
+    // The public Shopify app (Dev Dashboard → your app → Settings). The client secret
+    // signs webhooks and session tokens, and pays for OAuth; it never leaves the server.
+    clientId: process.env.SHOPIFY_CLIENT_ID || process.env.SHOPIFY_API_KEY || '',
+    clientSecret: process.env.SHOPIFY_CLIENT_SECRET || process.env.SHOPIFY_API_SECRET || '',
+    // Must match [access_scopes] in shopify.app.toml.
+    scopes: (process.env.SHOPIFY_SCOPES || 'read_products,write_products,read_content,write_content,write_files,read_themes,read_publications,write_publications')
+      .split(',').map((s) => s.trim()).filter(Boolean).join(','),
+    // The app's handle in the Shopify admin URL (admin.shopify.com/store/<shop>/apps/<handle>).
+    appHandle: process.env.SHOPIFY_APP_HANDLE || 'article-writer-seo',
+    // Shopify Billing test charges (no real money) — keep true until the app is approved.
+    billingTest: (process.env.SHOPIFY_BILLING_TEST || 'true') !== 'false',
     // Legacy single-tenant creds — kept only so the Phase 2 migration can move them
     // into the admin user's DB row. New code must use per-user credentials.
     legacyStoreUrl: process.env.SHOPIFY_STORE_URL || '',

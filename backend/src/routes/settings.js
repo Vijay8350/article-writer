@@ -9,6 +9,7 @@ import * as gemini from '../services/gemini.js';
 import * as deepseek from '../services/deepseek.js';
 import * as ai from '../services/ai.js';
 import config from '../config/env.js';
+import { isConfigured as isShopifyAppConfigured } from '../services/shopifyApp.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
@@ -34,6 +35,10 @@ router.get('/', async (req, res, next) => {
         shopName: meta?.shop_name || '',
         connected: !!meta,
         hasAccessToken: !!meta,
+        // token = pasted Admin API token; oauth / app = the Shopify app (website connect / installed from Shopify)
+        connectedVia: meta?.auth_source || null,
+        needsReconnect: !!meta?.needs_reconnect,
+        shopifyApp: isShopifyAppConfigured(),
         aiKeys: keys,
         ai: ai.withDefaults(aiSettings),
         // Whether a shared platform key exists to fall back on (never the key itself).

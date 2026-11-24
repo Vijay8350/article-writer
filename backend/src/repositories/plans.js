@@ -23,7 +23,7 @@ export async function create({ id, name, priceInr, description, monthlyArticleLi
 }
 
 // Only the given fields change.
-export async function update(id, { name, priceInr, description, isActive, monthlyArticleLimit, monthlyIgPostLimit, features }) {
+export async function update(id, { name, priceInr, priceUsd, description, isActive, monthlyArticleLimit, monthlyIgPostLimit, features }) {
   const { rows } = await query(
     `UPDATE plans SET
         name = COALESCE($2, name),
@@ -32,11 +32,13 @@ export async function update(id, { name, priceInr, description, isActive, monthl
         is_active = COALESCE($6, is_active),
         monthly_article_limit = COALESCE($7, monthly_article_limit),
         monthly_ig_post_limit = COALESCE($8, monthly_ig_post_limit),
-        features = COALESCE($9::jsonb, features)
+        features = COALESCE($9::jsonb, features),
+        price_usd = CASE WHEN $10::boolean THEN $11::numeric ELSE price_usd END
       WHERE id = $1
       RETURNING *`,
     [id, name ?? null, priceInr ?? null, description !== undefined, description ?? null, isActive ?? null,
-      monthlyArticleLimit ?? null, monthlyIgPostLimit ?? null, features ? JSON.stringify(features) : null]
+      monthlyArticleLimit ?? null, monthlyIgPostLimit ?? null, features ? JSON.stringify(features) : null,
+      priceUsd !== undefined, priceUsd ?? null]
   );
   return rows[0] || null;
 }

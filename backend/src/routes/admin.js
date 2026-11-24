@@ -304,6 +304,15 @@ function planFields(body = {}) {
     if (!Number.isInteger(price) || price < 0 || price > 10_000_000) throw Object.assign(new Error('Price must be a whole number of rupees'), { status: 400 });
     out.priceInr = price;
   }
+  // The price Shopify Billing charges stores outside India (USD, two decimals; blank = not sold through Shopify).
+  if (body.price_usd !== undefined) {
+    if (body.price_usd === null || body.price_usd === '') out.priceUsd = null;
+    else {
+      const usd = Math.round(Number(body.price_usd) * 100) / 100;
+      if (!Number.isFinite(usd) || usd < 0 || usd > 100000) throw Object.assign(new Error('USD price must be a number like 12 or 12.99'), { status: 400 });
+      out.priceUsd = usd;
+    }
+  }
   if (body.description !== undefined) out.description = String(body.description || '').trim().slice(0, 300) || null;
   if (body.is_active !== undefined) out.isActive = Boolean(body.is_active);
   const metered = meteredFrom(body);

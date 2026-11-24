@@ -1074,3 +1074,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--brand); }
 
 /* SEO page: tabs whose content reads better in one column */
 .seo-narrow { max-width: 820px; }
+
+/* Inside the Shopify admin: no sidebar of our own */
+.app-layout--embedded .main-content { margin-left: 0; }
+.app-layout--embedded .mobile-bar { display: none; }
