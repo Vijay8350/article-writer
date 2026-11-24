@@ -55,14 +55,14 @@ export default function PlanUsage() {
     .sort((a, b) => (locked ? Number(Boolean(b.features?.[locked])) - Number(Boolean(a.features?.[locked])) : 0) || Number(a.price_inr || 0) - Number(b.price_inr || 0));
 
   const pct = usage && usage.limit > 0 ? Math.min(100, Math.round((usage.used / usage.limit) * 100)) : 0;
-  const barColor = pct >= 100 ? 'var(--accent-danger, #ef4444)' : pct >= 80 ? 'var(--accent-warning, #f59e0b)' : 'var(--accent-success, #10b981)';
+  const barColor = pct >= 100 ? 'var(--accent-danger)' : pct >= 80 ? 'var(--accent-warning)' : 'var(--accent-success)';
   const igPct = usage?.igLimit > 0 ? Math.min(100, Math.round((usage.igUsed / usage.igLimit) * 100)) : 0;
-  const igBarColor = igPct >= 100 ? 'var(--accent-danger, #ef4444)' : igPct >= 80 ? 'var(--accent-warning, #f59e0b)' : 'var(--accent-success, #10b981)';
+  const igBarColor = igPct >= 100 ? 'var(--accent-danger)' : igPct >= 80 ? 'var(--accent-warning)' : 'var(--accent-success)';
 
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>📊 Plan & Usage</h1>
+        <h1>Plan & Usage</h1>
         <p>Your current plan, what it includes, and this month's usage</p>
       </div>
 
@@ -83,7 +83,7 @@ export default function PlanUsage() {
               <span style={{ color: 'var(--text-secondary)' }}>This month ({usage?.period})</span>
               <strong>{usage?.used} / {usage?.limit} articles</strong>
             </div>
-            <div style={{ height: 12, background: 'rgba(255,255,255,0.08)', borderRadius: 999, overflow: 'hidden' }}>
+            <div style={{ height: 12, background: '#e8e8ed', borderRadius: 999, overflow: 'hidden' }}>
               <div style={{ width: `${pct}%`, height: '100%', background: barColor, transition: 'width .3s' }} />
             </div>
             <div className="form-helper mt-16">
@@ -98,7 +98,7 @@ export default function PlanUsage() {
                   <span style={{ color: 'var(--text-secondary)' }}>Instagram Studio posts</span>
                   <strong>{usage.igUsed} / {usage.igLimit} posts</strong>
                 </div>
-                <div style={{ height: 12, background: 'rgba(255,255,255,0.08)', borderRadius: 999, overflow: 'hidden' }}
+                <div style={{ height: 12, background: '#e8e8ed', borderRadius: 999, overflow: 'hidden' }}
                   role="meter" aria-valuemin={0} aria-valuemax={usage.igLimit} aria-valuenow={usage.igUsed} aria-label="Instagram posts used">
                   <div style={{ width: `${igPct}%`, height: '100%', background: igBarColor, transition: 'width .3s' }} />
                 </div>
@@ -142,7 +142,7 @@ export default function PlanUsage() {
           <div className="card-header"><h3><ArrowUpCircle size={16} /> Upgrade your plan</h3></div>
           <div className="card-body">
             {pendingRequest ? (
-              <div style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 'var(--radius-md)', padding: 16 }}>
+              <div style={{ background: 'var(--warning-tint)', border: '1px solid rgba(178,91,0,0.18)', borderRadius: 'var(--radius-md)', padding: 16 }}>
                 <strong>Request pending</strong>
                 <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>
                   You've requested an upgrade to <strong style={{ textTransform: 'capitalize' }}>{pendingRequest.requested_plan}</strong>.
@@ -175,7 +175,7 @@ export default function PlanUsage() {
                   ))}
                 </div>
                 {better.length === 0 && (
-                  <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>You're on the highest plan. 🎉</p>
+                  <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>You're on the highest plan.</p>
                 )}
               </>
             )}

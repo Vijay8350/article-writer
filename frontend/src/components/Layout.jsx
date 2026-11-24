@@ -1,9 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
-import { Lock, LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2, Instagram, AlarmClock, MessageCircle, Sparkles, Megaphone, BarChart3, ImagePlus, SearchCheck } from 'lucide-react';
+import {
+  Lock, LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users,
+  Building2, Instagram, AlarmClock, MessageCircle, Sparkles, Megaphone, BarChart3, ImagePlus, SearchCheck,
+  ChevronsUpDown, Menu, X,
+} from 'lucide-react';
 import { getSettings, getUsage, adminGetUsers, adminGetUpgradeRequests } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
+// The app menu. `feature` ties an item to a plan feature: when the workspace's plan
+// doesn't include it, the item shows a lock and leads to Plan & usage instead.
 // Items without a `path` are planned features, shown greyed out with a "Soon" tag.
 const navSections = [
   {
@@ -15,34 +21,34 @@ const navSections = [
   {
     title: 'Blog',
     items: [
-      { path: '/generate', icon: PenLine, label: 'Generate Article', feature: 'articles' },
+      { path: '/generate', icon: PenLine, label: 'Generate article', feature: 'articles' },
+      { path: '/articles', icon: FileText, label: 'Articles', feature: 'articles' },
       { path: '/campaigns', icon: Rocket, label: 'Campaigns', feature: 'campaigns' },
-      { path: '/articles', icon: FileText, label: 'Existing Articles', feature: 'articles' },
-      { path: '/scheduled', icon: CalendarClock, label: 'Scheduled Posts', feature: 'scheduled_posts' },
+      { path: '/scheduled', icon: CalendarClock, label: 'Scheduled posts', feature: 'scheduled_posts' },
     ],
   },
   {
     title: 'SEO',
     items: [
-      { path: '/seo', icon: SearchCheck, label: 'SEO Automation', feature: 'seo' },
+      { path: '/seo', icon: SearchCheck, label: 'SEO automation', feature: 'seo' },
     ],
   },
   {
     title: 'Instagram',
     items: [
-      { path: '/instagram', icon: Instagram, label: 'Accounts' },
-      { path: '/instagram-insights', icon: BarChart3, label: 'Insights', feature: 'insights' },
+      { path: '/instagram-product-images', icon: ImagePlus, label: 'AI product posts', feature: 'product_posts' },
+      { path: '/instagram-scheduler', icon: AlarmClock, label: 'Product scheduler', feature: 'product_posts' },
       { path: '/instagram-studio', icon: Sparkles, label: 'Studio', feature: 'studio' },
       { path: '/instagram-campaigns', icon: Megaphone, label: 'Campaigns', feature: 'studio' },
       { path: '/instagram-comments', icon: MessageCircle, label: 'Comments', feature: 'comments' },
-      { path: '/instagram-product-images', icon: ImagePlus, label: 'AI Product Posts', feature: 'product_posts' },
-      { path: '/instagram-scheduler', icon: AlarmClock, label: 'Product Scheduler', feature: 'product_posts' },
+      { path: '/instagram-insights', icon: BarChart3, label: 'Insights', feature: 'insights' },
+      { path: '/instagram', icon: Instagram, label: 'Accounts' },
     ],
   },
   {
     title: 'Workspace',
     items: [
-      { path: '/plan', icon: Gauge, label: 'Plan & Usage' },
+      { path: '/plan', icon: Gauge, label: 'Plan & usage' },
       { path: '/members', icon: Users, label: 'Members' },
       { path: '/workspaces', icon: Building2, label: 'Workspaces' },
       { path: '/settings', icon: Settings, label: 'Settings' },
@@ -50,14 +56,25 @@ const navSections = [
   },
 ];
 
+function Brand() {
+  return (
+    <Link to="/dashboard" className="sidebar-logo" aria-label="Article Writer — dashboard">
+      <img src="/favicon.svg" alt="" width="28" height="28" />
+      <strong>Article Writer</strong>
+    </Link>
+  );
+}
+
 export default function Layout() {
   const { user, logout, workspaces, activeWorkspaceId, activeRole, switchWorkspace } = useAuth();
   const [connected, setConnected] = useState(false);
   const [storeName, setStoreName] = useState('');
   const [waiting, setWaiting] = useState({ users: 0, upgrades: 0 });
   const [features, setFeatures] = useState({}); // what the workspace's plan includes (missing = included)
+  const [menuOpen, setMenuOpen] = useState(false); // phones: the sidebar slides in
   const { pathname } = useLocation();
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
+  const activeWs = workspaces.find((w) => w.id === activeWorkspaceId);
 
   // Sign-ups and upgrade requests waiting for an admin, shown on the Admin link.
   useEffect(() => {
@@ -83,33 +100,43 @@ export default function Layout() {
       .catch(() => {});
   }, [activeWorkspaceId]);
 
+  // Close the phone menu after moving to another page; Escape closes it too.
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
+  const waitingCount = waiting.users + waiting.upgrades;
+
   return (
     <div className="app-layout">
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          <h1 style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <img src="/favicon.svg" alt="" width="24" height="24" />
-            Article Writer
-          </h1>
-          <p>Shopify Blog Engine</p>
-        </div>
+      <div className={`sidebar-scrim ${menuOpen ? 'is-open' : ''}`} onClick={() => setMenuOpen(false)} aria-hidden="true" />
+      <aside className={`sidebar ${menuOpen ? 'is-open' : ''}`} aria-label="Main menu">
+        <Brand />
 
         {workspaces.length > 0 && (
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Workspace</div>
-            <select
-              className="form-select"
-              style={{ width: '100%', padding: '6px 8px', fontSize: 13 }}
-              value={activeWorkspaceId || ''}
-              onChange={e => switchWorkspace(e.target.value)}
-            >
-              {workspaces.map(w => (
-                <option key={w.id} value={w.id}>{w.name} ({w.role})</option>
-              ))}
-            </select>
-            {activeRole && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>You are <strong>{activeRole}</strong></div>
-            )}
+          <div className="ws-switch">
+            <div className="ws-switch__box">
+              <span className="ws-switch__avatar" aria-hidden="true">{(activeWs?.name || '?').trim().charAt(0)}</span>
+              <span className="ws-switch__text">
+                <span className="ws-switch__name" style={{ display: 'block' }}>{activeWs?.name || 'Choose a workspace'}</span>
+                {activeRole && <span className="ws-switch__role">{activeRole}</span>}
+              </span>
+              {workspaces.length > 1 && <ChevronsUpDown size={15} className="ws-switch__chev" aria-hidden="true" />}
+              <select
+                aria-label="Switch workspace"
+                value={activeWorkspaceId || ''}
+                onChange={e => switchWorkspace(e.target.value)}
+                disabled={workspaces.length < 2}
+              >
+                {workspaces.map(w => (
+                  <option key={w.id} value={w.id}>{w.name} ({w.role})</option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
@@ -118,16 +145,16 @@ export default function Layout() {
             <React.Fragment key={section.title || i}>
               {section.title && <div className="nav-section-title">{section.title}</div>}
               {section.items.map(item => (item.path && item.feature && features[item.feature] === false ? (
-                <Link key={item.path} to={`/plan?locked=${item.feature}`} className="nav-item nav-item-locked" title="Not included in your plan — see Plan & Usage">
+                <Link key={item.path} to={`/plan?locked=${item.feature}`} className="nav-item nav-item-locked" title="Not included in your plan — see Plan & usage">
                   <item.icon />
                   {item.label}
-                  <Lock size={13} style={{ marginLeft: 'auto', opacity: 0.7 }} aria-label="not in your plan" />
+                  <Lock size={13} style={{ marginLeft: 'auto' }} aria-label="not in your plan" />
                 </Link>
               ) : item.path ? (
                 <NavLink
                   key={item.path}
                   to={item.path}
-                  end={item.path === '/dashboard'}
+                  end={item.path === '/dashboard' || item.path === '/instagram'}
                   className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                 >
                   <item.icon />
@@ -140,49 +167,33 @@ export default function Layout() {
                   <span className="nav-soon">Soon</span>
                 </div>
               )))}
+              {section.title === 'Workspace' && isAdmin && (
+                <NavLink
+                  to={waiting.users ? '/admin?tab=pending' : waiting.upgrades ? '/admin?tab=upgrades' : '/admin'}
+                  className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                >
+                  <Shield />
+                  Admin
+                  {waitingCount > 0 && (
+                    <span className="nav-count" title="Sign-ups and upgrade requests waiting for you">{waitingCount}</span>
+                  )}
+                </NavLink>
+              )}
             </React.Fragment>
           ))}
-          {isAdmin && (
-            <NavLink
-              to={waiting.users ? '/admin?tab=pending' : waiting.upgrades ? '/admin?tab=upgrades' : '/admin'}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-            >
-              <Shield />
-              Admin
-              {waiting.users + waiting.upgrades > 0 && (
-                <span className="nav-soon" style={{ background: 'var(--accent-warning)', color: '#111' }} title="Sign-ups and upgrade requests waiting for you">
-                  {waiting.users + waiting.upgrades}
-                </span>
-              )}
-            </NavLink>
-          )}
         </nav>
 
         <div className="sidebar-footer">
-          <div className="connection-badge">
+          <div className="connection-badge" title={connected ? 'Shopify store connected' : 'No Shopify store connected yet — see Settings'}>
             <span className={`connection-dot ${connected ? 'connected' : ''}`} />
-            {connected ? (
-              <span style={{ color: 'var(--accent-success)' }}>
-                {storeName ? storeName.split('.')[0] : 'Connected'}
-              </span>
-            ) : (
-              <span>Not Connected</span>
-            )}
+            <span>{connected ? (storeName ? storeName.replace(/^https?:\/\//, '') : 'Store connected') : 'No store connected'}</span>
           </div>
           {user && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-                Signed in as
-              </div>
-              <Link
-                to="/account"
-                title="Account & security"
-                style={{ display: 'block', fontSize: 13, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 10, textDecoration: 'underline', textDecorationColor: 'rgba(255,255,255,0.15)' }}
-              >
-                {user.email}
-              </Link>
-              <button className="btn btn-secondary w-full" onClick={logout} title="Log out">
-                <LogOut size={16} /> Log out
+            <div className="user-row">
+              <span className="user-row__avatar" aria-hidden="true">{(user.email || '?').charAt(0)}</span>
+              <Link to="/account" className="user-row__mail" title="Account & security">{user.email}</Link>
+              <button className="user-row__out" onClick={logout} title="Log out" aria-label="Log out">
+                <LogOut size={16} />
               </button>
             </div>
           )}
@@ -190,6 +201,12 @@ export default function Layout() {
       </aside>
 
       <main className="main-content">
+        <div className="mobile-bar">
+          <button onClick={() => setMenuOpen((v) => !v)} aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen}>
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+          <Link to="/dashboard"><img src="/favicon.svg" alt="" width="24" height="24" /> Article Writer</Link>
+        </div>
         <Outlet context={{ connected, setConnected, storeName, setStoreName }} />
       </main>
     </div>

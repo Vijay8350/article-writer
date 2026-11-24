@@ -34,7 +34,7 @@ export default function Account() {
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>👤 Account</h1>
+        <h1>Account</h1>
         <p>Your account details and security</p>
       </div>
 

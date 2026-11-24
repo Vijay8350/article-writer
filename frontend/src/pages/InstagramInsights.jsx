@@ -137,7 +137,7 @@ export default function InstagramInsights() {
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>📊 Instagram Insights</h1>
+        <h1>Instagram Insights</h1>
         <p>Reach, engagement, followers, audience and every recent post, live from Instagram.</p>
       </div>
 
@@ -191,7 +191,7 @@ export default function InstagramInsights() {
                 </div></div>
               )}
 
-              <Section title={`📈 Last ${data.days} days`}>
+              <Section title={`Last ${data.days} days`}>
                 <div className="kpi-section-title">Reach &amp; visibility</div>
                 <div className="kpi-grid mb-24">
                   <Kpi label="Views" value={compact(t.views)} hint="Times your content was played or displayed" />
@@ -249,7 +249,7 @@ export default function InstagramInsights() {
                 </Section>
               </div>
 
-              <Section title="👥 Audience (followers)">
+              <Section title="Audience (followers)">
                 <div className="ig-two-col">
                   <div>
                     <div className="kpi-section-title">Top countries</div>
@@ -272,14 +272,14 @@ export default function InstagramInsights() {
                 </div>
               </Section>
 
-              <Section title={`🖼️ Recent posts (${data.posts.length})`}
+              <Section title={`Recent posts (${data.posts.length})`}
                 right={<Link to="/instagram-comments" className="btn btn-ghost btn-sm"><MessageCircle size={14} /> Comments</Link>}>
                 {data.posts.length ? <PostsTable posts={data.posts} /> : <p className="form-helper">No posts yet.</p>}
                 <p className="form-helper mt-16">Lifetime numbers per post. Click a column to sort; click a post to open it on Instagram <ExternalLink size={11} />.</p>
               </Section>
 
               {data.notes?.length > 0 && (
-                <div className="form-helper">{data.notes.map((n) => <p key={n}>ℹ️ {n}</p>)}</div>
+                <div className="form-helper">{data.notes.map((n) => <p key={n}>{n}</p>)}</div>
               )}
             </div>
           )}

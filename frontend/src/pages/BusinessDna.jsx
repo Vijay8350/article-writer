@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Dna, RefreshCw, Loader2, Store, Instagram } from 'lucide-react';
+import { Dna, RefreshCw, Loader2, Store, Instagram, Package, FolderOpen, FileText } from 'lucide-react';
 import {
   getBusinessDna, fetchBusinessDna, fetchSocialBusinessDna, clearBusinessDna, getInstagramAccounts, syncCollections,
 } from '../lib/api';
@@ -105,7 +105,7 @@ export default function BusinessDna() {
     <div className="page-container fade-in">
       <div className="page-header flex items-center justify-between">
         <div>
-          <h1>🧬 Business DNA</h1>
+          <h1>Business DNA</h1>
           <p>Teach the AI your brand so articles are contextual, on-voice and link to real products</p>
         </div>
         {dna && <button className="btn btn-danger btn-sm" onClick={handleClear}>Clear</button>}
@@ -153,7 +153,7 @@ export default function BusinessDna() {
                 )}
                 {selectedAccount?.token_error && (
                   <div className="form-helper" style={{ color: 'var(--accent-warning)' }}>
-                    ⚠️ This account's token has a problem ({selectedAccount.token_error}). Reconnect it on the <Link to="/instagram">Instagram page</Link> if the build fails.
+                    This account's token has a problem ({selectedAccount.token_error}). Reconnect it on the <Link to="/instagram">Instagram page</Link> if the build fails.
                   </div>
                 )}
               </div>
@@ -196,38 +196,38 @@ export default function BusinessDna() {
         <>
           <div className="stats-grid slide-up">
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: 'rgba(139,92,246,0.12)' }}>🏪</div>
+              <div className="stat-icon"><Store size={18} /></div>
               <div className="stat-value" style={{ fontSize: 18 }}>{dna.shop?.name}</div>
               <div className="stat-label">{dna.shop?.domain || (dna.instagram ? `@${dna.instagram.username}` : '')}</div>
             </div>
             {dna.instagram && (
               <div className="stat-card">
-                <div className="stat-icon" style={{ background: 'rgba(236,72,153,0.12)' }}>📸</div>
+                <div className="stat-icon"><Instagram size={18} /></div>
                 <div className="stat-value">{fmt(dna.instagram.followersCount)}</div>
                 <div className="stat-label">Instagram followers</div>
               </div>
             )}
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: 'rgba(6,182,212,0.12)' }}>📦</div>
+              <div className="stat-icon"><Package size={18} /></div>
               <div className="stat-value">{dna.analysis?.totalProducts}</div>
               <div className="stat-label">Products</div>
             </div>
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.12)' }}>📂</div>
+              <div className="stat-icon"><FolderOpen size={18} /></div>
               <div className="stat-value">{dna.analysis?.totalCollections}</div>
               <div className="stat-label">Collections</div>
             </div>
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: 'rgba(245,158,11,0.12)' }}>📝</div>
+              <div className="stat-icon"><FileText size={18} /></div>
               <div className="stat-value">{dna.analysis?.totalArticles}</div>
               <div className="stat-label">Articles</div>
             </div>
           </div>
 
           {dna.warnings?.length > 0 && (
-            <div className="card mb-24 slide-up" style={{ borderColor: 'rgba(245,158,11,0.3)' }}>
-              <div className="card-header" style={{ background: 'rgba(245,158,11,0.06)' }}>
-                <h3>⚠️ Heads up</h3>
+            <div className="card mb-24 slide-up" style={{ borderColor: 'rgba(178,91,0,0.18)' }}>
+              <div className="card-header" style={{ background: 'var(--warning-tint)', borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0' }}>
+                <h3>Heads up</h3>
               </div>
               <div className="card-body">
                 {dna.warnings.map((w, i) => (
@@ -247,7 +247,7 @@ export default function BusinessDna() {
           {dna.brand && (
             <div className="card mb-24 slide-up">
               <div className="card-header">
-                <h3>🧬 Brand Profile</h3>
+                <h3>Brand Profile</h3>
                 <span className="badge badge-purple">by {dna.brand.aiProvider === 'deepseek' ? 'DeepSeek' : 'Gemini'}</span>
               </div>
               <div className="card-body">
@@ -293,7 +293,7 @@ export default function BusinessDna() {
               {dna.instagram && (
                 <div className="card slide-up">
                   <div className="card-header">
-                    <h3>📸 Instagram</h3>
+                    <h3>Instagram</h3>
                     <a href={`https://www.instagram.com/${dna.instagram.username}/`} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
                       @{dna.instagram.username}
                     </a>
@@ -337,7 +337,7 @@ export default function BusinessDna() {
               {dna.website && (
                 <div className="card slide-up">
                   <div className="card-header">
-                    <h3>🌐 Website</h3>
+                    <h3>Website</h3>
                     <span className={`badge ${dna.website.isShopify ? 'badge-success' : 'badge-info'}`}>
                       {dna.website.isShopify ? 'Shopify storefront' : 'Website'}
                     </span>
@@ -373,7 +373,7 @@ export default function BusinessDna() {
 
           <div className="dna-grid">
             <div className="card slide-up">
-              <div className="card-header"><h3>🎯 Business Analysis</h3></div>
+              <div className="card-header"><h3>Business Analysis</h3></div>
               <div className="card-body">
                 <div className="dna-section">
                   <div className="dna-section-title">Niche</div>
@@ -404,7 +404,7 @@ export default function BusinessDna() {
 
             <div className="card slide-up">
               <div className="card-header">
-                <h3>📂 Collections ({dna.collections?.length || 0})</h3>
+                <h3>Collections ({dna.collections?.length || 0})</h3>
                 <button className="btn btn-ghost btn-sm" onClick={handleSyncCollections} disabled={syncingCollections} title="Get the latest collections from Shopify">
                   {syncingCollections ? <Loader2 size={14} className="spinning" /> : <RefreshCw size={14} />} Sync
                 </button>
@@ -422,7 +422,7 @@ export default function BusinessDna() {
           </div>
 
           <div className="card mt-24 slide-up">
-            <div className="card-header"><h3>📦 Products ({dna.products?.length || 0})</h3></div>
+            <div className="card-header"><h3>Products ({dna.products?.length || 0})</h3></div>
             <div className="card-body">
               {dna.products?.length > 0 ? (
                 <div className="table-container" style={{ maxHeight: 400, overflowY: 'auto' }}>
@@ -447,7 +447,7 @@ export default function BusinessDna() {
           </div>
 
           <div className="card mt-24 slide-up">
-            <div className="card-header"><h3>📝 Existing Articles ({dna.articles?.length || 0})</h3></div>
+            <div className="card-header"><h3>Existing Articles ({dna.articles?.length || 0})</h3></div>
             <div className="card-body">
               {dna.articles?.length > 0 ? (
                 <div className="table-container" style={{ maxHeight: 300, overflowY: 'auto' }}>

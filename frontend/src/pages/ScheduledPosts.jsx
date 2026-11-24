@@ -81,12 +81,12 @@ export default function ScheduledPosts() {
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>🗓️ Scheduled Posts</h1>
+        <h1>Scheduled Posts</h1>
         <p>Queue article topics — they generate and publish automatically at the set time</p>
       </div>
 
       <div className="card mb-24" style={{ maxWidth: 800 }}>
-        <div className="card-header"><h2>➕ Schedule a Post</h2></div>
+        <div className="card-header"><h2>Schedule a Post</h2></div>
         <div className="card-body">
           <form onSubmit={handleCreate}>
             <div className="form-group">
@@ -108,8 +108,8 @@ export default function ScheduledPosts() {
               <div className="form-group">
                 <label className="form-label">AI Model</label>
                 <select className="form-select" value={aiModel} onChange={e => setAiModel(e.target.value)}>
-                  <option value="gemini">🧠 Gemini</option>
-                  <option value="deepseek">🔮 DeepSeek</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="deepseek">DeepSeek</option>
                 </select>
               </div>
               <div className="form-group">
@@ -133,7 +133,7 @@ export default function ScheduledPosts() {
 
       <div className="card">
         <div className="card-header">
-          <h2>📋 Queue</h2>
+          <h2>Queue</h2>
           <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /> Refresh</button>
         </div>
         <div className="card-body">
@@ -158,13 +158,13 @@ export default function ScheduledPosts() {
                 </thead>
                 <tbody>
                   {jobs.map(job => (
-                    <tr key={job.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <tr key={job.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
                       <td style={{ padding: '10px 12px', maxWidth: 320 }}>
                         <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job.topic}>
                           {job.topic}
                         </div>
                         {job.status === 'failed' && job.error && (
-                          <div style={{ fontSize: 11, color: 'var(--accent-danger, #ef4444)' }} title={job.error}>
+                          <div style={{ fontSize: 11, color: 'var(--accent-danger)' }} title={job.error}>
                             {job.error.slice(0, 80)}
                           </div>
                         )}

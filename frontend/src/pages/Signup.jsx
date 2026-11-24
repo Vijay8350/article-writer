@@ -1,18 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { UserPlus, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import AuthCard from '../components/AuthCard';
 import Seo from '../components/Seo';
+import { getPublicPlans } from '../lib/api';
 
-const PLAN_LABELS = { free: 'Free trial', starter: 'Starter', growth: 'Growth', agency: 'Agency' };
 
 export default function Signup() {
   const { register } = useAuth();
   const [params] = useSearchParams();
   const planParam = params.get('plan');
-  const planLabel = planParam && PLAN_LABELS[planParam];
+  // A paid plan picked on the pricing section: everyone starts on Free, then asks for it in the app.
+  const [chosen, setChosen] = useState(null);
+  useEffect(() => {
+    if (!planParam) return;
+    getPublicPlans().then((r) => setChosen((r.data || []).find((p) => p.id === planParam && Number(p.price_inr) > 0) || null)).catch(() => {});
+  }, [planParam]);
+  const planLabel = chosen ? `You chose ${chosen.name}. You'll start on Free — request ${chosen.name} from Plan & usage once you're in.` : null;
 
   const navigate = useNavigate();
   const [name, setName] = useState('');
@@ -45,8 +51,8 @@ export default function Signup() {
   return (
     <AuthCard
       title="Create your account"
-      subtitle="Connect your Shopify store and publish your first article in minutes"
-      badge={planLabel ? `You're signing up for: ${planLabel}` : null}
+      subtitle="Free to start. Your first article can be live in minutes."
+      badge={planLabel}
       footer={<>Already have an account? <Link to="/login">Sign in</Link></>}
     >
       <Seo
@@ -135,7 +141,7 @@ export default function Signup() {
           <span>I agree to the <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link></span>
         </label>
         <button className="btn btn-primary w-full" type="submit" disabled={submitting}>
-          {submitting ? <><Loader2 size={16} className="spinning" /> Creating...</> : <><UserPlus size={16} /> Create Account</>}
+          {submitting ? <><Loader2 size={16} className="spinning" /> Creating...</> : <>Create account</>}
         </button>
       </form>
       <style>{`

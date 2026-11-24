@@ -124,7 +124,7 @@ export default function GenerateArticle() {
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>✍️ Generate Article</h1>
+        <h1>Generate Article</h1>
         <p>Create SEO-optimized, human-friendly articles for your Shopify blog</p>
       </div>
 
@@ -143,7 +143,7 @@ export default function GenerateArticle() {
         <>
           {/* Usage / quota banner */}
           {usage && (
-            <div className="card mb-24" style={limitReached ? { borderColor: 'rgba(239,68,68,0.4)' } : undefined}>
+            <div className="card mb-24" style={limitReached ? { borderColor: 'rgba(215,0,21,0.3)' } : undefined}>
               <div className="card-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
                   Plan <strong style={{ textTransform: 'capitalize' }}>{usage.planName || usage.planId}</strong> — {usage.used}/{usage.limit} articles used this month
@@ -157,7 +157,7 @@ export default function GenerateArticle() {
 
           {/* Input Section */}
           <div className="card mb-24">
-            <div className="card-header"><h2>📝 Article Configuration</h2></div>
+            <div className="card-header"><h2>Article Configuration</h2></div>
             <div className="card-body">
               <div className="form-group">
                 <label className="form-label">Topic / Article Idea *</label>
@@ -213,17 +213,17 @@ export default function GenerateArticle() {
                 <div className="form-group">
                   <label className="form-label">AI Model</label>
                   <select className="form-select" value={aiModel} onChange={e => setAiModel(e.target.value)}>
-                    <option value="gemini">🧠 Google Gemini (Recommended)</option>
-                    <option value="deepseek">🔮 DeepSeek</option>
+                    <option value="gemini">Google Gemini (Recommended)</option>
+                    <option value="deepseek">DeepSeek</option>
                   </select>
                 </div>
 
                 <div className="form-group">
                   <label className="form-label">Article images</label>
                   <select className="form-select" value={imageMode} onChange={e => setImageMode(e.target.value)}>
-                    <option value="mixed">🎨 ChatGPT + store</option>
-                    <option value="ai">🎨 ChatGPT only</option>
-                    <option value="products">🛍️ Store photos</option>
+                    <option value="mixed">ChatGPT + store</option>
+                    <option value="ai">ChatGPT only</option>
+                    <option value="products">Store photos</option>
                   </select>
                   {imageMode !== 'products' && <div className="form-helper">Adds about a minute while the images are made and checked.</div>}
                 </div>
@@ -246,8 +246,8 @@ export default function GenerateArticle() {
                       />
                       <div className="form-helper" style={{ color: 'var(--accent-warning)' }}>
                         {dna.source === 'social'
-                          ? <>⚠️ Blog list unavailable. Connect your Shopify store in Settings and rebuild Business DNA, or enter the Blog ID manually.</>
-                          : <>⚠️ Blog list unavailable — your token needs <strong>read_content</strong> scope. Enter the Blog ID manually from Shopify Admin.</>}
+                          ? <>Blog list unavailable. Connect your Shopify store in Settings and rebuild Business DNA, or enter the Blog ID manually.</>
+                          : <>Blog list unavailable — your token needs <strong>read_content</strong> scope. Enter the Blog ID manually from Shopify Admin.</>}
                       </div>
                     </>
                   )}
@@ -269,7 +269,7 @@ export default function GenerateArticle() {
           {generating && (
             <div className="loading-overlay">
               <div className="spinner spinner-lg" />
-              <div className="loading-text" style={{ fontSize: 18 }}>✍️ Writing your article...</div>
+              <div className="loading-text" style={{ fontSize: 18 }}>Writing your article...</div>
               <div className="loading-text">Using {aiModel === 'gemini' ? 'Google Gemini' : 'DeepSeek'} AI with your Business DNA</div>
               <div className="loading-text" style={{ fontSize: 12, marginTop: 8 }}>
                 {imageMode === 'products' ? 'Writing and editing. This may take 1-2 minutes.' : 'Writing, editing, then making and checking the images. This may take 2-4 minutes.'}
@@ -284,7 +284,7 @@ export default function GenerateArticle() {
               <div>
                 <div className="card mb-24">
                   <div className="card-header">
-                    <h2>📄 Generated Article</h2>
+                    <h2>Generated Article</h2>
                     <div className="flex gap-8">
                       <button className="btn btn-secondary btn-sm" onClick={() => setEditMode(!editMode)}>
                         {editMode ? <><Eye size={14} /> Preview</> : <><PenLine size={14} /> Edit</>}
@@ -324,7 +324,7 @@ export default function GenerateArticle() {
                       </div>
                     ) : (
                       <div>
-                        <h2 style={{ fontSize: 24, marginBottom: 16, background: 'var(--accent-gradient)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                        <h2 style={{ fontSize: 24, marginBottom: 16, color: 'var(--text-primary)' }}>
                           {currentArticle.title}
                         </h2>
                         <div className="flex gap-8 mb-16" style={{ flexWrap: 'wrap' }}>
@@ -347,13 +347,13 @@ export default function GenerateArticle() {
                 {/* Featured image — the article's hero */}
                 {article?.featuredImage && (
                   <div className="card mb-24">
-                    <div className="card-header"><h3>🌟 Featured image</h3></div>
+                    <div className="card-header"><h3>Featured image</h3></div>
                     <div className="card-body">
                       <img
                         src={article.featuredImage.src}
                         alt={article.featuredImage.alt}
                         loading="lazy"
-                        style={{ width: '100%', borderRadius: 'var(--radius-md)', border: '1px solid rgba(139,92,246,0.2)', display: 'block' }}
+                        style={{ width: '100%', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-primary)', display: 'block' }}
                       />
                       <div style={{ marginTop: 10, fontSize: 13, color: 'var(--text-secondary)' }}>
                         {article.featuredImage.source === 'ai'
@@ -367,9 +367,9 @@ export default function GenerateArticle() {
                   </div>
                 )}
                 {article && !article.featuredImage && (
-                  <div className="card mb-24" style={{ borderColor: 'rgba(245,158,11,0.4)' }}>
+                  <div className="card mb-24" style={{ borderColor: 'rgba(178,91,0,0.18)', background: 'var(--warning-tint)' }}>
                     <div className="card-body">
-                      <strong>⚠️ No featured image</strong>
+                      <strong>No featured image</strong>
                       <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 6 }}>
                         No product in your store matched this topic. The article will publish without a hero image. Try a topic more aligned to your catalog, or pick a featured image manually in Shopify.
                       </p>
@@ -379,15 +379,15 @@ export default function GenerateArticle() {
 
                 {/* SEO Score */}
                 <SeoScoreCard seoScore={currentArticle.seoScore} />
-                <SeoScoreCard seoScore={currentArticle.aeoScore} title="🤖 AEO Score (AI answers)" />
+                <SeoScoreCard seoScore={currentArticle.aeoScore} title="AEO Score (AI answers)" />
 
                 {/* Meta Info */}
                 <div className="card mb-24">
-                  <div className="card-header"><h3>🔍 SEO Meta</h3></div>
+                  <div className="card-header"><h3>SEO Meta</h3></div>
                   <div className="card-body">
                     <div className="dna-section">
                       <div className="dna-section-title">SEO Title</div>
-                      <p style={{ fontSize: 14, color: 'var(--accent-secondary)' }}>{currentArticle.seoTitle || '—'}</p>
+                      <p style={{ fontSize: 14, color: 'var(--brand)' }}>{currentArticle.seoTitle || '—'}</p>
                       <div className="form-helper">{(currentArticle.seoTitle || '').length} chars</div>
                     </div>
                     <div className="dna-section mt-16">
@@ -399,7 +399,7 @@ export default function GenerateArticle() {
                       <div className="dna-section mt-16">
                         <div className="dna-section-title">Image Prompts</div>
                         {currentArticle.imagePrompts.map((p, i) => (
-                          <p key={i} style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>📸 {p}</p>
+                          <p key={i} style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>{p}</p>
                         ))}
                       </div>
                     )}
@@ -409,12 +409,12 @@ export default function GenerateArticle() {
                 {/* Images ChatGPT made for this article */}
                 {article?.aiImages?.length > 0 && (
                   <div className="card mb-24">
-                    <div className="card-header"><h3>🎨 ChatGPT Images</h3></div>
+                    <div className="card-header"><h3>ChatGPT Images</h3></div>
                     <div className="card-body">
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
                         {article.aiImages.map((img) => (
                           <a key={img.src} href={img.src} target="_blank" rel="noreferrer">
-                            <img src={img.src} alt={img.alt} loading="lazy" style={{ width: '100%', aspectRatio: '3 / 2', objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid rgba(139,92,246,0.2)', display: 'block' }} />
+                            <img src={img.src} alt={img.alt} loading="lazy" style={{ width: '100%', aspectRatio: '3 / 2', objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-primary)', display: 'block' }} />
                           </a>
                         ))}
                       </div>
@@ -425,7 +425,7 @@ export default function GenerateArticle() {
                 {/* Auto-inserted product images */}
                 {article?.insertedImages?.length > 0 && (
                   <div className="card mb-24">
-                    <div className="card-header"><h3>🖼️ Inserted Product Images</h3></div>
+                    <div className="card-header"><h3>Inserted Product Images</h3></div>
                     <div className="card-body">
                       <div className="form-helper mb-16">
                         The AI was given these real product images to embed in the article body.
@@ -436,7 +436,7 @@ export default function GenerateArticle() {
                             <img
                               src={img.imageUrl}
                               alt={img.alt}
-                              style={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid rgba(139,92,246,0.2)' }}
+                              style={{ width: '100%', height: 80, objectFit: 'cover', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-primary)' }}
                             />
                             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={img.title}>
                               {img.title}
@@ -450,7 +450,7 @@ export default function GenerateArticle() {
 
                 {/* Publish */}
                 <div className="card">
-                  <div className="card-header"><h3>🚀 Publish to Shopify</h3></div>
+                  <div className="card-header"><h3>Publish to Shopify</h3></div>
                   <div className="card-body">
                     <div className="checkbox-group">
                       <input type="checkbox" id="draft" checked={publishAsDraft} onChange={e => setPublishAsDraft(e.target.checked)} />

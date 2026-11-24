@@ -52,14 +52,14 @@ export default function AcceptInvite() {
       <div className="card" style={{ maxWidth: 480, margin: '40px auto', padding: 32, textAlign: 'center' }}>
         {state === 'ok' ? (
           <>
-            <CheckCircle2 size={48} style={{ color: 'var(--accent-success, #10b981)', margin: '0 auto 16px' }} />
+            <CheckCircle2 size={48} style={{ color: 'var(--accent-success)', margin: '0 auto 16px' }} />
             <h2>Joined!</h2>
             <p style={{ color: 'var(--text-secondary)', marginTop: 8 }}>{message}</p>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 12 }}>Redirecting...</p>
           </>
         ) : state === 'error' ? (
           <>
-            <AlertCircle size={48} style={{ color: 'var(--accent-danger, #ef4444)', margin: '0 auto 16px' }} />
+            <AlertCircle size={48} style={{ color: 'var(--accent-danger)', margin: '0 auto 16px' }} />
             <h2>Couldn't accept</h2>
             <p style={{ color: 'var(--text-secondary)', marginTop: 8, marginBottom: 20 }}>{message}</p>
             <Link to="/" className="btn btn-secondary">Go home</Link>

@@ -92,3 +92,12 @@ export function overridesFrom(body = {}) {
 
 export const featureLabel = (key) => FEATURES.find((f) => f.key === key)?.label || key;
 export const limitLabel = (key) => LIMITS.find((l) => l.key === key)?.label || key;
+
+// What a customer (or a visitor on the pricing page) may see of a plan.
+export function publicPlan(p) {
+  return {
+    id: p.id, name: p.name, description: p.description, price_inr: p.price_inr,
+    monthly_article_limit: p.monthly_article_limit, monthly_ig_post_limit: p.monthly_ig_post_limit,
+    ...effectivePlan(p),
+  };
+}

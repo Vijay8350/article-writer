@@ -21,7 +21,7 @@ export default function ActivityTab({ accountId }) {
   return (
     <div className="card">
       <div className="card-header">
-        <h2>🧾 Activity</h2>
+        <h2>Activity</h2>
         <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /> Refresh</button>
       </div>
       <div className="card-body">

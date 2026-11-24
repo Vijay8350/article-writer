@@ -62,7 +62,7 @@ function Meter({ label, used, limit, to }) {
         <Link to={to} style={{ color: 'var(--text-secondary)' }}>{label}</Link>
         <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{used} / {limit}</strong>
       </div>
-      <div style={{ height: 8, borderRadius: 4, background: 'rgba(139, 92, 246, 0.12)' }} role="meter" aria-valuemin={0} aria-valuemax={limit} aria-valuenow={used} aria-label={label}>
+      <div style={{ height: 8, borderRadius: 4, background: '#e8e8ed' }} role="meter" aria-valuemin={0} aria-valuemax={limit} aria-valuenow={used} aria-label={label}>
         <div style={{ width: `${p}%`, height: '100%', borderRadius: 4, background: color, transition: 'width .3s' }} />
       </div>
     </div>
@@ -125,7 +125,7 @@ export default function Dashboard() {
     <div className="page-container fade-in">
       <div className="page-header flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1>📊 Dashboard</h1>
+          <h1>Dashboard</h1>
           <p>What your workspace has produced — blog articles and Instagram — over the last 30 days.</p>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading}><RefreshCw size={14} /> Refresh</button>
@@ -143,7 +143,7 @@ export default function Dashboard() {
 
       {/* Setup — only until everything is connected */}
       {!setupDone && (
-        <Section title="🚀 Get set up" className="mb-24">
+        <Section title="Get set up" className="mb-24">
           <SetupItem ok={setup.storeConnected} label={setup.storeConnected ? `Shopify store connected (${setup.storeUrl})` : 'Connect your Shopify store'} to="/settings" cta="Connect" />
           <SetupItem ok={setup.dnaReady} label={setup.dnaReady ? `Business DNA ready — ${setup.dnaProducts} products, ${setup.dnaArticles} articles` : 'Fetch your Business DNA so articles link to real products'} to="/business-dna" cta="Fetch" />
           <SetupItem ok={setup.instagramAccounts > 0} label={setup.instagramAccounts > 0 ? `${setup.instagramAccounts} Instagram account${setup.instagramAccounts === 1 ? '' : 's'} connected` : 'Connect an Instagram account (optional)'} to="/instagram" cta="Connect" />
@@ -151,12 +151,12 @@ export default function Dashboard() {
       )}
 
       <div className="ig-two-col mb-24">
-        <Section title="📝 Articles written per day" right={<span className="badge badge-info">30 days</span>}>
+        <Section title="Articles written per day" right={<span className="badge badge-info">30 days</span>}>
           {sumBy(articles.daily, 'generated') === 0
             ? <p className="form-helper">No articles in the last 30 days. <Link to="/generate">Write one</Link> or start a <Link to="/campaigns">campaign</Link>.</p>
             : <ColumnChart data={articleDaily} label="Day" valueLabel="Articles written" />}
         </Section>
-        <Section title="📸 Instagram posts per day" right={<span className="badge badge-info">30 days</span>}>
+        <Section title="Instagram posts per day" right={<span className="badge badge-info">30 days</span>}>
           {sumBy(instagram.daily, 'published') === 0 && sumBy(instagram.daily, 'failed') === 0
             ? <p className="form-helper">No Instagram posts yet. Add a job in the <Link to="/instagram-scheduler">Product Scheduler</Link> or generate one in the <Link to="/instagram-studio">Studio</Link>.</p>
             : <ColumnChart data={igDaily} label="Day" valueLabel="Posts published" />}
@@ -164,7 +164,7 @@ export default function Dashboard() {
       </div>
 
       <div className="ig-two-col mb-24">
-        <Section title="📅 Monthly output" right={<Link to="/plan" className="btn btn-ghost btn-sm">Plan &amp; usage</Link>}>
+        <Section title="Monthly output" right={<Link to="/plan" className="btn btn-ghost btn-sm">Plan &amp; usage</Link>}>
           <Meter label={`Articles this month (${usage.planName} plan)`} used={usage.used} limit={usage.limit} to="/plan" />
           <Meter label="Instagram Studio posts this month" used={usage.igUsed} limit={usage.igLimit} to="/plan" />
           <div style={{ marginTop: 18 }}>
@@ -174,7 +174,7 @@ export default function Dashboard() {
               : <ColumnChart data={monthly} height={140} label="Month" valueLabel="Articles" />}
           </div>
         </Section>
-        <Section title="🎯 Quality &amp; outcomes">
+        <Section title="Quality &amp; outcomes">
           <div className="kpi-section-title">Instagram Studio quality gate</div>
           {q.checked ? (
             <div className="kpi-grid mb-24" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
@@ -194,7 +194,7 @@ export default function Dashboard() {
       </div>
 
       <div className="ig-two-col mb-24">
-        <Section title="📣 Instagram overview" right={<Link to="/instagram-insights" className="btn btn-ghost btn-sm">Insights</Link>}>
+        <Section title="Instagram overview" right={<Link to="/instagram-insights" className="btn btn-ghost btn-sm">Insights</Link>}>
           {setup.instagramAccounts === 0 ? (
             <p className="form-helper">No Instagram account connected. <Link to="/instagram">Connect one</Link> to post products and AI quote images automatically.</p>
           ) : (
@@ -222,7 +222,7 @@ export default function Dashboard() {
           )}
         </Section>
 
-        <Section title="🕒 Recent activity">
+        <Section title="Recent activity">
           {activity.length === 0 ? <p className="form-helper">Nothing yet.</p> : activity.map((a, i) => {
             const [label, badge] = ACTIVITY_LABEL[a.kind] || [a.kind, 'badge-info'];
             return (
@@ -244,7 +244,7 @@ export default function Dashboard() {
       </div>
 
       {/* Quick actions */}
-      <Section title="⚡ Quick actions">
+      <Section title="Quick actions">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
           {[
             [PenLine, 'Write an article', 'SEO blog post with AI', '/generate', setup.dnaReady],

@@ -111,7 +111,7 @@ export default function ExistingArticles() {
     <div className="page-container fade-in">
       <div className="page-header flex items-center justify-between">
         <div>
-          <h1>📄 Existing Articles</h1>
+          <h1>Existing Articles</h1>
           <p>See how each article scores for SEO and AI answers, and optimize it in place. URLs never change.</p>
         </div>
         <div className="flex gap-8">
@@ -152,7 +152,7 @@ export default function ExistingArticles() {
                     <thead><tr><th>Title</th><th title="How easily AI assistants can quote this article">AEO</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
                     <tbody>
                       {articles.map(a => (
-                        <tr key={a.id} style={{ cursor: 'pointer', background: selectedArticle?.id === a.id ? 'rgba(139,92,246,0.06)' : undefined }}
+                        <tr key={a.id} style={{ cursor: 'pointer', background: selectedArticle?.id === a.id ? 'var(--brand-tint)' : undefined }}
                           onClick={() => handleSelect(a)}>
                           <td style={{ fontWeight: 500, color: 'var(--text-primary)', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {a.title}
@@ -201,11 +201,11 @@ export default function ExistingArticles() {
               </div>
 
               <SeoScoreCard seoScore={selectedArticle.seoScore} />
-              <SeoScoreCard seoScore={selectedArticle.aeoScore} title="🤖 AEO Score (AI answers)" />
+              <SeoScoreCard seoScore={selectedArticle.aeoScore} title="AEO Score (AI answers)" />
 
               {/* Optimize */}
               <div className="card">
-                <div className="card-header"><h3>🔮 Optimize for SEO + AEO</h3></div>
+                <div className="card-header"><h3>Optimize for SEO + AEO</h3></div>
                 <div className="card-body">
                   <div className="form-group">
                     <label className="form-label">Extra instructions (optional)</label>
@@ -228,7 +228,7 @@ export default function ExistingArticles() {
               {/* Enhanced Result */}
               {enhancedResult && (
                 <div className="card slide-up">
-                  <div className="card-header"><h3>✨ Optimized Version</h3></div>
+                  <div className="card-header"><h3>Optimized Version</h3></div>
                   <div className="card-body">
                     <h4 style={{ marginBottom: 8 }}>{enhancedResult.title}</h4>
                     <div className="form-helper mb-16">

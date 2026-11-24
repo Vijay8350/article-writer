@@ -119,7 +119,7 @@ function Wizard({ accounts, campaign, onSaved, onCancel }) {
         )}
         {step === 3 && (
           <>
-            <div style={{ background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', padding: 16, fontSize: 14, lineHeight: 1.6 }}>{preview}</div>
+            <div style={{ background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', padding: 16, fontSize: 14, lineHeight: 1.6 }}>{preview}</div>
             <div className="chips mt-16">
               <span className="badge badge-purple">{images > 1 ? `${images} images per post` : 'Single image posts'}</span>
               <span className="badge badge-info">{f.endsAt ? `Ends ${fmtDate(endOfDay(f.endsAt))}` : 'No end date'}</span>
@@ -177,7 +177,7 @@ export default function InstagramCampaigns() {
     <div className="page-container fade-in">
       <div className="page-header flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1>📣 Instagram Campaigns</h1>
+          <h1>Instagram Campaigns</h1>
           <p>A themed run of posts — topic, goal, tone and cadence — that feeds an account's autopilot slots until it's done.</p>
         </div>
         {canManage && accounts?.length > 0 && !wizard && (
@@ -223,7 +223,7 @@ export default function InstagramCampaigns() {
                         <div style={muted}>{scheduleText(c)}</div>
                         <div className="flex items-center gap-8 mt-16" title={c.posts_target ? `${c.posts_done} of ${c.posts_target} posts` : `${c.posts_done} posts`}>
                           {c.posts_target > 0 && (
-                            <div style={{ flex: 1, maxWidth: 320, height: 8, borderRadius: 4, background: 'rgba(139, 92, 246, 0.12)' }}>
+                            <div style={{ flex: 1, maxWidth: 320, height: 8, borderRadius: 4, background: '#e8e8ed' }}>
                               <div style={{ width: `${pct}%`, height: '100%', borderRadius: 4, background: 'var(--accent-primary)' }} />
                             </div>
                           )}

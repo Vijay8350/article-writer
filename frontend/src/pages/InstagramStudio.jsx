@@ -69,7 +69,7 @@ export default function InstagramStudio() {
     <div className="page-container fade-in">
       <div className="page-header flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1>✨ Instagram Studio</h1>
+          <h1>Instagram Studio</h1>
           <p>AI quote posts in each account's voice: DeepSeek writes, Gemini designs, a quality check guards every image.</p>
         </div>
         {accounts?.length > 1 && account && (

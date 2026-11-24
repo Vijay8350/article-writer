@@ -51,7 +51,7 @@ export default function DnaTab({ accountId, canManage }) {
       </p>
       <div className="ig-two-col">
         <div className="card">
-          <div className="card-header"><h2>🗣️ Voice & audience</h2></div>
+          <div className="card-header"><h2>Voice & audience</h2></div>
           <div className="card-body">
             <Field label="Persona / brand voice"><TextInput {...p} field="persona" placeholder="e.g. warm, witty stylist who loves everyday elegance" /></Field>
             <Field label="Tone"><TextInput {...p} field="tone" placeholder="e.g. confident and kind" /></Field>
@@ -62,7 +62,7 @@ export default function DnaTab({ accountId, canManage }) {
           </div>
         </div>
         <div className="card">
-          <div className="card-header"><h2>🎨 Visual identity</h2></div>
+          <div className="card-header"><h2>Visual identity</h2></div>
           <div className="card-body">
             <Field label="Palette (comma-separated colors)"><TextInput {...p} field="palette" placeholder="#f5e6d3, gold, deep maroon" /></Field>
             <Field label="Mood"><TextInput {...p} field="mood" placeholder="soft luxury, festive, minimal" /></Field>
@@ -72,14 +72,14 @@ export default function DnaTab({ accountId, canManage }) {
           </div>
         </div>
         <div className="card">
-          <div className="card-header"><h2>✅ Rules</h2></div>
+          <div className="card-header"><h2>Rules</h2></div>
           <div className="card-body">
             <Field label="Do's (one per line)"><TextArea {...p} field="dos" placeholder={'keep the headline under 8 words\nend with a punchy line'} /></Field>
             <Field label="Don'ts (one per line)"><TextArea {...p} field="donts" placeholder={'no prices on the image\nno politics'} /></Field>
           </div>
         </div>
         <div className="card">
-          <div className="card-header"><h2>✍️ Examples & hashtags</h2></div>
+          <div className="card-header"><h2>Examples & hashtags</h2></div>
           <div className="card-body">
             <Field label="Example posts / captions (one per line)"><TextArea {...p} field="examples" rows={4} /></Field>
             <Field label="Hashtag strategy"><TextArea {...p} field="hashtag_strategy" rows={2} placeholder="3 broad + 4 medium + 3 niche tags" /></Field>

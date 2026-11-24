@@ -1,16 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="aw-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#6D28D9"/>
-      <stop offset="100%" stop-color="#06B6D4"/>
-    </linearGradient>
-  </defs>
-  <!-- pen-nib body: upward-pointing triangle with rounded base -->
-  <path d="M32 6 L10 50 Q8 56 14 56 L50 56 Q56 56 54 50 Z" fill="url(#aw-grad)"/>
-  <!-- nib slit -->
-  <rect x="30" y="22" width="4" height="32" rx="2" fill="white" opacity="0.95"/>
-  <!-- writing tip dot -->
-  <circle cx="32" cy="11" r="3.5" fill="white"/>
-  <!-- subtle AI spark, top-right of tip -->
-  <path d="M48 12 l1.5 3 l3 1.5 l-3 1.5 l-1.5 3 l-1.5 -3 l-3 -1.5 l3 -1.5 z" fill="#06B6D4" opacity="0.85"/>
+  <!-- Article Writer mark: a pen nib on an ink tile -->
+  <rect width="64" height="64" rx="15" fill="#1d1d1f"/>
+  <path d="M32 11 L45.5 31 Q47.5 34 45.8 37.2 L35.2 52.4 Q32 56.6 28.8 52.4 L18.2 37.2 Q16.5 34 18.5 31 Z" fill="#fff"/>
+  <path d="M32 33.5 V53" stroke="#1d1d1f" stroke-width="2.6" stroke-linecap="round"/>
+  <circle cx="32" cy="31.5" r="3.4" fill="#1d1d1f"/>
+  <circle cx="32" cy="11" r="0" fill="none"/>
+  <rect x="25" y="9" width="14" height="4.2" rx="2.1" fill="#0b63ce"/>
 </svg>

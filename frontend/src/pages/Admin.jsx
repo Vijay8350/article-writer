@@ -68,7 +68,7 @@ function PermissionTable({ title, columns, rows }) {
           </thead>
           <tbody>
             {rows.map(([label, ...marks]) => (
-              <tr key={label} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <tr key={label} style={{ borderTop: '1px solid var(--border-secondary)' }}>
                 <td style={cell}>{label}</td>
                 {marks.map((m, i) => <td key={i} style={{ ...cell, textAlign: 'center' }}><Mark value={m} /></td>)}
               </tr>
@@ -374,7 +374,7 @@ function UserPanel({ userId, workspaces, plans, catalogue, canManage, onClose, o
                 <tbody>
                   {detail.workspaces.map((w) => (
                     <React.Fragment key={w.id}>
-                    <tr style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <tr style={{ borderTop: '1px solid var(--border-secondary)' }}>
                       <td style={cell}>
                         {w.name}<div style={muted}>{w.plan_id} plan · {w.status}</div>
                         {catalogue && (
@@ -789,7 +789,7 @@ export default function Admin() {
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>🛡️ Admin Console</h1>
+        <h1>Admin Console</h1>
         <p>Who signed up, which plans they're on and how much they use{isSuper ? ' — superadmin: full control over workspaces, users and plans' : ''}</p>
       </div>
 
@@ -844,7 +844,7 @@ export default function Admin() {
                 </thead>
                 <tbody>
                   {workspaces.map(w => (
-                    <tr key={w.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <tr key={w.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
                       <td style={{ padding: '8px' }}><strong>{w.name}</strong><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{w.slug}</div></td>
                       <td style={{ padding: '8px' }}>{w.owner_email}</td>
                       <td style={{ padding: '8px' }}><span className={`badge ${STATUS_BADGE[w.status]}`}>{w.status}</span></td>
@@ -897,7 +897,7 @@ export default function Admin() {
                 </thead>
                 <tbody>
                   {(tab === 'pending' ? pendingUsers : users).map(u => (
-                    <tr key={u.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <tr key={u.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
                       <td style={{ padding: '8px' }}>{u.email}{u.name ? <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{u.name}</div> : null}</td>
                       <td style={{ padding: '8px' }}><span className={`badge ${STATUS_BADGE[u.status]}`}>{u.status}</span></td>
                       <td style={{ padding: '8px' }}>
@@ -954,7 +954,7 @@ export default function Admin() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <tbody>
                   {requests.map(r => (
-                    <tr key={r.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <tr key={r.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
                       <td style={{ padding: '8px' }}><strong>{r.workspace_name}</strong><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.requester_email}</div></td>
                       <td style={{ padding: '8px' }}>→ <strong style={{ textTransform: 'capitalize' }}>{r.requested_plan}</strong></td>
                       <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{new Date(r.created_at).toLocaleString()}</td>
@@ -982,7 +982,7 @@ export default function Admin() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <tbody>
                   {activity.map(a => (
-                    <tr key={a.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    <tr key={a.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
                       <td style={{ padding: '6px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{new Date(a.created_at).toLocaleString()}</td>
                       <td style={{ padding: '6px 8px' }}>{a.email || '—'}</td>
                       <td style={{ padding: '6px 8px' }}><span className="badge badge-purple">{a.action}</span></td>

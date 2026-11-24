@@ -78,7 +78,7 @@ export default function PromptsTab({ accountId, canManage }) {
 
       {canManage && (
         <div className="card">
-          <div className="card-header"><h2>➕ Add a prompt</h2></div>
+          <div className="card-header"><h2>Add a prompt</h2></div>
           <div className="card-body">
             <form onSubmit={add}>
               <div className="ig-two-col">

@@ -69,7 +69,7 @@ export default function AnalyticsTab({ accountId }) {
                       </td>
                       <td style={{ padding: '8px' }} title={`${num(r.likes)} likes`}>
                         <div className="flex items-center gap-8">
-                          <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'rgba(139, 92, 246, 0.12)' }}>
+                          <div style={{ flex: 1, height: 8, borderRadius: 4, background: '#e8e8ed' }}>
                             <div style={{ width: `${Math.round(((r.likes ?? 0) / maxLikes) * 100)}%`, height: '100%', borderRadius: 4, background: 'var(--accent-primary)' }} />
                           </div>
                           <span style={{ minWidth: 36, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{num(r.likes)}</span>

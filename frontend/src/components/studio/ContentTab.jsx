@@ -170,7 +170,7 @@ export default function ContentTab({ accountId, canManage, maxAttempts }) {
 
       <div className="card">
         <div className="card-header">
-          <h2>📥 Posts ({posts.length})</h2>
+          <h2>Posts ({posts.length})</h2>
           <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /> Refresh</button>
         </div>
         <div className="card-body">

@@ -1,318 +1,440 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Sparkles, Dna, Search, Image as ImageIcon, Send, CalendarClock, Cpu, Users, Library,
-  ShoppingBag, ChevronDown, Check, Menu, X, Zap, Star, ArrowRight,
+  ChevronRight, Plus, Menu, X, Check, Minus, Heart, MessageCircle, Send, Bookmark, Store, ScanSearch, Rocket,
 } from 'lucide-react';
 import Seo, { APP_URL } from '../components/Seo';
+import { getPublicPlans } from '../lib/api';
 
-// ─── Plans data (edit pricing here) ───────────────────────────
-const PLANS = [
-  {
-    id: 'free',
-    name: 'Free trial',
-    priceMonthly: 0,
-    priceAnnual: 0,
-    period: '7 days',
-    tagline: 'Try it on a real article',
-    cta: 'Start free',
-    features: [
-      '5 articles total',
-      '1 connected store',
-      '1 seat',
-      'No scheduling',
-      'DeepSeek AI',
-      'Email support',
-    ],
-  },
-  {
-    id: 'starter',
-    name: 'Starter',
-    priceMonthly: 799,
-    priceAnnual: 7990, // 2 months free
-    tagline: 'For a single Shopify store',
-    cta: 'Get Starter',
-    features: [
-      '30 articles / month',
-      '1 connected store',
-      '1 seat',
-      'Scheduled auto-publish',
-      'DeepSeek + Gemini',
-      'Email support',
-    ],
-  },
-  {
-    id: 'growth',
-    name: 'Growth',
-    priceMonthly: 1999,
-    priceAnnual: 19990,
-    tagline: 'For growing merchants',
-    cta: 'Get Growth',
-    popular: true,
-    features: [
-      '100 articles / month',
-      '3 connected stores',
-      '3 team seats',
-      'Scheduled auto-publish',
-      'All AI models + premium',
-      'Priority support',
-    ],
-  },
-  {
-    id: 'agency',
-    name: 'Agency',
-    priceMonthly: 4999,
-    priceAnnual: 49990,
-    tagline: 'For multi-store ops',
-    cta: 'Get Agency',
-    features: [
-      '400 articles / month',
-      '10 connected stores',
-      '10 team seats',
-      'Scheduled auto-publish',
-      'All AI models + premium',
-      'Priority + onboarding',
-    ],
-  },
-];
-
-const FEATURES = [
-  { icon: Dna, title: 'Business DNA', body: 'Auto-analyzes your products, collections, tags, and niche so every article is on-brand.' },
-  { icon: Search, title: 'SEO-optimized writing', body: 'Titles, meta, headings, and natural internal links — with a built-in SEO score on every article.' },
-  { icon: ImageIcon, title: 'Auto product images', body: 'Embeds your real Shopify product photos at the most relevant points in the article body.' },
-  { icon: Send, title: 'Instant publish', body: 'Generate and push live to your Shopify blog in one click. Or save as a draft to review first.' },
-  { icon: CalendarClock, title: 'Scheduled auto-publish', body: 'Queue topics with dates or set up recurring category campaigns — articles ship on autopilot.' },
-  { icon: Cpu, title: 'Multiple AI models', body: 'Pick between fast (Gemini) and premium engines per article or per campaign.' },
-  { icon: Users, title: 'Multi-store & team', body: 'Connect multiple Shopify stores under one account and invite teammates with role-based access.' },
-  { icon: Library, title: 'Article library', body: 'Every draft and published article in one place — edit, re-publish, and track SEO trends.' },
-];
-
-const STEPS = [
-  { title: 'Connect your Shopify store', body: 'Paste your Admin API token. We never store it in plain text.' },
-  { title: 'Fetch your Business DNA', body: 'We scan your products, collections, and existing articles to learn your store.' },
-  { title: 'Enter a topic — or schedule a queue', body: 'Write one topic or pick a category and let it run daily/monthly on autopilot.' },
-  { title: 'Generate & publish', body: 'SEO-ready articles with your real product images go live on your Shopify blog.' },
-];
+// ─── Photography (Unsplash, free licence; served by Unsplash's image CDN) ───
+const P = {
+  earringsGold: '1617038220319-276d3cfab638',
+  earringsLeaf: '1535632066927-ab7c9ab60908',
+  braceletRose: '1611591437281-460bfbe1220a',
+  braceletDark: '1573408301185-9146fe634ad0',
+  ring: '1605100804763-247f67b3557e',
+  pearls: '1515562141207-7a88fb7ce338',
+  serum: '1608571423902-eed4a5ad8108',
+  ceramics: '1610701596007-11502861dcfa',
+  bottle: '1602143407151-7111542de6e8',
+  merchant: '1556742049-0cfed4f6a45d',
+};
+const src = (id, w, h) => `https://images.unsplash.com/photo-${id}?auto=format&fit=crop&w=${w}${h ? `&h=${h}` : ''}&q=80`;
+function Photo({ id, w, h, alt = '', className, eager }) {
+  return (
+    <img
+      src={src(id, w, h)}
+      srcSet={`${src(id, w, h)} 1x, ${src(id, w * 2, h ? h * 2 : undefined)} 2x`}
+      alt={alt}
+      className={className}
+      loading={eager ? 'eager' : 'lazy'}
+      decoding="async"
+      width={w}
+      height={h}
+    />
+  );
+}
 
 const FAQS = [
-  { q: 'Do I need to know any code?', a: 'No. You paste a Shopify Admin API token (we walk you through getting one), connect your store, and that\'s it.' },
-  { q: 'Does it really post to my Shopify blog?', a: 'Yes — articles go directly to the blog you choose on your store, with their featured image, tags, summary, and SEO meta in place.' },
-  { q: 'Are the product images mine?', a: 'Yes. We embed YOUR existing Shopify product images. Nothing is generated from external sources, and nothing leaves Shopify\'s CDN.' },
-  { q: 'Can I cancel anytime?', a: 'Yes. You can cancel at the end of any billing period. No contracts, and your data is yours to export at any time.' },
-  { q: 'Which AI models do you use?', a: 'Google Gemini for speed, and DeepSeek (with premium engines on higher plans) for depth. You can pick per article or per campaign.' },
+  { q: 'Do I need to know any code?', a: 'No. Connect your Shopify store from Settings (we walk you through it), let Article Writer learn your catalogue, and start writing. Everything else happens in the app.' },
+  { q: 'Does it publish straight to my Shopify blog?', a: 'Yes. Articles go to the blog you choose, with the featured image, tags, summary, SEO title and description already in place. You can also save a draft and review it first.' },
+  { q: 'Are the product photos really mine?', a: 'Yes. Articles use the photos already in your Shopify store. For Instagram posts the AI only designs the scene around your product — your real product pixels are laid back on top, so its colour, shape and details never change.' },
+  { q: 'What does SEO automation change in my store?', a: 'Search titles and descriptions, image alt text and links to pages that no longer exist. Every change is recorded with its old value, so you can undo any of it in one click.' },
+  { q: 'How do plans work?', a: 'Everyone starts on the Free plan. When you want more, request a plan from Plan & usage inside the app; once it is approved it applies straight away.' },
+  { q: 'Which AI does it use?', a: 'Google Gemini and DeepSeek write the articles and captions; OpenAI and Gemini image models design the Instagram scenes.' },
 ];
 
-// ─── Components ──────────────────────────────────────────────
-function Nav() {
-  const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+const NAV = [
+  { href: '#articles', label: 'Blog articles' },
+  { href: '#seo', label: 'SEO' },
+  { href: '#instagram', label: 'Instagram' },
+  { href: '#pricing', label: 'Pricing' },
+  { href: '#faq', label: 'FAQ' },
+];
+
+// Fade sections in as they scroll into view.
+function useReveal() {
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    const els = document.querySelectorAll('.lp .reveal');
+    if (!('IntersectionObserver' in window)) { els.forEach((el) => el.classList.add('is-in')); return undefined; }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
   }, []);
+}
+
+// ─── Global navigation ───
+function GlobalNav() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    document.body.style.overflow = open ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
   return (
-    <nav className={`lp-nav ${scrolled ? 'lp-nav--scrolled' : ''}`}>
-      <div className="lp-container lp-nav__inner">
-        <Link to="/" className="lp-logo">
-          <img src="/favicon.svg" alt="" className="lp-logo__icon" width="24" height="24" />
+    <header className={`gn ${open ? 'is-open' : ''}`}>
+      <nav className="gn__bar lp-wrap" aria-label="Main">
+        <Link to="/" className="gn__brand" aria-label="Article Writer — home">
+          <img src="/favicon.svg" alt="" width="22" height="22" />
           <span>Article Writer</span>
         </Link>
-        <div className="lp-nav__links lp-nav__links--desktop">
-          <a href="#features">Features</a>
-          <a href="#how">How it works</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#faq">FAQ</a>
+        <ul className="gn__links">
+          {NAV.map((n) => <li key={n.href}><a href={n.href}>{n.label}</a></li>)}
+        </ul>
+        <div className="gn__actions">
+          <Link to="/login" className="gn__signin">Sign in</Link>
+          <Link to="/signup" className="gn__cta">Start free</Link>
+          <button className="gn__toggle" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+            {open ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
-        <div className="lp-nav__cta lp-nav__cta--desktop">
-          <Link to="/login" className="btn btn-ghost btn-sm">Log in</Link>
-          <Link to="/signup" className="btn btn-primary btn-sm">Sign up free</Link>
-        </div>
-        <button className="lp-menu-toggle" aria-label="Toggle menu" onClick={() => setMenuOpen(v => !v)}>
-          {menuOpen ? <X size={22} /> : <Menu size={22} />}
-        </button>
-      </div>
-      {menuOpen && (
-        <div className="lp-nav__mobile">
-          <a href="#features" onClick={() => setMenuOpen(false)}>Features</a>
-          <a href="#how" onClick={() => setMenuOpen(false)}>How it works</a>
-          <a href="#pricing" onClick={() => setMenuOpen(false)}>Pricing</a>
-          <a href="#faq" onClick={() => setMenuOpen(false)}>FAQ</a>
-          <Link to="/login" className="btn btn-ghost" onClick={() => setMenuOpen(false)}>Log in</Link>
-          <Link to="/signup" className="btn btn-primary" onClick={() => setMenuOpen(false)}>Sign up free</Link>
+      </nav>
+      {open && (
+        <div className="gn__sheet">
+          <ul>
+            {NAV.map((n) => <li key={n.href}><a href={n.href} onClick={() => setOpen(false)}>{n.label}</a></li>)}
+            <li><Link to="/login">Sign in</Link></li>
+          </ul>
+          <Link to="/signup" className="btn btn-primary btn-lg w-full">Start free</Link>
         </div>
       )}
-    </nav>
+    </header>
   );
 }
 
+// ─── Hero ───
 function Hero() {
   return (
-    <section className="lp-hero">
-      <div className="lp-container lp-hero__grid">
-        <div className="lp-hero__copy">
-          <span className="lp-badge"><Sparkles size={12} /> Built for Shopify merchants</span>
-          <h1>
-            AI blog articles for your Shopify store —{' '}
-            <span className="lp-gradient-text">written, illustrated, and published on autopilot.</span>
-          </h1>
-          <p className="lp-lead">
-            Connect your store, get a "Business DNA" of your catalog, and generate SEO-optimized blog
-            posts with your real product images. Publish instantly or on a schedule.
-          </p>
-          <div className="lp-cta-row">
-            <Link to="/signup" className="btn btn-primary btn-lg">
-              Start free — 5 articles <ArrowRight size={18} />
-            </Link>
-            <a href="#how" className="btn btn-secondary btn-lg">See how it works</a>
-          </div>
-          <p className="lp-trust">
-            <ShoppingBag size={14} /> Connects directly to your Shopify store. No credit card to start.
-          </p>
+    <section className="hero">
+      <div className="lp-wrap hero__copy">
+        <p className="eyebrow">For Shopify stores</p>
+        <h1 className="h-hero">Content that sells.<br />Written for you.</h1>
+        <p className="hero__lead">
+          Blog articles, store SEO and Instagram posts — made from your own catalogue, with your real product photos.
+        </p>
+        <div className="cta-row">
+          <Link to="/signup" className="btn btn-primary btn-lg">Start free</Link>
+          <a href="#how" className="link-more">See how it works <ChevronRight size={18} /></a>
         </div>
-        <div className="lp-hero__visual" aria-hidden="true">
-          <div className="lp-card-frame">
-            <div className="lp-card-frame__bar">
-              <span /><span /><span />
-            </div>
-            <div className="lp-card-frame__body">
-              <div className="lp-mock-title">10 Best Ways to Style Our Winter Collection</div>
-              <div className="lp-mock-meta">
-                <span className="badge badge-success">SEO 92</span>
-                <span className="badge badge-purple">1,547 words</span>
-                <span className="badge badge-purple">Gemini</span>
-              </div>
-              <div className="lp-mock-line lp-mock-line--w90" />
-              <div className="lp-mock-line lp-mock-line--w80" />
-              <div className="lp-mock-imgs">
-                <div className="lp-mock-img" /><div className="lp-mock-img" /><div className="lp-mock-img" />
-              </div>
-              <div className="lp-mock-line lp-mock-line--w85" />
-              <div className="lp-mock-line lp-mock-line--w70" />
-            </div>
-          </div>
-        </div>
+        <p className="hero__note">Free plan. No card needed.</p>
       </div>
-    </section>
-  );
-}
 
-function Features() {
-  return (
-    <section id="features" className="lp-section">
-      <div className="lp-container">
-        <div className="lp-section__head">
-          <span className="lp-badge"><Zap size={12} /> Features</span>
-          <h2>Everything you need to publish SEO content from Shopify</h2>
-          <p className="lp-lead">No tabs to juggle. No copy-paste. Just topic in, article live on your blog.</p>
-        </div>
-        <div className="lp-feature-grid">
-          {FEATURES.map(({ icon: Icon, title, body }) => (
-            <div key={title} className="lp-feature">
-              <div className="lp-feature__icon"><Icon size={22} /></div>
-              <h3>{title}</h3>
-              <p>{body}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function HowItWorks() {
-  return (
-    <section id="how" className="lp-section lp-section--alt">
-      <div className="lp-container">
-        <div className="lp-section__head">
-          <span className="lp-badge">How it works</span>
-          <h2>From "I should blog" to "It's already published"</h2>
-        </div>
-        <div className="lp-steps">
-          {STEPS.map((s, i) => (
-            <div key={s.title} className="lp-step">
-              <div className="lp-step__num">{i + 1}</div>
-              <div>
-                <h3>{s.title}</h3>
-                <p>{s.body}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Pricing() {
-  const [annual, setAnnual] = useState(false);
-  return (
-    <section id="pricing" className="lp-section">
-      <div className="lp-container">
-        <div className="lp-section__head">
-          <span className="lp-badge">Pricing</span>
-          <h2>Simple plans that scale with your blog</h2>
-          <p className="lp-lead">All plans include the full feature set. You pick how many articles per month.</p>
-          <div className="lp-toggle" role="tablist" aria-label="Billing period">
-            <button role="tab" aria-selected={!annual} className={!annual ? 'is-active' : ''} onClick={() => setAnnual(false)}>Monthly</button>
-            <button role="tab" aria-selected={annual} className={annual ? 'is-active' : ''} onClick={() => setAnnual(true)}>
-              Annual <span className="lp-toggle__hint">2 months free</span>
-            </button>
+      <div className="lp-wrap hero__stage" aria-hidden="true">
+        <div className="browser">
+          <div className="browser__bar">
+            <span /><span /><span />
+            <div className="browser__url">maison-aura.com/blogs/journal</div>
           </div>
-        </div>
-        <div className="lp-plans">
-          {PLANS.map(plan => {
-            const price = annual ? plan.priceAnnual : plan.priceMonthly;
-            const period = plan.id === 'free' ? plan.period : (annual ? '/year' : '/month');
-            return (
-              <div key={plan.id} className={`lp-plan ${plan.popular ? 'lp-plan--popular' : ''}`}>
-                {plan.popular && <div className="lp-plan__ribbon"><Star size={12} /> Most Popular</div>}
-                <h3>{plan.name}</h3>
-                <p className="lp-plan__tagline">{plan.tagline}</p>
-                <div className="lp-plan__price">
-                  {price === 0 ? '₹0' : `₹${price.toLocaleString('en-IN')}`}
-                  <span className="lp-plan__period">{period}</span>
+          <div className="browser__body">
+            <article className="mock-article">
+              <Photo id={P.earringsGold} w={760} h={420} className="mock-article__hero" eager />
+              <p className="mock-article__kicker">Style guide · 6 min read</p>
+              <h3 className="mock-article__title">How to style gold earrings for every occasion</h3>
+              <p className="mock-article__text">
+                From a Monday meeting to a Sunday brunch, the right pair changes the whole look. Here is how to choose — and the three pieces our customers reach for most.
+              </p>
+              <div className="mock-article__shop">
+                <p>Shop the look</p>
+                <div className="mock-products">
+                  {[
+                    { id: P.earringsLeaf, name: 'Leaf drop earrings', price: '₹2,450' },
+                    { id: P.braceletRose, name: 'Rosé link bracelet', price: '₹3,200' },
+                    { id: P.ring, name: 'Halo ring', price: '₹4,900' },
+                  ].map((p) => (
+                    <div className="mock-product" key={p.name}>
+                      <Photo id={p.id} w={220} h={220} />
+                      <span>{p.name}</span>
+                      <strong>{p.price}</strong>
+                    </div>
+                  ))}
                 </div>
-                <ul className="lp-plan__features">
-                  {plan.features.map(f => (
-                    <li key={f}><Check size={14} /> {f}</li>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <div className="float-ig">
+          <div className="ig-card">
+            <div className="ig-card__head"><span className="ig-card__avatar" />maison.aura</div>
+            <div className="ig-card__media">
+              <Photo id={P.braceletDark} w={360} h={450} />
+              <div className="ig-card__overlay">
+                <span>New in</span>
+                <strong>Made to shine.</strong>
+              </div>
+            </div>
+            <div className="ig-card__icons"><Heart size={18} /><MessageCircle size={18} /><Send size={18} /><Bookmark size={18} style={{ marginLeft: 'auto' }} /></div>
+          </div>
+        </div>
+
+        <div className="float-seo">
+          <div className="seo-ring"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15.5" /><circle cx="18" cy="18" r="15.5" className="seo-ring__val" /></svg><b>94</b></div>
+          <div>
+            <p className="float-seo__title">SEO, last night</p>
+            <ul>
+              <li><Check size={14} /> 12 descriptions written</li>
+              <li><Check size={14} /> 31 image alt texts</li>
+              <li><Check size={14} /> 2 dead links removed</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Highlights (tile grid) ───
+function Highlights() {
+  return (
+    <section className="highlights" id="articles">
+      <div className="lp-wrap">
+        <h2 className="h-section reveal">Everything your store<br />needs to be found.</h2>
+
+        <div className="tiles">
+          <div className="tile tile--wide reveal">
+            <div className="tile__copy">
+              <p className="eyebrow">Blog articles</p>
+              <h3 className="h-tile">Articles that link to what you sell.</h3>
+              <p className="tile__text">Pick a topic, or let a campaign choose. Every article uses your product photos, links to real products and collections, and ships with its SEO title, description and FAQ.</p>
+              <Link to="/signup" className="link-more">Write your first article <ChevronRight size={17} /></Link>
+            </div>
+            <div className="tile__art tile__art--products">
+              {[
+                { id: P.pearls, name: 'Pearl strand' },
+                { id: P.earringsLeaf, name: 'Leaf drops' },
+                { id: P.ring, name: 'Halo ring' },
+              ].map((p, i) => (
+                <figure key={p.name} className={`prod prod--${i}`}>
+                  <Photo id={p.id} w={300} h={360} />
+                  <figcaption>{p.name}<span>Linked in article</span></figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
+
+          <div className="tile tile--dark reveal" id="seo">
+            <div className="tile__copy">
+              <p className="eyebrow eyebrow--light">SEO automation</p>
+              <h3 className="h-tile">Your store, checked every night.</h3>
+              <p className="tile__text">Every product, collection and page is crawled like Google sees it. Missing descriptions, alt text and broken links get fixed — and every change can be undone.</p>
+            </div>
+            <div className="fixlist">
+              {[
+                ['Search description', 'Halo ring', 'Written'],
+                ['Image alt text', 'Leaf drop earrings', 'Added'],
+                ['Broken link', 'Journal: Festive edit', 'Removed'],
+                ['Search title', 'Bracelets', 'Written'],
+              ].map(([what, where, done]) => (
+                <div className="fixlist__row" key={what + where}>
+                  <div><strong>{what}</strong><span>{where}</span></div>
+                  <em>{done}</em>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="tile reveal" id="instagram">
+            <div className="tile__copy">
+              <p className="eyebrow">Instagram</p>
+              <h3 className="h-tile">A new post every day.</h3>
+              <p className="tile__text">A fresh look and layout each time, with the caption written for you — posted on your schedule.</p>
+            </div>
+            <div className="tile__art tile__art--post">
+              <div className="post45">
+                <Photo id={P.ceramics} w={420} h={525} />
+                <div className="post45__text"><span>Slow mornings</span><strong>The Dune cup set</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="tile reveal">
+            <div className="tile__copy">
+              <p className="eyebrow">Campaigns</p>
+              <h3 className="h-tile">Set the schedule once.</h3>
+              <p className="tile__text">Choose a collection and how often. Articles and posts go out on their own.</p>
+            </div>
+            <div className="week">
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => (
+                <div key={d} className="week__day">
+                  <span>{d}</span>
+                  {i % 2 === 0 && <i className="week__dot week__dot--blog" title="Article" />}
+                  <i className="week__dot week__dot--ig" title="Instagram post" />
+                </div>
+              ))}
+            </div>
+            <div className="week__legend"><span><i className="week__dot week__dot--blog" /> Article</span><span><i className="week__dot week__dot--ig" /> Instagram post</span></div>
+          </div>
+
+          <div className="tile reveal">
+            <div className="tile__copy">
+              <p className="eyebrow">Business DNA</p>
+              <h3 className="h-tile">It learns your store first.</h3>
+              <p className="tile__text">Products, collections, prices and the way you write — so nothing sounds generic.</p>
+            </div>
+            <div className="dna">
+              {[
+                { id: P.serum, name: 'Skincare', n: '24 products' },
+                { id: P.bottle, name: 'Everyday', n: '18 products' },
+                { id: P.ceramics, name: 'Home', n: '31 products' },
+              ].map((c) => (
+                <div className="dna__row" key={c.name}>
+                  <Photo id={c.id} w={96} h={96} />
+                  <div><strong>{c.name}</strong><span>{c.n}</span></div>
+                  <Check size={16} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── The promise (dark) ───
+function Promise_() {
+  return (
+    <section className="promise">
+      <div className="lp-wrap">
+        <div className="promise__head reveal">
+          <p className="eyebrow eyebrow--light">Product fidelity</p>
+          <h2 className="h-section">Your products,<br />exactly as they are.</h2>
+          <p className="promise__lead">
+            The AI only designs the scene. Then your real product pixels are laid back on top — colour, stones,
+            engraving and shape stay exactly as photographed. If anything moved, the post is thrown away and made again.
+          </p>
+        </div>
+        <div className="promise__pair reveal">
+          <figure className="pair-card">
+            <div className="pair-card__media pair-card__media--photo"><Photo id={P.braceletRose} w={520} h={650} /></div>
+            <figcaption>Your store photo</figcaption>
+          </figure>
+          <ChevronRight className="promise__arrow" size={28} aria-hidden="true" />
+          <figure className="pair-card">
+            <div className="pair-card__media pair-card__media--scene">
+              <div className="scene-arch"><Photo id={P.braceletRose} w={420} h={520} /></div>
+              <div className="scene-text"><span>The Rosé edit</span><strong>Wear it every day.</strong></div>
+            </div>
+            <figcaption>Your post — same product, new scene</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── How it works ───
+function HowItWorks() {
+  const steps = [
+    { icon: Store, title: 'Connect your store', text: 'Link your Shopify store in a couple of minutes. Your access token is stored encrypted.' },
+    { icon: ScanSearch, title: 'We learn your store', text: 'Business DNA reads your products, collections and existing articles.' },
+    { icon: Rocket, title: 'Content goes live', text: 'Write one article, or set campaigns and daily posts to run on their own.' },
+  ];
+  return (
+    <section className="how" id="how">
+      <div className="lp-wrap">
+        <h2 className="h-section reveal">Up and running<br />in an afternoon.</h2>
+        <ol className="steps">
+          {steps.map((s, i) => (
+            <li key={s.title} className="step reveal">
+              <span className="step__num">{i + 1}</span>
+              <s.icon className="step__icon" size={26} aria-hidden="true" />
+              <h3>{s.title}</h3>
+              <p>{s.text}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  );
+}
+
+function PhotoBand() {
+  return (
+    <section className="band" aria-label="Made for merchants">
+      <Photo id={P.merchant} w={1600} h={760} className="band__img" />
+      <div className="band__shade" />
+      <div className="lp-wrap band__copy reveal">
+        <h2 className="h-section">Built for merchants who’d rather be running their store.</h2>
+      </div>
+    </section>
+  );
+}
+
+// ─── Pricing (live from the plans set in Admin → Plans) ───
+function formatLimit(n, unit) {
+  return n == null ? `Unlimited ${unit}` : `${Number(n).toLocaleString('en-IN')} ${unit}`;
+}
+function Pricing({ plans, catalogue, failed }) {
+  return (
+    <section className="pricing" id="pricing">
+      <div className="lp-wrap">
+        <div className="pricing__head reveal">
+          <h2 className="h-section">Pick a plan.<br />Change any time.</h2>
+          <p className="section-lead">Start free. Move up when your store does.</p>
+        </div>
+        {failed && (
+          <p className="pricing__fallback">Plans are shown inside the app. <Link to="/signup">Start free <ChevronRight size={15} /></Link></p>
+        )}
+        {!failed && (
+          <div className="plans">
+            {(plans || [null, null, null]).map((p, i) => (p ? (
+              <div className="plan reveal" key={p.id}>
+                <h3>{p.name}</h3>
+                {p.description && <p className="plan__desc">{p.description}</p>}
+                <p className="plan__price">
+                  ₹{Number(p.price_inr || 0).toLocaleString('en-IN')}
+                  <span>/month</span>
+                </p>
+                <Link to={`/signup?plan=${encodeURIComponent(p.id)}`} className={`btn ${Number(p.price_inr) > 0 ? 'btn-primary' : 'btn-dark'} w-full`}>
+                  {Number(p.price_inr) > 0 ? `Choose ${p.name}` : 'Start free'}
+                </Link>
+                <ul className="plan__limits">
+                  <li><strong>{formatLimit(p.limits?.monthly_article_limit ?? p.monthly_article_limit, 'articles')}</strong> a month</li>
+                  <li><strong>{formatLimit(p.limits?.monthly_ig_post_limit ?? p.monthly_ig_post_limit, 'AI images')}</strong> a month</li>
+                  {(catalogue?.limits || []).filter((l) => !l.metered).map((l) => (
+                    <li key={l.key}>{l.label}: <strong>{p.limits?.[l.key] == null ? 'Unlimited' : p.limits[l.key]}</strong></li>
                   ))}
                 </ul>
-                <Link to={`/signup?plan=${plan.id}`} className={`btn ${plan.popular ? 'btn-primary' : 'btn-secondary'} w-full`}>
-                  {plan.cta}
-                </Link>
+                <ul className="plan__features">
+                  {(catalogue?.features || []).map((f) => {
+                    const on = p.features?.[f.key] !== false;
+                    return (
+                      <li key={f.key} className={on ? '' : 'is-off'}>
+                        {on ? <Check size={15} aria-label="Included" /> : <Minus size={15} aria-label="Not included" />}
+                        {f.label}
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
-            );
-          })}
-        </div>
+            ) : (
+              <div className="plan plan--skeleton" key={i} aria-hidden="true" />
+            )))}
+          </div>
+        )}
       </div>
     </section>
   );
 }
 
 function FAQ() {
-  const [open, setOpen] = useState(0);
+  const [open, setOpen] = useState(-1);
   return (
-    <section id="faq" className="lp-section lp-section--alt">
-      <div className="lp-container lp-faq">
-        <div className="lp-section__head">
-          <span className="lp-badge">FAQ</span>
-          <h2>Questions, answered</h2>
-        </div>
-        <div className="lp-faq__list">
+    <section className="faq" id="faq">
+      <div className="lp-wrap lp-wrap--narrow">
+        <h2 className="h-section reveal">Questions? Answers.</h2>
+        <div className="faq__list">
           {FAQS.map((item, i) => {
             const isOpen = open === i;
             return (
-              <div key={item.q} className={`lp-faq__item ${isOpen ? 'is-open' : ''}`}>
-                <button
-                  className="lp-faq__q"
-                  aria-expanded={isOpen}
-                  onClick={() => setOpen(isOpen ? -1 : i)}
-                >
+              <div key={item.q} className={`faq__item ${isOpen ? 'is-open' : ''}`}>
+                <button className="faq__q" aria-expanded={isOpen} aria-controls={`faq-a-${i}`} onClick={() => setOpen(isOpen ? -1 : i)}>
                   <span>{item.q}</span>
-                  <ChevronDown size={18} />
+                  <Plus size={22} aria-hidden="true" />
                 </button>
-                {isOpen && <div className="lp-faq__a">{item.a}</div>}
+                <div id={`faq-a-${i}`} className="faq__a" role="region" hidden={!isOpen}>{item.a}</div>
               </div>
             );
           })}
@@ -324,11 +446,14 @@ function FAQ() {
 
 function FinalCTA() {
   return (
-    <section className="lp-section lp-final">
-      <div className="lp-container lp-final__inner">
-        <h2>Start publishing SEO content this week</h2>
-        <p className="lp-lead">5 free articles. No card. Connect your Shopify store and write the first post in under 5 minutes.</p>
-        <Link to="/signup" className="btn btn-primary btn-lg">Get started — it's free <ArrowRight size={18} /></Link>
+    <section className="final">
+      <div className="lp-wrap final__inner reveal">
+        <img src="/favicon.svg" alt="" width="56" height="56" className="final__mark" />
+        <h2 className="h-section">Your next article is<br />one click away.</h2>
+        <div className="cta-row cta-row--center">
+          <Link to="/signup" className="btn btn-primary btn-lg">Start free</Link>
+          <Link to="/login" className="link-more">Sign in <ChevronRight size={18} /></Link>
+        </div>
       </div>
     </section>
   );
@@ -336,202 +461,365 @@ function FinalCTA() {
 
 function Footer() {
   return (
-    <footer className="lp-footer">
-      <div className="lp-container lp-footer__inner">
-        <div className="lp-footer__brand">
-          <div className="lp-logo">
-            <img src="/favicon.svg" alt="" className="lp-logo__icon" width="24" height="24" /><span>Article Writer</span>
+    <footer className="foot">
+      <div className="lp-wrap">
+        <p className="foot__note">
+          Product photos on this page are illustrative. Article Writer works with any Shopify store and uses your own catalogue and photos.
+        </p>
+        <div className="foot__cols">
+          <div>
+            <h4>Product</h4>
+            <a href="#articles">Blog articles</a>
+            <a href="#seo">SEO automation</a>
+            <a href="#instagram">Instagram</a>
+            <a href="#pricing">Pricing</a>
           </div>
-          <p>AI blog writer for Shopify stores.</p>
+          <div>
+            <h4>Account</h4>
+            <Link to="/login">Sign in</Link>
+            <Link to="/signup">Create account</Link>
+          </div>
+          <div>
+            <h4>Legal</h4>
+            <Link to="/privacy">Privacy Policy</Link>
+            <Link to="/terms">Terms of Service</Link>
+            <Link to="/data-deletion">Data deletion</Link>
+          </div>
         </div>
-        <div className="lp-footer__links">
-          <a href="#features">Features</a>
-          <a href="#pricing">Pricing</a>
-          <a href="#faq">FAQ</a>
-          <Link to="/terms">Terms</Link>
-          <Link to="/privacy">Privacy</Link>
+        <div className="foot__bottom">
+          <span>Copyright © {new Date().getFullYear()} Article Writer. All rights reserved.</span>
+          <span className="foot__brand"><img src="/favicon.svg" alt="" width="16" height="16" /> Made for Shopify merchants</span>
         </div>
-        <div className="lp-footer__copy">© {new Date().getFullYear()} Article Writer. All rights reserved.</div>
       </div>
     </footer>
   );
 }
 
-// Structured data that mirrors the visible page (no schema drift).
-const landingJsonLd = [
-  {
-    '@context': 'https://schema.org',
-    '@type': 'SoftwareApplication',
-    name: 'Article Writer',
-    applicationCategory: 'BusinessApplication',
-    operatingSystem: 'Web',
-    description: 'AI blog writer for Shopify stores. Generates SEO-optimized articles with your real product images and publishes them to your Shopify blog instantly or on a schedule.',
-    url: `${APP_URL}/`,
-    publisher: { '@id': `${APP_URL}/#org` },
-    offers: PLANS.map((p) => ({
-      '@type': 'Offer',
-      name: p.name,
-      price: String(p.priceMonthly),
-      priceCurrency: 'INR',
-      url: `${APP_URL}/signup?plan=${p.id}`,
-    })),
-  },
-  {
-    '@context': 'https://schema.org',
-    '@type': 'FAQPage',
-    mainEntity: FAQS.map((f) => ({
-      '@type': 'Question',
-      name: f.q,
-      acceptedAnswer: { '@type': 'Answer', text: f.a },
-    })),
-  },
-];
-
 export default function Landing() {
+  const [plans, setPlans] = useState(null);
+  const [catalogue, setCatalogue] = useState(null);
+  const [failed, setFailed] = useState(false);
+  useReveal();
+  // A link like /#pricing: jump there once the page has rendered.
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (!/^[a-z-]+$/.test(id)) return undefined;
+    const t = setTimeout(() => document.getElementById(id)?.scrollIntoView(), 60);
+    return () => clearTimeout(t);
+  }, []);
+  useEffect(() => {
+    getPublicPlans()
+      .then((r) => { setPlans(r.data || []); setCatalogue(r.catalogue || null); })
+      .catch(() => setFailed(true));
+  }, []);
+
+  // Structured data mirrors what the page shows.
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      name: 'Article Writer',
+      applicationCategory: 'BusinessApplication',
+      operatingSystem: 'Web',
+      description: 'Blog articles, store SEO and Instagram posts for Shopify stores, made from your own catalogue with your real product photos.',
+      url: `${APP_URL}/`,
+      ...(plans && plans.length ? {
+        offers: plans.map((p) => ({ '@type': 'Offer', name: p.name, price: String(Number(p.price_inr) || 0), priceCurrency: 'INR', url: `${APP_URL}/signup?plan=${p.id}` })),
+      } : {}),
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: FAQS.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+    },
+  ];
+
   return (
     <div className="lp">
       <Seo
-        title="AI Blog Writer for Shopify"
-        description="AI blog writer for Shopify stores. Generates SEO articles with your real product images and auto-publishes to your blog. Start free — 5 articles."
+        title="Blog, SEO and Instagram for Shopify"
+        description="Blog articles, store SEO and Instagram posts for your Shopify store — made from your own catalogue, with your real product photos. Start free."
         path="/"
-        jsonLd={landingJsonLd}
+        jsonLd={jsonLd}
       />
-      <Nav />
-      <Hero />
-      <Features />
-      <HowItWorks />
-      <Pricing />
-      <FAQ />
-      <FinalCTA />
+      <GlobalNav />
+      <main>
+        <Hero />
+        <Highlights />
+        <Promise_ />
+        <HowItWorks />
+        <PhotoBand />
+        <Pricing plans={plans} catalogue={catalogue} failed={failed} />
+        <FAQ />
+        <FinalCTA />
+      </main>
       <Footer />
       <style>{LANDING_CSS}</style>
     </div>
   );
 }
 
-// ─── Page-scoped CSS ─────────────────────────────────────────
+// ─── Page-scoped CSS ───
 const LANDING_CSS = `
-  .lp { color: var(--text-primary); }
-  .lp-container { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
-  .lp-gradient-text { background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-  .lp-lead { color: var(--text-secondary); font-size: 16px; line-height: 1.6; }
-  .lp-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(139,92,246,0.10); border: 1px solid rgba(139,92,246,0.25); color: var(--text-accent); font-size: 12px; font-weight: 600; letter-spacing: 0.3px; text-transform: uppercase; }
-
-  /* NAV */
-  .lp-nav { position: sticky; top: 0; z-index: 30; background: rgba(10,10,20,0.0); transition: background .25s, border-bottom-color .25s, backdrop-filter .25s; border-bottom: 1px solid transparent; }
-  .lp-nav--scrolled { background: rgba(10,10,20,0.85); backdrop-filter: blur(12px); border-bottom-color: rgba(255,255,255,0.06); }
-  .lp-nav__inner { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; gap: 24px; }
-  .lp-logo { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--text-primary); font-size: 17px; }
-  .lp-logo__icon { width: 24px; height: 24px; display: block; }
-  .lp-nav__links--desktop { display: flex; gap: 22px; }
-  .lp-nav__links--desktop a { color: var(--text-secondary); font-size: 14px; font-weight: 500; }
-  .lp-nav__links--desktop a:hover { color: var(--text-primary); }
-  .lp-nav__cta--desktop { display: flex; gap: 10px; }
-  .lp-menu-toggle { display: none; background: transparent; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: var(--text-primary); padding: 6px; cursor: pointer; }
-  .lp-nav__mobile { display: none; padding: 12px 24px 16px; gap: 10px; flex-direction: column; border-top: 1px solid rgba(255,255,255,0.06); background: rgba(10,10,20,0.95); backdrop-filter: blur(12px); }
-  .lp-nav__mobile a { color: var(--text-secondary); padding: 8px 0; }
-  @media (max-width: 880px) {
-    .lp-nav__links--desktop, .lp-nav__cta--desktop { display: none; }
-    .lp-menu-toggle { display: inline-flex; }
-    .lp-nav__mobile { display: flex; }
-  }
-
-  /* HERO */
-  .lp-hero { padding: 80px 0 56px; position: relative; overflow: hidden; }
-  .lp-hero::before { content: ''; position: absolute; inset: -200px 30% -100px 30%; background: radial-gradient(closest-side, rgba(139,92,246,0.18), transparent 70%); pointer-events: none; }
-  .lp-hero__grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; position: relative; }
-  .lp-hero__copy h1 { font-size: clamp(32px, 4.4vw, 52px); line-height: 1.1; letter-spacing: -0.02em; margin: 16px 0 18px; }
-  .lp-cta-row { display: flex; gap: 12px; margin-top: 26px; flex-wrap: wrap; }
-  .lp-trust { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 13px; margin-top: 18px; }
-
-  /* HERO VISUAL — mocked article card */
-  .lp-card-frame { background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-lg), 0 0 60px rgba(139,92,246,0.15); transform: rotate(-1.5deg); }
-  .lp-card-frame__bar { display: flex; gap: 6px; padding: 10px 14px; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(255,255,255,0.05); }
-  .lp-card-frame__bar span { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.18); }
-  .lp-card-frame__bar span:first-child { background: #ef4444; }
-  .lp-card-frame__bar span:nth-child(2) { background: #f59e0b; }
-  .lp-card-frame__bar span:nth-child(3) { background: #10b981; }
-  .lp-card-frame__body { padding: 24px; }
-  .lp-mock-title { font-size: 20px; font-weight: 700; margin-bottom: 12px; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-  .lp-mock-meta { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
-  .lp-mock-line { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.06); margin-bottom: 10px; }
-  .lp-mock-line--w90 { width: 90%; } .lp-mock-line--w80 { width: 80%; } .lp-mock-line--w85 { width: 85%; } .lp-mock-line--w70 { width: 70%; }
-  .lp-mock-imgs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
-  .lp-mock-img { aspect-ratio: 1; border-radius: 8px; background: linear-gradient(135deg, rgba(139,92,246,0.25), rgba(6,182,212,0.25)); border: 1px solid rgba(139,92,246,0.2); }
-
-  @media (max-width: 880px) {
-    .lp-hero__grid { grid-template-columns: 1fr; gap: 24px; }
-    .lp-hero { padding: 56px 0 40px; }
-  }
-
-  /* SECTIONS */
-  .lp-section { padding: 80px 0; }
-  .lp-section--alt { background: var(--bg-secondary); }
-  .lp-section__head { text-align: center; max-width: 720px; margin: 0 auto 48px; }
-  .lp-section__head h2 { font-size: clamp(26px, 3.4vw, 38px); margin: 12px 0; letter-spacing: -0.02em; }
-
-  /* FEATURES */
-  .lp-feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
-  .lp-feature { background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-lg); padding: 22px; transition: transform .25s, border-color .25s, box-shadow .25s; }
-  .lp-feature:hover { transform: translateY(-3px); border-color: rgba(139,92,246,0.35); box-shadow: var(--shadow-glow); }
-  .lp-feature__icon { width: 40px; height: 40px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: rgba(139,92,246,0.15); color: var(--accent-primary); margin-bottom: 14px; }
-  .lp-feature h3 { font-size: 16px; margin-bottom: 6px; }
-  .lp-feature p { color: var(--text-secondary); font-size: 14px; line-height: 1.55; }
-
-  /* STEPS */
-  .lp-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
-  .lp-step { display: flex; gap: 14px; padding: 20px; background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-lg); }
-  .lp-step__num { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; background: var(--accent-gradient); color: white; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-  .lp-step h3 { font-size: 15px; margin-bottom: 4px; }
-  .lp-step p { color: var(--text-secondary); font-size: 13.5px; }
-
-  /* PRICING */
-  .lp-toggle { display: inline-flex; padding: 4px; background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: 999px; margin-top: 18px; }
-  .lp-toggle button { background: transparent; border: 0; color: var(--text-secondary); padding: 8px 18px; border-radius: 999px; cursor: pointer; font-weight: 600; font-size: 13px; transition: background .2s, color .2s; }
-  .lp-toggle button.is-active { background: var(--accent-gradient); color: white; }
-  .lp-toggle__hint { font-size: 11px; opacity: 0.85; margin-left: 6px; }
-  .lp-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; align-items: stretch; }
-  .lp-plan { position: relative; background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-lg); padding: 24px; display: flex; flex-direction: column; transition: transform .25s, border-color .25s; }
-  .lp-plan:hover { transform: translateY(-3px); }
-  .lp-plan--popular { border-color: rgba(139,92,246,0.6); box-shadow: 0 0 40px rgba(139,92,246,0.18); }
-  .lp-plan__ribbon { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px; background: var(--accent-gradient); color: white; font-size: 11px; font-weight: 700; letter-spacing: 0.4px; }
-  .lp-plan h3 { font-size: 18px; }
-  .lp-plan__tagline { color: var(--text-muted); font-size: 13px; margin: 4px 0 14px; }
-  .lp-plan__price { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
-  .lp-plan__period { font-size: 13px; color: var(--text-muted); margin-left: 6px; font-weight: 400; }
-  .lp-plan__features { list-style: none; padding: 0; margin: 18px 0 22px; display: flex; flex-direction: column; gap: 8px; }
-  .lp-plan__features li { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-secondary); }
-  .lp-plan__features svg { color: var(--accent-success); flex-shrink: 0; }
-
-  /* FAQ */
-  .lp-faq { max-width: 760px; }
-  .lp-faq__list { display: flex; flex-direction: column; gap: 10px; }
-  .lp-faq__item { background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-md); overflow: hidden; }
-  .lp-faq__q { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px; background: transparent; border: 0; color: var(--text-primary); font-size: 15px; font-weight: 600; text-align: left; cursor: pointer; }
-  .lp-faq__q svg { transition: transform .2s; flex-shrink: 0; }
-  .lp-faq__item.is-open .lp-faq__q svg { transform: rotate(180deg); }
-  .lp-faq__a { padding: 0 18px 18px; color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
-
-  /* FINAL CTA */
-  .lp-final { background: linear-gradient(135deg, rgba(139,92,246,0.10), rgba(6,182,212,0.08)); border-top: 1px solid rgba(139,92,246,0.18); border-bottom: 1px solid rgba(139,92,246,0.18); }
-  .lp-final__inner { text-align: center; max-width: 640px; margin: 0 auto; }
-  .lp-final h2 { font-size: clamp(26px, 3.4vw, 38px); margin-bottom: 12px; }
-  .lp-final .btn { margin-top: 18px; }
-
-  /* FOOTER */
-  .lp-footer { padding: 40px 0 32px; border-top: 1px solid rgba(255,255,255,0.05); background: var(--bg-secondary); }
-  .lp-footer__inner { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: start; }
-  .lp-footer__brand p { color: var(--text-muted); font-size: 13px; margin-top: 8px; }
-  .lp-footer__links { display: flex; gap: 18px; justify-content: flex-end; flex-wrap: wrap; }
-  .lp-footer__links a { color: var(--text-secondary); font-size: 14px; }
-  .lp-footer__copy { grid-column: 1 / -1; color: var(--text-muted); font-size: 12px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.05); }
-  @media (max-width: 720px) {
-    .lp-footer__inner { grid-template-columns: 1fr; }
-    .lp-footer__links { justify-content: flex-start; }
-  }
-
-  /* Buttons (lg variant for the landing hero) */
-  .btn-lg { padding: 12px 22px; font-size: 15px; border-radius: var(--radius-md); }
-
   html { scroll-behavior: smooth; }
+  .lp { background: #fff; color: var(--ink); font-size: 17px; line-height: 1.47; letter-spacing: -0.01em; }
+  .lp section[id] { scroll-margin-top: 56px; }
+  .lp-wrap { max-width: 1080px; margin: 0 auto; padding: 0 22px; }
+  .lp-wrap--narrow { max-width: 820px; }
+
+  /* type */
+  .h-hero { font-size: clamp(48px, 8.2vw, 92px); line-height: 1.02; letter-spacing: -0.045em; font-weight: 600; }
+  .h-section { font-size: clamp(36px, 5.4vw, 60px); line-height: 1.05; letter-spacing: -0.04em; font-weight: 600; }
+  .h-tile { font-size: clamp(26px, 3vw, 36px); line-height: 1.1; letter-spacing: -0.032em; font-weight: 600; margin-bottom: 12px; }
+  .eyebrow { font-size: 15px; font-weight: 600; color: var(--brand); margin-bottom: 10px; letter-spacing: -0.01em; }
+  .eyebrow--light { color: #6cb0ff; }
+  .section-lead { font-size: clamp(19px, 2vw, 24px); color: var(--text-muted); margin-top: 14px; letter-spacing: -0.015em; }
+  .link-more { display: inline-flex; align-items: center; gap: 2px; font-size: 17px; color: var(--brand); font-weight: 400; }
+  .link-more:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .cta-row { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; margin-top: 32px; }
+  .cta-row--center { justify-content: center; }
+
+  /* reveal on scroll */
+  .reveal { opacity: 0; transform: translateY(24px); transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1); }
+  .reveal.is-in { opacity: 1; transform: none; }
+
+  /* ── global nav ── */
+  .gn { position: sticky; top: 0; z-index: 50; background: rgba(251,251,253,0.8); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid rgba(0,0,0,0.08); }
+  .gn__bar { height: 52px; display: flex; align-items: center; gap: 24px; }
+  .gn__brand { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 600; font-size: 15px; letter-spacing: -0.02em; flex-shrink: 0; }
+  .gn__brand:hover { color: var(--ink); }
+  .gn__brand img { border-radius: 6px; }
+  .gn__links { list-style: none; display: flex; gap: 30px; margin: 0 auto; }
+  .gn__links a { font-size: 13px; color: rgba(0,0,0,0.8); letter-spacing: -0.01em; }
+  .gn__links a:hover { color: var(--ink); }
+  .gn__actions { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+  .gn__signin { font-size: 13px; color: rgba(0,0,0,0.8); }
+  .gn__signin:hover { color: var(--ink); }
+  .gn__cta { font-size: 13px; color: #fff; background: var(--brand); padding: 5px 13px; border-radius: 980px; }
+  .gn__cta:hover { color: #fff; background: var(--brand-hover); }
+  .gn__toggle { display: none; background: transparent; border: 0; width: 36px; height: 36px; border-radius: 50%; place-items: center; color: var(--ink); cursor: pointer; }
+  .gn__sheet { position: fixed; inset: 52px 0 0 0; background: #fff; padding: 24px 32px 40px; display: flex; flex-direction: column; justify-content: space-between; animation: fadeIn .25s ease; }
+  .gn__sheet ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .gn__sheet a { display: block; font-size: 28px; font-weight: 600; letter-spacing: -0.03em; color: var(--ink); padding: 6px 0; }
+  .gn__sheet .btn { color: #fff; }
+  @media (max-width: 860px) {
+    .gn__links, .gn__signin { display: none; }
+    .gn__toggle { display: grid; }
+    .gn__actions { margin-left: auto; gap: 8px; }
+  }
+
+  /* ── hero ── */
+  .hero { padding: 88px 0 0; overflow: hidden; background: linear-gradient(180deg, #fbfbfd 0%, #fff 60%); }
+  .hero__copy { text-align: center; }
+  .hero__copy .eyebrow { font-size: 17px; }
+  .hero__lead { font-size: clamp(20px, 2.3vw, 27px); line-height: 1.3; letter-spacing: -0.02em; color: var(--ink); max-width: 760px; margin: 22px auto 0; }
+  .hero .cta-row { justify-content: center; }
+  .hero__note { font-size: 14px; color: var(--text-muted); margin-top: 18px; }
+  .hero__stage { position: relative; margin-top: 64px; padding-bottom: 96px; }
+
+  .browser { max-width: 860px; margin: 0 auto; border-radius: 16px; background: #fff; box-shadow: 0 40px 100px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.06); overflow: hidden; }
+  .browser__bar { height: 40px; display: flex; align-items: center; gap: 7px; padding: 0 14px; background: #f5f5f7; border-bottom: 1px solid rgba(0,0,0,0.06); }
+  .browser__bar > span { width: 11px; height: 11px; border-radius: 50%; background: #d9d9de; }
+  .browser__url { margin: 0 auto; font-size: 12px; color: var(--text-muted); background: #fff; border: 1px solid rgba(0,0,0,0.06); padding: 3px 14px; border-radius: 7px; transform: translateX(-24px); }
+  .browser__body { padding: 36px 56px 44px; }
+  .mock-article { max-width: 640px; margin: 0 auto; }
+  .mock-article__hero { width: 100%; height: auto; aspect-ratio: 760 / 420; object-fit: cover; border-radius: 12px; display: block; background: #f0ece6; }
+  .mock-article__kicker { font-size: 13px; color: var(--text-muted); margin: 22px 0 6px; }
+  .mock-article__title { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: clamp(24px, 3vw, 34px); letter-spacing: -0.02em; line-height: 1.15; }
+  .mock-article__text { font-size: 15.5px; color: #48484d; margin-top: 12px; line-height: 1.65; }
+  .mock-article__shop { margin-top: 26px; padding-top: 18px; border-top: 1px solid rgba(0,0,0,0.08); }
+  .mock-article__shop > p { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; }
+  .mock-products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .mock-product img { width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 10px; display: block; background: #f2f2f4; }
+  .mock-product span { display: block; font-size: 13px; margin-top: 8px; color: var(--ink); }
+  .mock-product strong { display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); }
+
+  .float-ig { position: absolute; right: max(0px, calc(50% - 612px)); top: 36px; width: 236px; animation: floaty 7s ease-in-out infinite; }
+  .ig-card { background: #fff; border-radius: 18px; box-shadow: 0 30px 70px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.05); overflow: hidden; }
+  .ig-card__head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font-size: 12.5px; font-weight: 600; }
+  .ig-card__avatar { width: 22px; height: 22px; border-radius: 50%; background: conic-gradient(from 210deg, #feda75, #fa7e1e, #d62976, #962fbf, #4f5bd5, #feda75); box-shadow: inset 0 0 0 2px #fff; }
+  .ig-card__media { position: relative; }
+  .ig-card__media img { width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; display: block; }
+  .ig-card__overlay { position: absolute; left: 14px; right: 14px; bottom: 16px; color: #fff; }
+  .ig-card__overlay span { display: block; font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.85; }
+  .ig-card__overlay strong { font-family: Georgia, serif; font-weight: 400; font-size: 22px; letter-spacing: -0.01em; }
+  .ig-card__icons { display: flex; gap: 12px; padding: 10px 12px 12px; color: var(--ink); }
+
+  .float-seo { position: absolute; left: max(0px, calc(50% - 612px)); bottom: 20px; display: flex; gap: 14px; align-items: center; padding: 16px 18px; background: rgba(255,255,255,0.92); backdrop-filter: blur(20px); border-radius: 18px; box-shadow: 0 30px 70px rgba(0,0,0,0.16), 0 0 0 1px rgba(0,0,0,0.05); animation: floaty 8s ease-in-out infinite reverse; }
+  .float-seo__title { font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .float-seo ul { list-style: none; display: flex; flex-direction: column; gap: 3px; }
+  .float-seo li { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #48484d; }
+  .float-seo li svg { color: var(--accent-success); }
+  .seo-ring { position: relative; width: 58px; height: 58px; flex-shrink: 0; }
+  .seo-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .seo-ring circle { fill: none; stroke: #ececf0; stroke-width: 3.2; }
+  .seo-ring .seo-ring__val { stroke: var(--accent-success); stroke-linecap: round; stroke-dasharray: 91.6 97.4; }
+  .seo-ring b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 18px; font-weight: 600; letter-spacing: -0.03em; }
+  @keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+
+  @media (max-width: 1100px) { .float-ig { right: 0; width: 200px; } .float-seo { left: 0; } }
+  @media (max-width: 860px) {
+    .hero { padding-top: 56px; }
+    .hero__stage { margin-top: 44px; padding-bottom: 56px; }
+    .browser__body { padding: 20px; }
+    .browser__url { transform: none; }
+    .float-ig, .float-seo { display: none; }
+    .cta-row { gap: 20px; }
+  }
+
+  /* ── highlights ── */
+  .highlights { background: #f5f5f7; padding: 120px 0; }
+  .highlights .h-section { margin-bottom: 56px; }
+  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+  .tile { background: #fff; border-radius: 30px; padding: 44px 44px 0; overflow: hidden; display: flex; flex-direction: column; min-height: 520px; }
+  .tile__copy { max-width: 440px; }
+  .tile__text { font-size: 17px; color: #48484d; line-height: 1.5; }
+  .tile .link-more { margin-top: 18px; }
+  .tile--wide { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 40px; padding: 56px; min-height: 0; }
+  .tile--wide .tile__copy { flex: 1; }
+  .tile--dark { background: #000; color: #f5f5f7; }
+  .tile--dark .h-tile { color: #f5f5f7; }
+  .tile--dark .tile__text { color: #a1a1a6; }
+
+  .tile__art--products { flex: 1.15; display: flex; justify-content: center; align-items: flex-end; gap: 14px; }
+  .prod { margin: 0; width: 31%; background: #f5f5f7; border-radius: 18px; overflow: hidden; }
+  .prod img { width: 100%; height: auto; aspect-ratio: 5 / 6; object-fit: cover; display: block; }
+  .prod figcaption { padding: 10px 12px 12px; font-size: 13.5px; font-weight: 600; }
+  .prod figcaption span { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; color: var(--brand); margin-top: 2px; }
+  .prod--1 { transform: translateY(-22px); }
+
+  .fixlist { margin: 36px -44px 0; padding: 0 44px 44px; display: flex; flex-direction: column; gap: 10px; flex: 1; justify-content: flex-end; }
+  .fixlist__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; background: #1c1c1e; border-radius: 14px; }
+  .fixlist__row strong { display: block; font-size: 14.5px; font-weight: 600; color: #f5f5f7; }
+  .fixlist__row span { display: block; font-size: 13px; color: #86868b; }
+  .fixlist__row em { font-style: normal; font-size: 12.5px; font-weight: 600; color: #30d158; background: rgba(48,209,88,0.14); padding: 3px 10px; border-radius: 980px; }
+
+  .tile__art--post { flex: 1; display: flex; justify-content: center; align-items: flex-end; margin-top: 32px; }
+  .post45 { position: relative; width: min(300px, 100%); border-radius: 18px 18px 0 0; overflow: hidden; box-shadow: 0 -10px 50px rgba(0,0,0,0.12); }
+  .post45 img { width: 100%; height: auto; aspect-ratio: 4 / 5; object-fit: cover; display: block; }
+  .post45__text { position: absolute; left: 20px; right: 20px; top: 22px; color: #3b2f27; }
+  .post45__text span { display: block; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; }
+  .post45__text strong { font-family: Georgia, serif; font-weight: 400; font-size: 26px; letter-spacing: -0.01em; }
+
+  .week { margin-top: auto; display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; padding-bottom: 14px; padding-top: 32px; }
+  .week__day { background: #f5f5f7; border-radius: 14px; padding: 12px 6px 14px; display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 112px; }
+  .week__day span { font-size: 12.5px; color: var(--text-muted); font-weight: 600; }
+  .week__dot { display: inline-block; width: 22px; height: 22px; border-radius: 7px; }
+  .week__dot--blog { background: var(--brand); }
+  .week__dot--ig { background: linear-gradient(135deg, #fa7e1e, #d62976); }
+  .week__legend { display: flex; gap: 18px; font-size: 13px; color: var(--text-muted); padding-bottom: 40px; }
+  .week__legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .week__legend .week__dot { width: 10px; height: 10px; border-radius: 3px; }
+
+  .dna { margin-top: auto; padding: 32px 0 44px; display: flex; flex-direction: column; gap: 10px; }
+  .dna__row { display: flex; align-items: center; gap: 14px; padding: 10px 14px 10px 10px; background: #f5f5f7; border-radius: 16px; }
+  .dna__row img { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; }
+  .dna__row div { flex: 1; }
+  .dna__row strong { display: block; font-size: 15px; font-weight: 600; }
+  .dna__row span { font-size: 13px; color: var(--text-muted); }
+  .dna__row > svg { color: var(--accent-success); }
+
+  @media (max-width: 860px) {
+    .highlights { padding: 72px 0; }
+    .highlights .h-section { margin-bottom: 32px; }
+    .tiles { grid-template-columns: 1fr; gap: 16px; }
+    .tile, .tile--wide { padding: 32px 26px 0; border-radius: 24px; min-height: 0; }
+    .tile--wide { flex-direction: column; align-items: stretch; padding-bottom: 32px; }
+    .fixlist { margin: 28px -26px 0; padding: 0 26px 32px; }
+    .tile__art--products { gap: 10px; }
+    .prod figcaption { font-size: 12px; padding: 8px; }
+    .prod figcaption span { display: none; }
+  }
+
+  /* ── promise ── */
+  .promise { background: #000; color: #f5f5f7; padding: 130px 0; }
+  .promise .h-section { color: #f5f5f7; }
+  .promise__head { text-align: center; max-width: 820px; margin: 0 auto; }
+  .promise__lead { font-size: clamp(19px, 2vw, 22px); color: #a1a1a6; margin-top: 22px; line-height: 1.45; }
+  .promise__pair { display: flex; align-items: center; justify-content: center; gap: 28px; margin-top: 72px; }
+  .promise__arrow { color: #6e6e73; flex-shrink: 0; }
+  .pair-card { margin: 0; width: min(360px, 42%); text-align: center; }
+  .pair-card figcaption { font-size: 14px; color: #a1a1a6; margin-top: 16px; }
+  .pair-card__media { border-radius: 22px; overflow: hidden; aspect-ratio: 4 / 5; position: relative; }
+  .pair-card__media--photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pair-card__media--scene { background: radial-gradient(120% 90% at 50% 100%, #c9a48a 0%, #7a5442 45%, #2a1b14 100%); display: flex; align-items: flex-end; justify-content: center; }
+  .scene-arch { width: 68%; height: 72%; border-radius: 999px 999px 18px 18px; overflow: hidden; box-shadow: 0 30px 60px rgba(0,0,0,0.35); margin-bottom: 9%; }
+  .scene-arch img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .scene-text { position: absolute; top: 7%; left: 0; right: 0; text-align: center; color: #fff5ee; }
+  .scene-text span { display: block; font-size: 10.5px; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.85; }
+  .scene-text strong { font-family: Georgia, serif; font-weight: 400; font-size: clamp(18px, 2.2vw, 26px); }
+  @media (max-width: 860px) {
+    .promise { padding: 80px 0; }
+    .promise__pair { gap: 10px; margin-top: 44px; }
+    .pair-card { width: 46%; }
+    .promise__arrow { width: 18px; }
+  }
+
+  /* ── how it works ── */
+  .how { padding: 130px 0; background: #fff; }
+  .how .h-section { text-align: center; margin-bottom: 64px; }
+  .steps { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+  .step { background: #f5f5f7; border-radius: 26px; padding: 34px 30px 36px; position: relative; }
+  .step__num { position: absolute; top: 24px; right: 28px; font-size: 56px; font-weight: 600; letter-spacing: -0.05em; color: #d2d2d7; line-height: 1; }
+  .step__icon { color: var(--brand); margin-bottom: 40px; }
+  .step h3 { font-size: 22px; letter-spacing: -0.025em; margin-bottom: 8px; }
+  .step p { font-size: 16px; color: #48484d; }
+  @media (max-width: 860px) { .how { padding: 80px 0; } .how .h-section { margin-bottom: 36px; } .steps { grid-template-columns: 1fr; } }
+
+  /* ── photo band ── */
+  .band { position: relative; height: clamp(420px, 56vw, 680px); overflow: hidden; display: flex; align-items: flex-end; }
+  .band__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .band__img { object-position: 50% 35%; }
+  .band__shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,0.7) 100%); }
+  .band__copy { position: relative; padding-bottom: 72px; width: 100%; }
+  .band__copy .h-section { color: #fff; max-width: 760px; }
+
+  /* ── pricing ── */
+  .pricing { background: #f5f5f7; padding: 130px 0; }
+  .pricing__head { text-align: center; margin-bottom: 56px; }
+  .pricing__fallback { text-align: center; font-size: 19px; color: var(--text-muted); }
+  .pricing__fallback a { display: inline-flex; align-items: center; }
+  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 22px; align-items: start; }
+  .plan { background: #fff; border-radius: 26px; padding: 34px 30px; }
+  .plan h3 { font-size: 26px; letter-spacing: -0.03em; }
+  .plan__desc { font-size: 15px; color: var(--text-muted); margin-top: 6px; }
+  .plan__price { font-size: 44px; font-weight: 600; letter-spacing: -0.045em; margin: 18px 0 22px; line-height: 1; }
+  .plan__price span { font-size: 16px; font-weight: 400; color: var(--text-muted); letter-spacing: -0.01em; margin-left: 4px; }
+  .plan .btn { padding: 11px 18px; font-size: 15px; }
+  .plan__limits { list-style: none; margin: 26px 0 0; padding: 22px 0 0; border-top: 1px solid rgba(0,0,0,0.08); display: flex; flex-direction: column; gap: 8px; font-size: 15px; color: #48484d; }
+  .plan__limits strong { color: var(--ink); font-weight: 600; }
+  .plan__features { list-style: none; margin: 20px 0 0; padding: 20px 0 0; border-top: 1px solid rgba(0,0,0,0.08); display: flex; flex-direction: column; gap: 9px; font-size: 15px; }
+  .plan__features li { display: flex; align-items: center; gap: 10px; }
+  .plan__features li svg { color: var(--accent-success); flex-shrink: 0; }
+  .plan__features li.is-off { color: var(--text-faint); }
+  .plan__features li.is-off svg { color: var(--text-faint); }
+  .plan--skeleton { min-height: 560px; background: linear-gradient(90deg, #fff 0%, #fafafa 50%, #fff 100%); }
+  @media (max-width: 860px) { .pricing { padding: 80px 0; } .pricing__head { margin-bottom: 36px; } }
+
+  /* ── faq ── */
+  .faq { padding: 130px 0; background: #fff; }
+  .faq .h-section { margin-bottom: 40px; }
+  .faq__item { border-bottom: 1px solid rgba(0,0,0,0.1); }
+  .faq__q { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 26px 0; background: transparent; border: 0; cursor: pointer; text-align: left; font: inherit; font-size: clamp(19px, 2vw, 24px); font-weight: 600; letter-spacing: -0.025em; color: var(--ink); }
+  .faq__q svg { flex-shrink: 0; color: var(--text-muted); transition: transform .3s cubic-bezier(.2,.7,.2,1); }
+  .faq__item.is-open .faq__q svg { transform: rotate(45deg); }
+  .faq__a { padding: 0 48px 28px 0; font-size: 17px; color: #48484d; line-height: 1.55; }
+  @media (max-width: 860px) { .faq { padding: 80px 0; } .faq__a { padding-right: 0; } }
+
+  /* ── final ── */
+  .final { padding: 140px 0; background: #fbfbfd; text-align: center; border-top: 1px solid rgba(0,0,0,0.06); }
+  .final__mark { border-radius: 14px; margin-bottom: 28px; }
+  @media (max-width: 860px) { .final { padding: 88px 0; } }
+
+  /* ── footer ── */
+  .foot { background: #f5f5f7; padding: 22px 0 28px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+  .foot__note { padding-bottom: 16px; border-bottom: 1px solid #d2d2d7; }
+  .foot__cols { display: grid; grid-template-columns: repeat(3, minmax(0, 180px)); gap: 24px; padding: 22px 0; }
+  .foot__cols h4 { font-size: 12px; font-weight: 600; color: var(--ink); letter-spacing: 0; margin-bottom: 8px; }
+  .foot__cols a { display: block; color: #424245; font-size: 12px; padding: 3px 0; }
+  .foot__cols a:hover { color: var(--ink); text-decoration: underline; }
+  .foot__bottom { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 16px; border-top: 1px solid #d2d2d7; }
+  .foot__brand { display: inline-flex; align-items: center; gap: 6px; }
+  .foot__brand img { border-radius: 4px; }
+  @media (max-width: 600px) { .foot__cols { grid-template-columns: 1fr 1fr; } }
 `;

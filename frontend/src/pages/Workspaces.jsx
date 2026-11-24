@@ -28,7 +28,7 @@ export default function Workspaces() {
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>🏢 Workspaces</h1>
+        <h1>Workspaces</h1>
         <p>Each workspace is a separate tenant with its own store, articles, plan, and team.</p>
       </div>
 
@@ -42,11 +42,11 @@ export default function Workspaces() {
               {workspaces.map(w => {
                 const isActive = w.id === activeWorkspaceId;
                 return (
-                  <div key={w.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 'var(--radius-md)' }}>
+                  <div key={w.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)' }}>
                     <div>
                       <strong>{w.name}</strong>
                       <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        {w.slug} · role: <strong>{w.role}</strong>{w.status === 'suspended' ? ' · ⚠️ suspended' : ''}
+                        {w.slug} · role: <strong>{w.role}</strong>{w.status === 'suspended' ? ' · suspended' : ''}
                       </div>
                     </div>
                     {isActive ? (

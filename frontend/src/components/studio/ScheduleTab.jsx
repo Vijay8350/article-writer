@@ -45,7 +45,7 @@ export default function ScheduleTab({ accountId, canManage, maxAttempts }) {
     <form onSubmit={save}>
       <div className="ig-two-col">
         <div className="card">
-          <div className="card-header"><h2>⏰ Daily posting slots</h2></div>
+          <div className="card-header"><h2>Daily posting slots</h2></div>
           <div className="card-body">
             <div className="form-group">
               <label className="form-label">Time zone</label>
@@ -72,7 +72,7 @@ export default function ScheduleTab({ accountId, canManage, maxAttempts }) {
         </div>
 
         <div className="card">
-          <div className="card-header"><h2>🤖 Autopilot</h2></div>
+          <div className="card-header"><h2>Autopilot</h2></div>
           <div className="card-body">
             <Toggle checked={form.autopilot} disabled={!canManage} onChange={(v) => setForm({ ...form, autopilot: v })}
               label="Post automatically every day" sub="Text → image → quality check → publish, with no one in the loop" />
@@ -95,7 +95,7 @@ export default function ScheduleTab({ accountId, canManage, maxAttempts }) {
       </div>
 
       {warnings.length > 0 && (
-        <div className="card mt-24" style={{ borderColor: 'rgba(245, 158, 11, 0.35)' }}>
+        <div className="card mt-24" style={{ borderColor: 'rgba(178,91,0,0.18)', background: 'var(--warning-tint)' }}>
           <div className="card-body">
             {warnings.map((w) => (
               <div key={w} className="flex gap-8" style={{ fontSize: 13, alignItems: 'flex-start', marginBottom: 6 }}>

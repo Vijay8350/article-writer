@@ -445,7 +445,7 @@ export default function InstagramProductImages() {
   return (
     <div className="page-container fade-in" style={{ maxWidth: 1040 }}>
       <div className="page-header">
-        <h1>🛍️ AI Product Posts</h1>
+        <h1>AI Product Posts</h1>
         <p>Turn the products on your website into scroll-stopping Instagram images, and post them by hand or automatically every day.</p>
       </div>
 

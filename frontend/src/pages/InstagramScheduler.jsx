@@ -116,7 +116,7 @@ export function JobFields({ value, onChange, accounts, styles = [] }) {
 
 function PreviewCard({ preview }) {
   return (
-    <div style={{ background: 'var(--bg-tertiary)', borderRadius: 'var(--radius-md)', padding: 12 }}>
+    <div style={{ background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', padding: 12 }}>
       <div className="form-label">
         Next product · store photos the images are made from
       </div>
@@ -251,7 +251,7 @@ export default function InstagramScheduler() {
     <div className="page-container fade-in">
       <div className="page-header flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 12, maxWidth: 900 }}>
         <div>
-          <h1>🗓️ Instagram Scheduler</h1>
+          <h1>Instagram Scheduler</h1>
           <p>
             Add as many posting jobs as you like. Each job takes the next product from a website, sets it in a scene the AI
             designs around it (the product itself stays exactly as photographed), and posts it to Instagram every day at its time
@@ -279,7 +279,7 @@ export default function InstagramScheduler() {
           {showForm && (
             <div className="card mb-24" style={{ maxWidth: 900 }}>
               <div className="card-header">
-                <h2>➕ New job</h2>
+                <h2>New job</h2>
                 {jobs.length > 0 && (
                   <button className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)} title="Close"><X size={14} /></button>
                 )}
@@ -312,13 +312,13 @@ export default function InstagramScheduler() {
           {/* Jobs */}
           <div className="card" style={{ maxWidth: 900 }}>
             <div className="card-header">
-              <h2>📋 Jobs {jobs.length > 0 && <span style={muted}>({activeJobs.length} active)</span>}</h2>
+              <h2>Jobs {jobs.length > 0 && <span style={muted}>({activeJobs.length} active)</span>}</h2>
               <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /> Refresh</button>
             </div>
             <div className="card-body">
               {nextJob && (
                 <div className="form-helper mb-16">
-                  ⏭️ Next post: <strong>{fmtNext(nextJob.next_run_at)}</strong> — {siteLabel(nextJob)} → @{nextJob.username}
+                  Next post: <strong>{fmtNext(nextJob.next_run_at)}</strong> — {siteLabel(nextJob)} → @{nextJob.username}
                 </div>
               )}
               {loading ? (
@@ -332,7 +332,7 @@ export default function InstagramScheduler() {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {jobs.map(j => (
-                    <div key={j.id} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 'var(--radius-md)', padding: 16, opacity: j.status === 'paused' ? 0.7 : 1 }}>
+                    <div key={j.id} style={{ border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)', padding: 16, opacity: j.status === 'paused' ? 0.7 : 1 }}>
                       <div className="flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 12 }}>
                         <div className="flex items-center gap-12" style={{ cursor: 'pointer', minWidth: 0, flex: '1 1 320px' }}
                           onClick={() => (expanded === j.id ? setExpanded(null) : open(j))}>
@@ -377,7 +377,7 @@ export default function InstagramScheduler() {
                       </div>
 
                       {expanded === j.id && (
-                        <div style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        <div style={{ marginTop: 12, borderTop: '1px solid var(--border-secondary)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
                           {previews[j.id] && <PreviewCard preview={previews[j.id]} />}
 
                           {edits[j.id] && (
@@ -400,7 +400,7 @@ export default function InstagramScheduler() {
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                                   <tbody>
                                     {posts[j.id].map(p => (
-                                      <tr key={p.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)', verticalAlign: 'top' }}>
+                                      <tr key={p.id} style={{ borderTop: '1px solid var(--border-secondary)', verticalAlign: 'top' }}>
                                         <td style={{ padding: '6px 8px' }}>
                                           {p.product_url
                                             ? <a href={p.product_url} target="_blank" rel="noreferrer">{p.product_title}</a>

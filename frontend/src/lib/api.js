@@ -202,6 +202,7 @@ export const getUsage = () => api.get('/settings/usage').then(r => r.data);
 
 // ─── Upgrade requests (user) ────────────────────────────────
 export const getUpgradePlans = () => api.get('/upgrade-requests/plans').then(r => r.data);
+export const getPublicPlans = () => api.get('/plans').then(r => r.data); // home-page pricing, no sign-in
 export const getMyUpgradeRequests = () => api.get('/upgrade-requests/mine').then(r => r.data);
 export const requestUpgrade = (requestedPlan, note) =>
   api.post('/upgrade-requests', { requestedPlan, note }).then(r => r.data);

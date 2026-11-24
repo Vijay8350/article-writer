@@ -86,8 +86,8 @@ function CampaignFields({ value, onChange, collections, blogs }) {
       <div className="form-group">
         <label className="form-label">AI Model</label>
         <select className="form-select" value={value.aiModel} onChange={set('aiModel')}>
-          <option value="gemini">🧠 Gemini</option>
-          <option value="deepseek">🔮 DeepSeek</option>
+          <option value="gemini">Gemini</option>
+          <option value="deepseek">DeepSeek</option>
         </select>
       </div>
       <div className="form-group">
@@ -247,14 +247,14 @@ export default function Campaigns() {
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>🚀 Campaigns</h1>
+        <h1>Campaigns</h1>
         <p>Pick a category — the tool finds low-competition keywords, skips topics you already cover, and auto-writes & publishes articles.</p>
       </div>
 
       {/* Create */}
       <div className="card mb-24" style={{ maxWidth: 900 }}>
         <div className="card-header">
-          <h2>➕ New Campaign</h2>
+          <h2>New Campaign</h2>
           {hasDna && (
             <button className="btn btn-ghost btn-sm" onClick={handleSync} disabled={syncing} title="Get the latest collections from Shopify">
               {syncing ? <Loader2 size={14} className="spinning" /> : <RefreshCw size={14} />} Sync collections
@@ -282,7 +282,7 @@ export default function Campaigns() {
       {/* List */}
       <div className="card">
         <div className="card-header">
-          <h2>📋 Your Campaigns</h2>
+          <h2>Your Campaigns</h2>
           <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /> Refresh</button>
         </div>
         <div className="card-body">
@@ -297,7 +297,7 @@ export default function Campaigns() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               {list.map(c => (
-                <div key={c.id} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 'var(--radius-md)', padding: 16 }}>
+                <div key={c.id} style={{ border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)', padding: 16 }}>
                   <div className="flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 12 }}>
                     <div style={{ cursor: 'pointer' }} onClick={() => toggleExpand(c)}>
                       <div className="flex items-center gap-8">
@@ -328,7 +328,7 @@ export default function Campaigns() {
                   </div>
 
                   {editing?.id === c.id && (
-                    <form onSubmit={handleSave} style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
+                    <form onSubmit={handleSave} style={{ marginTop: 12, borderTop: '1px solid var(--border-secondary)', paddingTop: 12 }}>
                       <CampaignFields value={editing} onChange={setEditing} collections={collections} blogs={blogs} />
                       <div className="form-helper mb-16">
                         Changes apply to the next articles. Articles already written stay as they are.
@@ -345,7 +345,7 @@ export default function Campaigns() {
                   )}
 
                   {expanded === c.id && (
-                    <div style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 12 }}>
+                    <div style={{ marginTop: 12, borderTop: '1px solid var(--border-secondary)', paddingTop: 12 }}>
                       {!articles[c.id] ? (
                         <div className="form-helper">Loading activity…</div>
                       ) : articles[c.id].length === 0 ? (
@@ -354,7 +354,7 @@ export default function Campaigns() {
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                           <tbody>
                             {articles[c.id].map(a => (
-                              <tr key={a.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                              <tr key={a.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
                                 <td style={{ padding: '6px 8px' }}>{a.title || a.keyword || '—'}</td>
                                 <td style={{ padding: '6px 8px' }}>
                                   <span className={`badge ${ARTICLE_BADGE[a.status] || 'badge-purple'}`}>{a.status}</span>

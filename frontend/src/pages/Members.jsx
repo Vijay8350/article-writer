@@ -71,7 +71,7 @@ export default function Members() {
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>👥 Members</h1>
+        <h1>Members</h1>
         <p>People in <strong>{activeWorkspace?.name}</strong></p>
       </div>
 
@@ -99,7 +99,7 @@ export default function Members() {
             </form>
 
             {lastInvite && (
-              <div style={{ marginTop: 16, padding: 12, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ marginTop: 16, padding: 12, background: 'var(--brand-tint)', border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)' }}>
                 <div style={{ fontSize: 13, marginBottom: 6 }}>
                   Share this link with <strong>{lastInvite.email}</strong> (email delivery comes later):
                 </div>
@@ -132,7 +132,7 @@ export default function Members() {
             </thead>
             <tbody>
               {members.map(m => (
-                <tr key={m.user_id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <tr key={m.user_id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
                   <td style={{ padding: '8px' }}>{m.email}{m.name ? <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{m.name}</div> : null}</td>
                   <td style={{ padding: '8px' }}>
                     {isOwner && m.user_id !== me.id ? (
@@ -176,7 +176,7 @@ export default function Members() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <tbody>
                 {invitations.filter(i => !i.accepted_at).map(i => (
-                  <tr key={i.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <tr key={i.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
                     <td style={{ padding: '8px' }}>{i.email}</td>
                     <td style={{ padding: '8px' }}><span className={`badge ${ROLE_BADGE[i.role]}`}>{i.role}</span></td>
                     <td style={{ padding: '8px', color: 'var(--text-muted)' }}>expires {new Date(i.expires_at).toLocaleDateString()}</td>
@@ -195,7 +195,7 @@ export default function Members() {
         <div className="pwd-modal" role="dialog" aria-modal="true">
           <div className="pwd-modal__card">
             <button className="pwd-modal__close" onClick={() => setResetResult(null)} aria-label="Close"><X size={18} /></button>
-            <h3 style={{ marginBottom: 8 }}>🔐 New password for {resetResult.email}</h3>
+            <h3 style={{ marginBottom: 8 }}>New password for {resetResult.email}</h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16 }}>
               {resetResult.notice}
             </p>
@@ -207,7 +207,7 @@ export default function Members() {
               }}><Copy size={14} /> Copy</button>
             </div>
             <p style={{ color: 'var(--accent-warning)', fontSize: 12, marginTop: 16 }}>
-              ⚠ This password is shown ONCE. After you close this dialog you won't see it again — copy it now.
+              This password is shown ONCE. After you close this dialog you won't see it again — copy it now.
             </p>
             <button className="btn btn-primary w-full" style={{ marginTop: 14 }} onClick={() => setResetResult(null)}>I've shared it</button>
           </div>
@@ -215,12 +215,12 @@ export default function Members() {
       )}
       <style>{`
         .spinning { animation: spin 1s linear infinite; }
-        .pwd-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
-        .pwd-modal__card { background: var(--bg-tertiary); border: 1px solid var(--border-primary); border-radius: var(--radius-lg); padding: 24px; max-width: 460px; width: 100%; position: relative; box-shadow: var(--shadow-lg); }
+        .pwd-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.32); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
+        .pwd-modal__card { background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-lg); padding: 24px; max-width: 460px; width: 100%; position: relative; box-shadow: var(--shadow-lg); }
         .pwd-modal__close { position: absolute; top: 12px; right: 12px; background: transparent; border: 0; color: var(--text-muted); cursor: pointer; padding: 6px; border-radius: 6px; }
         .pwd-modal__close:hover { color: var(--text-primary); }
-        .pwd-modal__box { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--bg-input); border: 1px solid var(--border-primary); border-radius: var(--radius-md); }
-        .pwd-modal__box code { flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 15px; letter-spacing: 0.5px; color: var(--text-accent); user-select: all; }
+        .pwd-modal__box { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--bg-subtle); border: 1px solid var(--border-primary); border-radius: var(--radius-md); }
+        .pwd-modal__box code { flex: 1; font-family: var(--font-mono); font-size: 15px; letter-spacing: 0.5px; color: var(--text-accent); user-select: all; }
       `}</style>
     </div>
   );

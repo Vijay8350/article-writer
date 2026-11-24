@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { LogIn, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import AuthCard from '../components/AuthCard';
@@ -36,8 +36,8 @@ export default function Login() {
 
   return (
     <AuthCard
-      title="Welcome back"
-      subtitle="Sign in to your Article Writer account"
+      title="Sign in"
+      subtitle="Welcome back. Pick up where you left off."
       footer={<>Don't have an account? <Link to="/signup">Sign up free</Link></>}
     >
       <Seo
@@ -96,7 +96,7 @@ export default function Login() {
           </button>
         </div>
         <button className="btn btn-primary w-full" type="submit" disabled={submitting}>
-          {submitting ? <><Loader2 size={16} className="spinning" /> Signing in...</> : <><LogIn size={16} /> Sign In</>}
+          {submitting ? <><Loader2 size={16} className="spinning" /> Signing in...</> : <>Sign in</>}
         </button>
       </form>
       <style>{`

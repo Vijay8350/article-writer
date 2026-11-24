@@ -13,7 +13,7 @@ const fmt = (d) => (d ? new Date(d).toLocaleString() : '—');
 const num = (n) => (n == null ? '—' : Number(n).toLocaleString());
 const muted = { fontSize: 12, color: 'var(--text-muted)' };
 const danger = { fontSize: 12, color: 'var(--accent-danger)' };
-const rowBorder = '1px solid rgba(255,255,255,0.06)';
+const rowBorder = '1px solid var(--border-secondary)';
 
 // Connection health from what's stored (no API call): last check result + token expiry.
 function tokenStatus(acc) {
@@ -61,7 +61,7 @@ function AccountDetails({ account, status, checking, onRecheck }) {
   return (
     <div className="card mb-24" style={{ maxWidth: 900 }}>
       <div className="card-header">
-        <h2>📋 @{account.username}</h2>
+        <h2>@{account.username}</h2>
         <div className="flex items-center gap-8">
           {account.is_default && <span className="badge badge-purple">★ Default</span>}
           <button className="btn btn-secondary btn-sm" onClick={onRecheck} disabled={checking}>
@@ -278,7 +278,7 @@ export default function InstagramAccounts() {
   const connectCard = (
     <div className="card mb-24" style={{ maxWidth: 900 }}>
       <div className="card-header">
-        <h2>🔗 {accounts.length ? 'Connect another account' : 'Connect an account'}</h2>
+        <h2>{accounts.length ? 'Connect another account' : 'Connect an account'}</h2>
         <button className="btn btn-ghost btn-sm" onClick={() => setShowHelp(s => !s)}>
           {showHelp ? <ChevronDown size={14} /> : <ChevronRight size={14} />} How to get a token
         </button>
@@ -320,7 +320,7 @@ export default function InstagramAccounts() {
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>📸 Instagram Accounts</h1>
+        <h1>Instagram Accounts</h1>
         <p>Connect your Instagram accounts, pick a default, and check that each connection works.</p>
       </div>
 
@@ -343,7 +343,7 @@ export default function InstagramAccounts() {
         <>
           <div className="card mb-24" style={{ maxWidth: 900 }}>
             <div className="card-header">
-              <h2>✅ Connected accounts</h2>
+              <h2>Connected accounts</h2>
               <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
                 <Link to="/instagram-studio" className="btn btn-secondary btn-sm"><Sparkles size={14} /> Open Studio</Link>
                 <Link to="/instagram-scheduler" className="btn btn-secondary btn-sm"><AlarmClock size={14} /> Product Scheduler</Link>
@@ -359,7 +359,7 @@ export default function InstagramAccounts() {
                 return (
                   <div key={acc.id} className="flex items-center justify-between"
                     style={{ padding: '10px 8px', borderTop: i ? rowBorder : 'none', gap: 12, flexWrap: 'wrap',
-                      borderRadius: 'var(--radius-md)', background: isSelected ? 'rgba(139,92,246,0.06)' : 'transparent' }}>
+                      borderRadius: 'var(--radius-md)', background: isSelected ? 'var(--brand-tint)' : 'transparent' }}>
                     <div style={{ minWidth: 0 }}>
                       <div className="flex items-center gap-8" style={{ flexWrap: 'wrap' }}>
                         <strong>@{acc.username}</strong>

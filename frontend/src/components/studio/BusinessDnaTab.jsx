@@ -142,7 +142,7 @@ export default function BusinessDnaTab({ accountId, canManage }) {
         <>
           <div className="card mb-24">
             <div className="card-header">
-              <h2>🏷️ Business DNA</h2>
+              <h2>Business DNA</h2>
               <span style={muted}>Built {fmt(dna.generated_at)}</span>
             </div>
             <div className="card-body">
@@ -190,7 +190,7 @@ export default function BusinessDnaTab({ accountId, canManage }) {
           {notes && (
             <div className="card">
               <div className="card-header">
-                <h2>🔎 Research notes</h2>
+                <h2>Research notes</h2>
                 <span style={muted}>{notes.stats?.facts} facts · {notes.stats?.pages} pages · {notes.stats?.captions} captions · {notes.stats?.comments} comments</span>
               </div>
               <div className="card-body">

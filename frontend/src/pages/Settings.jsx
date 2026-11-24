@@ -7,7 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
-const PROVIDER_LABELS = { gemini: '🧠 Google Gemini', deepseek: '🔮 DeepSeek' };
+const PROVIDER_LABELS = { gemini: 'Google Gemini', deepseek: 'DeepSeek' };
 
 const TASKS = [
   { key: 'article', label: 'Article writing', help: 'Default model on Generate Article, Scheduled Posts and Campaigns (campaign keyword ideas use it too).' },
@@ -184,7 +184,7 @@ export default function Settings() {
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>⚙️ Settings</h1>
+        <h1>Settings</h1>
         <p>Connect your Shopify store and choose which AI does what</p>
       </div>
 
@@ -192,14 +192,14 @@ export default function Settings() {
         {/* Connection Status */}
         <div className="card mb-24">
           <div className="card-header">
-            <h2>🔗 Shopify Connection</h2>
+            <h2>Shopify Connection</h2>
             <span className={`badge ${isConnected ? 'badge-success' : 'badge-danger'}`}>
               {isConnected ? '● Connected' : '● Disconnected'}
             </span>
           </div>
           <div className="card-body">
             {isConnected && shopInfo && (
-              <div style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 'var(--radius-md)', padding: 16, marginBottom: 20 }}>
+              <div style={{ background: 'var(--success-tint)', border: '1px solid rgba(31,138,59,0.18)', borderRadius: 'var(--radius-md)', padding: 16, marginBottom: 20 }}>
                 <div className="flex items-center gap-8 mb-16">
                   <CheckCircle2 size={20} style={{ color: 'var(--accent-success)' }} />
                   <span style={{ fontWeight: 600 }}>Connected to {shopInfo.name}</span>
@@ -254,7 +254,7 @@ export default function Settings() {
 
         {/* Per-workspace AI Keys */}
         <div className="card mb-24">
-          <div className="card-header"><h2>🔑 AI Keys</h2></div>
+          <div className="card-header"><h2>AI Keys</h2></div>
           <div className="card-body">
             <div className="form-helper mb-16">
               Optional. Add your own keys to use your own quota; without one, the platform's shared key is used
@@ -292,7 +292,7 @@ export default function Settings() {
 
         {/* AI preferences: which provider for each task + DeepSeek model */}
         <div className="card">
-          <div className="card-header"><h2>🧭 AI Preferences</h2></div>
+          <div className="card-header"><h2>AI Preferences</h2></div>
           <div className="card-body">
             <div className="form-helper mb-16">
               Choose which AI handles each job in this workspace. You can still switch model per article on the Generate page.
@@ -316,7 +316,7 @@ export default function Settings() {
                   <div className="form-helper">
                     {task.help}
                     {!hasKey(provider) && (
-                      <span style={{ color: 'var(--accent-warning)' }}> ⚠️ No {provider === 'gemini' ? 'Gemini' : 'DeepSeek'} key available: add one above.</span>
+                      <span style={{ color: 'var(--accent-warning)' }}> No {provider === 'gemini' ? 'Gemini' : 'DeepSeek'} key available: add one above.</span>
                     )}
                   </div>
                 </div>

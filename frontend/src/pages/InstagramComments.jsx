@@ -57,7 +57,7 @@ function Overview({ accountId, version }) {
   return (
     <div className="card mb-24">
       <div className="card-header" style={{ flexWrap: 'wrap', gap: 12 }}>
-        <h2>📊 Overview</h2>
+        <h2>Overview</h2>
         <div className="chips">
           {[7, 30, 90].map((d) => (
             <button key={d} className={`chip ${days === d ? 'active' : ''}`} aria-pressed={days === d} onClick={() => setDays(d)}>Last {d} days</button>
@@ -359,7 +359,7 @@ export default function InstagramComments() {
   return (
     <div className="page-container fade-in">
       <div className="page-header">
-        <h1>💬 Instagram Comments</h1>
+        <h1>Instagram Comments</h1>
         <p>DeepSeek reads new comments in each account's voice: it hides spam and abuse, and drafts replies or sends them automatically.</p>
       </div>
 
@@ -382,7 +382,7 @@ export default function InstagramComments() {
           <Overview accountId={accountId} version={version} />
 
           <div className="card mb-24">
-            <div className="card-header"><h2>🤖 Auto-reply</h2></div>
+            <div className="card-header"><h2>Auto-reply</h2></div>
             <div className="card-body">
               {accounts.map((a) => (
                 <AutoReplySettings key={`${a.id}-${settingsFor(a.id)?.updated_at || 'none'}`} account={a} settings={settingsFor(a.id)}

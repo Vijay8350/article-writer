@@ -4,7 +4,7 @@ import { requireWorkspace, requireWorkspaceRole } from '../middleware/workspace.
 import * as upgrades from '../repositories/upgradeRequests.js';
 import * as activity from '../repositories/activity.js';
 import * as plansRepo from '../repositories/plans.js';
-import { FEATURES, LIMITS, effectivePlan } from '../lib/planFeatures.js';
+import { FEATURES, LIMITS, publicPlan } from '../lib/planFeatures.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
@@ -13,11 +13,7 @@ router.use(requireAuth, requireWorkspace);
 router.get('/plans', async (req, res, next) => {
   try {
     const rows = (await plansRepo.list()).filter((p) => p.is_active !== false);
-    const data = rows.map((p) => ({
-      id: p.id, name: p.name, description: p.description, price_inr: p.price_inr,
-      monthly_article_limit: p.monthly_article_limit, monthly_ig_post_limit: p.monthly_ig_post_limit,
-      ...effectivePlan(p),
-    }));
+    const data = rows.map(publicPlan);
     res.json({ success: true, data, catalogue: { features: FEATURES, limits: LIMITS } });
   } catch (error) { next(error); }
 });
