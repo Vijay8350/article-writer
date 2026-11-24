@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { getSettings, getUsage, adminGetUsers, adminGetUpgradeRequests } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { ThemeSwitch } from './ThemeSwitch';
 
 // The app menu. `feature` ties an item to a plan feature: when the workspace's plan
 // doesn't include it, the item shows a lock and leads to Plan & usage instead.
@@ -188,6 +189,7 @@ export default function Layout() {
             <span className={`connection-dot ${connected ? 'connected' : ''}`} />
             <span>{connected ? (storeName ? storeName.replace(/^https?:\/\//, '') : 'Store connected') : 'No store connected'}</span>
           </div>
+          <ThemeSwitch />
           {user && (
             <div className="user-row">
               <span className="user-row__avatar" aria-hidden="true">{(user.email || '?').charAt(0)}</span>

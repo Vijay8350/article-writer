@@ -223,7 +223,7 @@ export default function InstagramCampaigns() {
                         <div style={muted}>{scheduleText(c)}</div>
                         <div className="flex items-center gap-8 mt-16" title={c.posts_target ? `${c.posts_done} of ${c.posts_target} posts` : `${c.posts_done} posts`}>
                           {c.posts_target > 0 && (
-                            <div style={{ flex: 1, maxWidth: 320, height: 8, borderRadius: 4, background: '#e8e8ed' }}>
+                            <div style={{ flex: 1, maxWidth: 320, height: 8, borderRadius: 4, background: 'var(--track)' }}>
                               <div style={{ width: `${pct}%`, height: '100%', borderRadius: 4, background: 'var(--accent-primary)' }} />
                             </div>
                           )}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { KeyRound, Loader2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { ThemeSwitch } from '../components/ThemeSwitch';
 import { changeMyPassword } from '../lib/api';
 
 export default function Account() {
@@ -56,6 +57,14 @@ export default function Account() {
               <div className="dna-section-title">Role</div>
               <span className="badge badge-purple">{user?.role}</span>
             </div>
+          </div>
+        </div>
+
+        <div className="card mb-24">
+          <div className="card-header"><h2>Appearance</h2></div>
+          <div className="card-body">
+            <ThemeSwitch labels />
+            <p className="form-helper" style={{ marginTop: 10 }}>System follows your device's light or dark setting. Saved in this browser.</p>
           </div>
         </div>
 

@@ -44,7 +44,7 @@ export default function AuthCard({ title, subtitle, children, footer, badge }) {
         </p>
       </main>
       <style>{`
-        .auth-wrap { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); background: var(--bg-card); }
+        .auth-wrap { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); background: var(--bg-page); }
         .auth-side { position: relative; overflow: hidden; background: #111; min-height: 100vh; position: sticky; top: 0; height: 100vh; }
         .auth-side__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
         .auth-side__shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,0.72) 100%); }

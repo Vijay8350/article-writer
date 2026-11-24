@@ -83,7 +83,7 @@ export default function PlanUsage() {
               <span style={{ color: 'var(--text-secondary)' }}>This month ({usage?.period})</span>
               <strong>{usage?.used} / {usage?.limit} articles</strong>
             </div>
-            <div style={{ height: 12, background: '#e8e8ed', borderRadius: 999, overflow: 'hidden' }}>
+            <div style={{ height: 12, background: 'var(--track)', borderRadius: 999, overflow: 'hidden' }}>
               <div style={{ width: `${pct}%`, height: '100%', background: barColor, transition: 'width .3s' }} />
             </div>
             <div className="form-helper mt-16">
@@ -98,7 +98,7 @@ export default function PlanUsage() {
                   <span style={{ color: 'var(--text-secondary)' }}>Instagram Studio posts</span>
                   <strong>{usage.igUsed} / {usage.igLimit} posts</strong>
                 </div>
-                <div style={{ height: 12, background: '#e8e8ed', borderRadius: 999, overflow: 'hidden' }}
+                <div style={{ height: 12, background: 'var(--track)', borderRadius: 999, overflow: 'hidden' }}
                   role="meter" aria-valuemin={0} aria-valuemax={usage.igLimit} aria-valuenow={usage.igUsed} aria-label="Instagram posts used">
                   <div style={{ width: `${igPct}%`, height: '100%', background: igBarColor, transition: 'width .3s' }} />
                 </div>

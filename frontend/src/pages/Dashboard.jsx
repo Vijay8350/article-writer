@@ -62,7 +62,7 @@ function Meter({ label, used, limit, to }) {
         <Link to={to} style={{ color: 'var(--text-secondary)' }}>{label}</Link>
         <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{used} / {limit}</strong>
       </div>
-      <div style={{ height: 8, borderRadius: 4, background: '#e8e8ed' }} role="meter" aria-valuemin={0} aria-valuemax={limit} aria-valuenow={used} aria-label={label}>
+      <div style={{ height: 8, borderRadius: 4, background: 'var(--track)' }} role="meter" aria-valuemin={0} aria-valuemax={limit} aria-valuenow={used} aria-label={label}>
         <div style={{ width: `${p}%`, height: '100%', borderRadius: 4, background: color, transition: 'width .3s' }} />
       </div>
     </div>
