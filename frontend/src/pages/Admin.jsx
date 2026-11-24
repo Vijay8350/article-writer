@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Loader2, UserPlus, CheckCircle2, Ban, RotateCcw, Activity as ActivityIcon, Building2, KeyRound, Settings2, X, Copy, Trash2, Plus, ShieldCheck, LogIn, ExternalLink, Image as ImageIcon } from 'lucide-react';
+import {
+  Loader2, UserPlus, CheckCircle2, Ban, RotateCcw, Activity as ActivityIcon, Building2, KeyRound, Settings2, Copy, Trash2, Plus,
+  ShieldCheck, LogIn, ExternalLink, Image as ImageIcon, Search, Users as UsersIcon, Inbox, Info, AlertTriangle, Check, Minus,
+  ArrowUpCircle,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -14,13 +18,27 @@ import {
   adminUpdatePlan, adminCreatePlan, adminGetWorkspacePlan, adminSetWorkspaceOverrides,
 } from '../lib/api';
 import { ColumnChart, BarList, Kpi, compact } from '../components/insights/Charts';
+import { PageHeader, Sheet, Segmented, EmptyState, Section, Switch, SettingRow } from '../components/ui';
+import '../styles/admin.css';
 
 const STATUS_BADGE = { active: 'badge-success', pending: 'badge-warning', suspended: 'badge-danger' };
 const ROLE_BADGE = { superadmin: 'badge-danger', admin: 'badge-warning', user: 'badge-purple' };
+const PLAN_BADGE = { free: 'badge-info', pro: 'badge-purple', business: 'badge-success' };
 const WORKSPACE_ROLES = ['owner', 'admin', 'member'];
 const errMsg = (err) => err.response?.data?.error || 'Failed';
-const cell = { padding: '8px' };
-const muted = { color: 'var(--text-muted)', fontSize: 11 };
+
+const when = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
+const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
+const ago = (iso) => {
+  if (!iso) return 'never';
+  const mins = Math.round((Date.now() - new Date(iso)) / 60000);
+  if (mins < 60) return `${Math.max(mins, 1)}m ago`;
+  if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
+  return `${Math.round(mins / 1440)}d ago`;
+};
+const rupees = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
+
+const Loading = () => <div className="empty-state"><div className="spinner spinner-lg" /></div>;
 
 // What each role may do. Matches the checks in the backend (routes/admin.js and the
 // requireWorkspaceRole guards); change both together.
@@ -50,37 +68,37 @@ const WORKSPACE_PERMISSIONS = [
   ['Change member roles, remove admins, reset an admin\'s password', false, false, true],
 ];
 
-const Mark = ({ value }) => (value === true
-  ? <span style={{ color: 'var(--accent-success)' }}>✓</span>
-  : value ? <span style={{ fontSize: 12 }}>{value}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>);
+const Mark = ({ value }) => {
+  if (value === true) return <span className="admin-mark admin-mark--yes"><Check size={16} aria-hidden="true" /><span className="sr-only">Yes</span></span>;
+  if (value) return <span className="admin-mark admin-mark--text">{value}</span>;
+  return <span className="admin-mark admin-mark--no"><Minus size={16} aria-hidden="true" /><span className="sr-only">No</span></span>;
+};
 
-function PermissionTable({ title, columns, rows }) {
+function PermissionTable({ title, description, columns, rows }) {
   return (
-    <div className="card mb-24">
-      <div className="card-header"><h2>{title}</h2></div>
-      <div className="card-body" style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+    <Section title={title} description={description} flush>
+      <div className="table-container">
+        <table className="data-table admin-table admin-perm-table">
           <thead>
-            <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
-              <th style={cell}>Can…</th>
-              {columns.map((c) => <th key={c} style={{ ...cell, textAlign: 'center' }}>{c}</th>)}
+            <tr>
+              <th scope="col">Can…</th>
+              {columns.map((c) => <th key={c} scope="col" className="admin-center">{c}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map(([label, ...marks]) => (
-              <tr key={label} style={{ borderTop: '1px solid var(--border-secondary)' }}>
-                <td style={cell}>{label}</td>
-                {marks.map((m, i) => <td key={i} style={{ ...cell, textAlign: 'center' }}><Mark value={m} /></td>)}
+              <tr key={label}>
+                <td>{label}</td>
+                {marks.map((m, i) => <td key={i} className="admin-center"><Mark value={m} /></td>)}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </div>
+    </Section>
   );
 }
 
-// One user: their password and the workspaces they belong to.
 // One workspace's plan in the Manage panel: which plan, and this customer's own changes,
 // feature by feature (anything left on "Plan" follows the plan as it is).
 function WorkspacePlan({ workspaceId, plans, catalogue, canManage, onChanged }) {
@@ -98,7 +116,7 @@ function WorkspacePlan({ workspaceId, plans, catalogue, canManage, onChanged }) 
     })));
   }).catch((err) => toast.error(errMsg(err))), [workspaceId, catalogue]);
   useEffect(() => { load(); }, [load]);
-  if (!info) return <div className="spinner" />;
+  if (!info) return <div className="admin-loading-sm"><div className="spinner" /></div>;
 
   const shown = (v) => (v === null || v === undefined ? 'unlimited' : v);
   const save = async (reset = false) => {
@@ -126,60 +144,79 @@ function WorkspacePlan({ workspaceId, plans, catalogue, canManage, onChanged }) 
     setSaving(false);
   };
   const custom = Object.values(feat).some((v) => v !== 'plan') || Object.values(lim).some((v) => v.mode !== 'plan');
+  const planSelectId = `admin-ws-plan-${workspaceId}`;
 
   return (
-    <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, padding: 12, marginTop: 8 }}>
-      <div className="flex items-center gap-8 mb-8" style={{ flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13 }}>Plan</span>
-        <select className="form-select" style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }} value={info.planId} disabled={!canManage || saving}
-          onChange={(e) => changePlan(e.target.value)} aria-label="Plan">
+    <div className="admin-plan-box">
+      <div className="admin-plan-box__head">
+        <label className="form-label" htmlFor={planSelectId}>Plan</label>
+        <select id={planSelectId} className="form-select admin-inline-select" value={info.planId} disabled={!canManage || saving}
+          onChange={(e) => changePlan(e.target.value)}>
           {plans.map((p) => <option key={p.id} value={p.id}>{p.name} · {rupees(p.price_inr)}/mo{p.is_active === false ? ' (not offered)' : ''}</option>)}
         </select>
         {custom && <span className="badge badge-warning">Custom for this customer</span>}
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-        <thead><tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}><th style={cell}>Feature</th><th style={cell}>Plan gives</th><th style={cell}>This customer</th></tr></thead>
-        <tbody>
-          {catalogue.features.map((f) => (
-            <tr key={f.key} style={{ borderTop: '1px solid var(--border-color)' }}>
-              <td style={cell} title={f.help}>{f.label}</td>
-              <td style={cell}>{info.plan.features[f.key] ? 'On' : 'Off'}</td>
-              <td style={cell}>
-                <select className="form-select" style={{ padding: '3px 6px', fontSize: 12 }} disabled={!canManage} value={feat[f.key]}
-                  onChange={(e) => setFeat((s) => ({ ...s, [f.key]: e.target.value }))} aria-label={`${f.label} for this customer`}>
-                  <option value="plan">Plan ({info.plan.features[f.key] ? 'on' : 'off'})</option><option value="on">On</option><option value="off">Off</option>
-                </select>
-              </td>
-            </tr>
-          ))}
-          {catalogue.limits.map((l) => (
-            <tr key={l.key} style={{ borderTop: '1px solid var(--border-color)' }}>
-              <td style={cell}>{l.label}</td>
-              <td style={cell}>{shown(info.plan.limits[l.key])}</td>
-              <td style={cell}>
-                <div className="flex gap-8">
-                  <select className="form-select" style={{ padding: '3px 26px 3px 8px', fontSize: 12, width: 'auto', minWidth: 112 }} disabled={!canManage} value={lim[l.key]?.mode}
-                    onChange={(e) => setLim((s) => ({ ...s, [l.key]: { ...s[l.key], mode: e.target.value } }))} aria-label={`${l.label} for this customer`}>
-                    <option value="plan">Plan</option><option value="custom">Custom</option>{!l.metered && <option value="unlimited">Unlimited</option>}
-                  </select>
-                  {lim[l.key]?.mode === 'custom' && (
-                    <input className="form-input" style={{ width: 90, padding: '3px 6px', fontSize: 12 }} inputMode="numeric" value={lim[l.key].value}
-                      onChange={(e) => setLim((s) => ({ ...s, [l.key]: { ...s[l.key], value: e.target.value.replace(/\D/g, '') } }))} aria-label={`${l.label} custom value`} />
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+
+      <div className="admin-plan-group">Features</div>
+      <div className="admin-plan-rows">
+        {catalogue.features.map((f) => (
+          <SettingRow key={f.key} title={f.label} description={f.help}>
+            <Segmented size="sm" ariaLabel={`${f.label} for this customer`} disabled={!canManage} value={feat[f.key]}
+              onChange={(v) => setFeat((s) => ({ ...s, [f.key]: v }))}
+              options={[
+                { value: 'plan', label: `Plan (${info.plan.features[f.key] ? 'on' : 'off'})` },
+                { value: 'on', label: 'On' },
+                { value: 'off', label: 'Off' },
+              ]} />
+          </SettingRow>
+        ))}
+      </div>
+
+      <div className="admin-plan-group">Limits</div>
+      <div className="admin-plan-rows">
+        {catalogue.limits.map((l) => (
+          <SettingRow key={l.key} title={l.label} description={`Plan gives ${shown(info.plan.limits[l.key])}`}>
+            <Segmented size="sm" ariaLabel={`${l.label} for this customer`} disabled={!canManage} value={lim[l.key]?.mode}
+              onChange={(v) => setLim((s) => ({ ...s, [l.key]: { ...s[l.key], mode: v } }))}
+              options={[
+                { value: 'plan', label: 'Plan' },
+                { value: 'custom', label: 'Custom' },
+                ...(!l.metered ? [{ value: 'unlimited', label: 'Unlimited' }] : []),
+              ]} />
+            {lim[l.key]?.mode === 'custom' && (
+              <input className="form-input admin-num-input" inputMode="numeric" value={lim[l.key].value}
+                onChange={(e) => setLim((s) => ({ ...s, [l.key]: { ...s[l.key], value: e.target.value.replace(/\D/g, '') } }))} aria-label={`${l.label} custom value`} />
+            )}
+          </SettingRow>
+        ))}
+      </div>
+
       {canManage && (
-        <div className="flex gap-8" style={{ marginTop: 10 }}>
-          <button className="btn btn-primary btn-sm" disabled={saving} onClick={() => save(false)}>{saving ? <Loader2 size={13} className="spinning" /> : <CheckCircle2 size={13} />} Save custom plan</button>
+        <div className="form-actions admin-plan-box__actions">
           {custom && <button className="btn btn-ghost btn-sm" disabled={saving} onClick={() => save(true)}><RotateCcw size={13} /> Back to the plan</button>}
+          <button className="btn btn-primary btn-sm" disabled={saving} onClick={() => save(false)}>{saving ? <Loader2 size={13} className="spinning" /> : <CheckCircle2 size={13} />} Save custom plan</button>
         </div>
       )}
     </div>
   );
+}
+
+// A plan as the editor holds it (strings for the number fields).
+function planDraft(p, catalogue) {
+  return {
+    name: p.name, price_inr: String(p.price_inr ?? 0), description: p.description || '', is_active: p.is_active !== false,
+    features: { ...p.features },
+    limits: Object.fromEntries(catalogue.limits.map((l) => [l.key, p.limits[l.key] === null || p.limits[l.key] === undefined ? '' : String(p.limits[l.key])])),
+  };
+}
+
+// Whether the editor's copy of a plan differs from the saved plan (only for the "Unsaved changes" hint).
+function draftChanged(d, p, catalogue) {
+  if (!d || !catalogue) return false;
+  const o = planDraft(p, catalogue);
+  if (d.name !== o.name || d.price_inr !== o.price_inr || d.description !== o.description || d.is_active !== o.is_active) return true;
+  if (catalogue.features.some((f) => (d.features?.[f.key] !== false) !== (o.features[f.key] !== false))) return true;
+  return catalogue.limits.some((l) => (d.limits?.[l.key] ?? '') !== o.limits[l.key]);
 }
 
 // The plans, feature by feature: a column per plan. Superadmins edit and add plans;
@@ -188,14 +225,13 @@ function PlansEditor({ plans, catalogue, isSuper, onSaved }) {
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(null);
   const [np, setNp] = useState({ id: '', name: '', price_inr: '' });
+  const [newOpen, setNewOpen] = useState(false);
+  const closeNew = useCallback(() => setNewOpen(false), []);
   useEffect(() => {
-    setDraft(Object.fromEntries(plans.map((p) => [p.id, {
-      name: p.name, price_inr: String(p.price_inr ?? 0), description: p.description || '', is_active: p.is_active !== false,
-      features: { ...p.features },
-      limits: Object.fromEntries(catalogue.limits.map((l) => [l.key, p.limits[l.key] === null || p.limits[l.key] === undefined ? '' : String(p.limits[l.key])])),
-    }])));
+    if (!catalogue) return;
+    setDraft(Object.fromEntries(plans.map((p) => [p.id, planDraft(p, catalogue)])));
   }, [plans, catalogue]);
-  if (!catalogue) return <div className="spinner" />;
+  if (!catalogue) return <Loading />;
   const set = (id, patch) => setDraft((d) => ({ ...d, [id]: { ...d[id], ...patch } }));
   const save = async (id) => {
     const d = draft[id];
@@ -216,86 +252,152 @@ function PlansEditor({ plans, catalogue, isSuper, onSaved }) {
   const create = async (e) => {
     e.preventDefault();
     setBusy('new');
-    try { const r = await adminCreatePlan({ id: np.id, name: np.name, price_inr: Number(np.price_inr || 0) }); toast.success(r.message || 'Plan created'); setNp({ id: '', name: '', price_inr: '' }); onSaved(); }
+    try { const r = await adminCreatePlan({ id: np.id, name: np.name, price_inr: Number(np.price_inr || 0) }); toast.success(r.message || 'Plan created'); setNp({ id: '', name: '', price_inr: '' }); setNewOpen(false); onSaved(); }
     catch (err) { toast.error(errMsg(err)); }
     setBusy(null);
   };
-  const th = { ...cell, textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap' };
   const ro = !isSuper;
+  const cols = plans.length + 1;
   return (
     <>
-      <p className="form-helper mb-16">
-        What each plan includes, feature by feature. A change applies to every workspace on that plan straight away; switched-off
-        features disappear from the customer's menu and stop their background jobs. To change it for one customer only, use
-        <strong> Manage</strong> on their row in Overview. {ro && 'Only a superadmin can edit plans.'}
-      </p>
-      <div className="card mb-16">
-        <div className="card-body" style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <div className="toolbar">
+        <p className="admin-intro">
+          What each plan includes, feature by feature. A change applies to every workspace on that plan straight away; switched-off
+          features disappear from the customer's menu and stop their background jobs. To change it for one customer only, use
+          <strong> Manage</strong> on their row in Overview.
+        </p>
+        {isSuper && <button className="btn btn-secondary" onClick={() => setNewOpen(true)}><Plus size={16} /> New plan</button>}
+      </div>
+      {ro && <div className="callout callout--info mb-16"><Info size={16} /><span>Only a superadmin can edit plans. You can see what each plan includes.</span></div>}
+
+      <div className="card admin-plans">
+        <div className="admin-plans__scroll">
+          <table className="admin-plans__table">
             <thead>
-              <tr><th style={th} />{plans.map((p) => (
-                <th key={p.id} style={th}><span className={`badge ${PLAN_BADGE[p.id] || 'badge-info'}`}>{p.id}</span> <span style={muted}>{p.workspaces} workspace{p.workspaces === 1 ? '' : 's'}</span></th>
-              ))}</tr>
+              <tr>
+                <th scope="col" className="admin-plans__corner">Plan</th>
+                {plans.map((p) => {
+                  const changed = isSuper && draftChanged(draft[p.id], p, catalogue);
+                  return (
+                    <th key={p.id} scope="col">
+                      <div className="admin-plans__plan">
+                        <span className={`badge ${PLAN_BADGE[p.id] || 'badge-info'}`}>{p.id}</span>
+                        <span className="admin-sub">{p.workspaces} workspace{p.workspaces === 1 ? '' : 's'}</span>
+                      </div>
+                      {isSuper && (
+                        <button className={`btn btn-sm ${changed ? 'btn-primary' : 'btn-secondary'}`} disabled={!!busy} onClick={() => save(p.id)}>
+                          {busy === p.id ? <Loader2 size={13} className="spinning" /> : <CheckCircle2 size={13} />} Save {p.name}
+                        </button>
+                      )}
+                      {changed && <div className="admin-plans__dirty">Unsaved changes</div>}
+                    </th>
+                  );
+                })}
+              </tr>
             </thead>
             <tbody>
-              <tr><td style={th}>Name</td>{plans.map((p) => <td key={p.id} style={cell}><input className="form-input" style={{ minWidth: 120 }} disabled={ro} value={draft[p.id]?.name || ''} onChange={(e) => set(p.id, { name: e.target.value })} aria-label={`${p.id} name`} /></td>)}</tr>
-              <tr><td style={th}>Price (₹ / month)</td>{plans.map((p) => <td key={p.id} style={cell}><input className="form-input" inputMode="numeric" disabled={ro} value={draft[p.id]?.price_inr || ''} onChange={(e) => set(p.id, { price_inr: e.target.value.replace(/\D/g, '') })} aria-label={`${p.id} price`} /></td>)}</tr>
-              <tr><td style={th}>Short description</td>{plans.map((p) => <td key={p.id} style={cell}><input className="form-input" disabled={ro} value={draft[p.id]?.description || ''} maxLength={300} onChange={(e) => set(p.id, { description: e.target.value })} aria-label={`${p.id} description`} /></td>)}</tr>
-              <tr><td style={th}>Offered to customers</td>{plans.map((p) => <td key={p.id} style={cell}><input type="checkbox" disabled={ro || p.id === 'free'} checked={draft[p.id]?.is_active ?? true} onChange={(e) => set(p.id, { is_active: e.target.checked })} aria-label={`${p.id} offered`} /></td>)}</tr>
-              <tr><td style={{ ...th, paddingTop: 16 }} colSpan={plans.length + 1}><strong>Limits</strong> <span style={muted}>(empty = unlimited, except the monthly ones)</span></td></tr>
+              <tr>
+                <th scope="row">Name</th>
+                {plans.map((p) => <td key={p.id}><input className="form-input" disabled={ro} value={draft[p.id]?.name || ''} onChange={(e) => set(p.id, { name: e.target.value })} aria-label={`${p.id} name`} /></td>)}
+              </tr>
+              <tr>
+                <th scope="row">Price (₹ / month)</th>
+                {plans.map((p) => <td key={p.id}><input className="form-input" inputMode="numeric" disabled={ro} value={draft[p.id]?.price_inr || ''} onChange={(e) => set(p.id, { price_inr: e.target.value.replace(/\D/g, '') })} aria-label={`${p.id} price`} /></td>)}
+              </tr>
+              <tr>
+                <th scope="row">Short description</th>
+                {plans.map((p) => <td key={p.id}><input className="form-input" disabled={ro} value={draft[p.id]?.description || ''} maxLength={300} onChange={(e) => set(p.id, { description: e.target.value })} aria-label={`${p.id} description`} /></td>)}
+              </tr>
+              <tr>
+                <th scope="row">Offered to customers{plans.some((p) => p.id === 'free') && <span className="admin-sub">The free plan is always offered</span>}</th>
+                {plans.map((p) => {
+                  const on = draft[p.id]?.is_active ?? true;
+                  return (
+                    <td key={p.id}>
+                      <div className="admin-switch-cell">
+                        <Switch checked={on} disabled={ro || p.id === 'free'} onChange={(v) => set(p.id, { is_active: v })} label={`${p.id} offered`} />
+                        <span>{on ? 'Offered' : 'Not offered'}</span>
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+
+              <tr className="admin-plans__group">
+                <th scope="rowgroup" colSpan={cols}><span className="admin-plans__group-label">Limits <span className="admin-sub">Empty means unlimited, except the monthly ones</span></span></th>
+              </tr>
               {catalogue.limits.map((l) => (
-                <tr key={l.key} style={{ borderTop: '1px solid var(--border-color)' }}>
-                  <td style={th}>{l.label}</td>
-                  {plans.map((p) => <td key={p.id} style={cell}><input className="form-input" inputMode="numeric" disabled={ro} placeholder={l.metered ? '' : 'unlimited'} value={draft[p.id]?.limits?.[l.key] ?? ''}
-                    onChange={(e) => set(p.id, { limits: { ...draft[p.id].limits, [l.key]: e.target.value.replace(/\D/g, '') } })} aria-label={`${p.id} ${l.label}`} /></td>)}
-                </tr>
-              ))}
-              <tr><td style={{ ...th, paddingTop: 16 }} colSpan={plans.length + 1}><strong>Features</strong></td></tr>
-              {catalogue.features.map((f) => (
-                <tr key={f.key} style={{ borderTop: '1px solid var(--border-color)' }}>
-                  <td style={th} title={f.help}>{f.label}<div style={muted}>{f.help}</div></td>
+                <tr key={l.key}>
+                  <th scope="row">{l.label}</th>
                   {plans.map((p) => (
-                    <td key={p.id} style={cell}>
-                      <label className="flex items-center gap-8" style={{ cursor: ro ? 'default' : 'pointer' }}>
-                        <input type="checkbox" disabled={ro} checked={draft[p.id]?.features?.[f.key] !== false}
-                          onChange={(e) => set(p.id, { features: { ...draft[p.id].features, [f.key]: e.target.checked } })} />
-                        <span style={{ fontSize: 12 }}>{draft[p.id]?.features?.[f.key] !== false ? 'Included' : 'Not included'}</span>
-                      </label>
+                    <td key={p.id}>
+                      <input className="form-input" inputMode="numeric" disabled={ro} placeholder={l.metered ? '' : 'unlimited'} value={draft[p.id]?.limits?.[l.key] ?? ''}
+                        onChange={(e) => set(p.id, { limits: { ...draft[p.id].limits, [l.key]: e.target.value.replace(/\D/g, '') } })} aria-label={`${p.id} ${l.label}`} />
                     </td>
                   ))}
                 </tr>
               ))}
-              {isSuper && (
-                <tr><td />{plans.map((p) => (
-                  <td key={p.id} style={{ ...cell, paddingTop: 12 }}>
-                    <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => save(p.id)}>{busy === p.id ? <Loader2 size={13} className="spinning" /> : <CheckCircle2 size={13} />} Save {p.name}</button>
-                  </td>
-                ))}</tr>
-              )}
+
+              <tr className="admin-plans__group">
+                <th scope="rowgroup" colSpan={cols}><span className="admin-plans__group-label">Features</span></th>
+              </tr>
+              {catalogue.features.map((f) => (
+                <tr key={f.key}>
+                  <th scope="row" title={f.help}>{f.label}{f.help && <span className="admin-sub">{f.help}</span>}</th>
+                  {plans.map((p) => {
+                    const on = draft[p.id]?.features?.[f.key] !== false;
+                    return (
+                      <td key={p.id}>
+                        <div className="admin-switch-cell">
+                          <Switch checked={on} disabled={ro} label={`${p.id}: ${f.label}`}
+                            onChange={(v) => set(p.id, { features: { ...draft[p.id].features, [f.key]: v } })} />
+                          <span>{on ? 'Included' : 'Not included'}</span>
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
+
       {isSuper && (
-        <div className="card">
-          <div className="card-header"><h3><Plus size={15} /> New plan</h3></div>
-          <div className="card-body">
-            <form className="flex gap-8" style={{ flexWrap: 'wrap' }} onSubmit={create}>
-              <input className="form-input" style={{ maxWidth: 160 }} placeholder="id, e.g. starter" value={np.id} onChange={(e) => setNp({ ...np, id: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })} aria-label="New plan id" />
-              <input className="form-input" style={{ maxWidth: 200 }} placeholder="Name, e.g. Starter" value={np.name} onChange={(e) => setNp({ ...np, name: e.target.value })} aria-label="New plan name" />
-              <input className="form-input" style={{ maxWidth: 140 }} placeholder="₹ / month" inputMode="numeric" value={np.price_inr} onChange={(e) => setNp({ ...np, price_inr: e.target.value.replace(/\D/g, '') })} aria-label="New plan price" />
-              <button className="btn btn-primary" disabled={!np.id || !np.name || busy === 'new'}>{busy === 'new' ? <Loader2 size={14} className="spinning" /> : <Plus size={14} />} Add plan</button>
-            </form>
-            <p className="form-helper" style={{ marginTop: 8 }}>A new plan starts with every feature on, 10 articles and 20 AI images a month; then set it up in the table above.</p>
-          </div>
-        </div>
+        <Sheet open={newOpen} title="New plan" subtitle="It starts with every feature on, 10 articles and 20 AI images a month. Then set it up in the table."
+          onClose={closeNew} busy={busy === 'new'} width={480}
+          footer={(
+            <>
+              <button type="button" className="btn btn-ghost" onClick={closeNew} disabled={busy === 'new'}>Cancel</button>
+              <button type="submit" form="admin-new-plan" className="btn btn-primary" disabled={!np.id || !np.name || busy === 'new'}>
+                {busy === 'new' ? <Loader2 size={14} className="spinning" /> : <Plus size={14} />} Add plan
+              </button>
+            </>
+          )}>
+          <form id="admin-new-plan" onSubmit={create}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="admin-np-id">Plan ID</label>
+              <input id="admin-np-id" className="form-input" placeholder="e.g. starter" value={np.id} onChange={(e) => setNp({ ...np, id: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })} />
+              <div className="form-helper">Lowercase letters, numbers and dashes.</div>
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="admin-np-name">Name</label>
+              <input id="admin-np-name" className="form-input" placeholder="e.g. Starter" value={np.name} onChange={(e) => setNp({ ...np, name: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label className="form-label" htmlFor="admin-np-price">Price (₹ / month)</label>
+              <input id="admin-np-price" className="form-input" placeholder="0" inputMode="numeric" value={np.price_inr} onChange={(e) => setNp({ ...np, price_inr: e.target.value.replace(/\D/g, '') })} />
+            </div>
+          </form>
+        </Sheet>
       )}
     </>
   );
 }
 
+// One user: their password, the workspaces they belong to, and each workspace's plan.
 function UserPanel({ userId, workspaces, plans, catalogue, canManage, onClose, onChanged }) {
-  const [openPlan, setOpenPlan] = useState(null);
+  const [planWs, setPlanWs] = useState(null);
   const [detail, setDetail] = useState(null);
   const [password, setPassword] = useState('');
   const [generated, setGenerated] = useState(null);
@@ -307,12 +409,6 @@ function UserPanel({ userId, workspaces, plans, catalogue, canManage, onClose, o
     .then((res) => setDetail(res.data))
     .catch((err) => { toast.error(errMsg(err)); onClose(); }), [userId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load]);
-
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   const run = async (key, fn) => {
     setBusy(key);
@@ -337,109 +433,110 @@ function UserPanel({ userId, workspaces, plans, catalogue, canManage, onClose, o
 
   const memberOf = new Set((detail?.workspaces || []).map((w) => w.id));
   const available = workspaces.filter((w) => !memberOf.has(w.id));
+  const planFor = detail ? (detail.workspaces.find((w) => w.id === planWs) || detail.workspaces[0] || null) : null;
 
   return (
-    <div className="app-modal" role="dialog" aria-modal="true" aria-label="Manage user" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="app-modal__card" style={{ maxWidth: 640 }}>
-        <button className="app-modal__close" onClick={onClose} aria-label="Close"><X size={18} /></button>
-        {!detail ? <div className="spinner" /> : (
-          <>
-            <h3 style={{ marginBottom: 4, overflowWrap: 'anywhere' }}>{detail.email}</h3>
-            <div className="flex gap-8 mb-16" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-              <span className={`badge ${STATUS_BADGE[detail.status]}`}>{detail.status}</span>
-              <span className={`badge ${ROLE_BADGE[detail.role]}`}>{detail.role}</span>
-              {detail.name && <span style={muted}>{detail.name}</span>}
-            </div>
-            {!canManage && <div className="form-helper mb-16">Only a superadmin can change an admin or superadmin account.</div>}
+    <Sheet open title={detail?.email || 'Manage user'} subtitle={detail?.name || undefined} onClose={onClose} width={640}
+      footer={<button type="button" className="btn btn-secondary" onClick={onClose}>Done</button>}>
+      {!detail ? <Loading /> : (
+        <div className="admin-user">
+          <div className="admin-user__badges">
+            <span className={`badge ${STATUS_BADGE[detail.status]}`}>{detail.status}</span>
+            <span className={`badge ${ROLE_BADGE[detail.role]}`}>{detail.role}</span>
+          </div>
+          {!canManage && <div className="callout callout--info"><Info size={16} /><span>Only a superadmin can change an admin or superadmin account.</span></div>}
 
-            <h4 style={{ fontSize: 13, marginBottom: 8 }}><KeyRound size={14} /> Password</h4>
-            <div className="flex gap-8 mb-8" style={{ flexWrap: 'wrap' }}>
-              <input className="form-input" style={{ flex: '1 1 220px' }} type="text" autoComplete="new-password" placeholder="New password, or leave empty to generate one"
-                value={password} disabled={!canManage || busy === 'password'} onChange={(e) => setPassword(e.target.value)} />
+          <section className="form-section">
+            <h3 className="form-section__title"><KeyRound size={15} /> Password</h3>
+            <p className="form-section__desc">There is no email, so give the new password to the user yourself.</p>
+            <div className="admin-inline-form">
+              <input className="form-input" type="text" autoComplete="new-password" placeholder="New password, or leave empty to generate one"
+                aria-label="New password" value={password} disabled={!canManage || busy === 'password'} onChange={(e) => setPassword(e.target.value)} />
               <button className="btn btn-secondary" disabled={!canManage || busy === 'password'} onClick={savePassword}>
                 {busy === 'password' ? <Loader2 size={14} className="spinning" /> : <KeyRound size={14} />} {password ? 'Set password' : 'Generate new password'}
               </button>
             </div>
             {generated && (
-              <div className="pwd-box mb-8">
-                <code>{generated}</code>
-                <button className="btn btn-secondary btn-sm" onClick={() => { navigator.clipboard.writeText(generated); toast.success('Copied'); }}><Copy size={13} /> Copy</button>
+              <>
+                <div className="pwd-box">
+                  <code>{generated}</code>
+                  <button className="btn btn-secondary btn-sm" onClick={() => { navigator.clipboard.writeText(generated); toast.success('Copied'); }}><Copy size={13} /> Copy</button>
+                </div>
+                <p className="form-helper">Shown once. Give it to the user; they can change it under Account after signing in.</p>
+              </>
+            )}
+          </section>
+
+          <section className="form-section">
+            <h3 className="form-section__title"><Building2 size={15} /> Workspaces</h3>
+            <p className="form-section__desc">The workspaces they belong to and their role in each.</p>
+            {detail.workspaces.length === 0 ? <p className="admin-empty-line">Not in any workspace.</p> : (
+              <div className="admin-box list">
+                {detail.workspaces.map((w) => (
+                  <div key={w.id} className="list-item">
+                    <div className="list-item__main">
+                      <div className="list-item__title">{w.name}</div>
+                      <div className="list-item__meta"><span>{w.plan_id} plan</span><span>{w.status}</span></div>
+                    </div>
+                    <div className="list-item__actions">
+                      <select className="form-select admin-inline-select" value={w.role}
+                        disabled={!canManage || !!busy} aria-label={`Role in ${w.name}`}
+                        onChange={(e) => run(`role-${w.id}`, () => adminSetWorkspaceRole(userId, w.id, e.target.value))}>
+                        {WORKSPACE_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                      <button className="btn btn-ghost btn-sm admin-btn-danger" disabled={!canManage || !!busy} title="Remove from this workspace" aria-label={`Remove from ${w.name}`}
+                        onClick={() => run(`remove-${w.id}`, () => adminRemoveFromWorkspace(userId, w.id))}>
+                        {busy === `remove-${w.id}` ? <Loader2 size={13} className="spinning" /> : <Trash2 size={13} />}
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-            <p className="form-helper mb-16">{generated ? 'Shown once. Give it to the user; they can change it under Account after signing in.' : 'There is no email, so give the new password to the user yourself.'}</p>
-
-            <h4 style={{ fontSize: 13, marginBottom: 8 }}><Building2 size={14} /> Workspaces</h4>
-            {detail.workspaces.length === 0 ? <p className="form-helper">Not in any workspace.</p> : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }} className="mb-16">
-                <tbody>
-                  {detail.workspaces.map((w) => (
-                    <React.Fragment key={w.id}>
-                    <tr style={{ borderTop: '1px solid var(--border-secondary)' }}>
-                      <td style={cell}>
-                        {w.name}<div style={muted}>{w.plan_id} plan · {w.status}</div>
-                        {catalogue && (
-                          <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', marginTop: 4 }} onClick={() => setOpenPlan(openPlan === w.id ? null : w.id)}>
-                            <Settings2 size={12} /> {openPlan === w.id ? 'Hide plan & features' : 'Plan & features'}
-                          </button>
-                        )}
-                      </td>
-                      <td style={cell}>
-                        <select className="form-select" style={{ minWidth: 110, padding: '4px 8px', fontSize: 12 }} value={w.role}
-                          disabled={!canManage || !!busy} aria-label={`Role in ${w.name}`}
-                          onChange={(e) => run(`role-${w.id}`, () => adminSetWorkspaceRole(userId, w.id, e.target.value))}>
-                          {WORKSPACE_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                      </td>
-                      <td style={{ ...cell, textAlign: 'right' }}>
-                        <button className="btn btn-ghost btn-sm" disabled={!canManage || !!busy} title="Remove from this workspace"
-                          onClick={() => run(`remove-${w.id}`, () => adminRemoveFromWorkspace(userId, w.id))}>
-                          {busy === `remove-${w.id}` ? <Loader2 size={13} className="spinning" /> : <Trash2 size={13} />}
-                        </button>
-                      </td>
-                    </tr>
-                    {openPlan === w.id && catalogue && (
-                      <tr><td colSpan={3} style={{ padding: '0 0 12px' }}>
-                        <WorkspacePlan workspaceId={w.id} plans={plans} catalogue={catalogue} canManage onChanged={() => { load(); onChanged(); }} />
-                      </td></tr>
-                    )}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
-            )}
             {canManage && (
-              <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-                <select className="form-select" style={{ flex: '1 1 220px' }} value={addWs} onChange={(e) => setAddWs(e.target.value)} aria-label="Workspace to add to">
+              <div className="admin-inline-form">
+                <select className="form-select" value={addWs} onChange={(e) => setAddWs(e.target.value)} aria-label="Workspace to add to">
                   <option value="">{available.length ? 'Add to a workspace…' : 'Already in every workspace'}</option>
                   {available.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.owner_email || 'no owner'})</option>)}
                 </select>
-                <select className="form-select" style={{ width: 'auto' }} value={addRole} onChange={(e) => setAddRole(e.target.value)} aria-label="Role in that workspace">
+                <select className="form-select admin-inline-select" value={addRole} onChange={(e) => setAddRole(e.target.value)} aria-label="Role in that workspace">
                   {WORKSPACE_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
-                <button className="btn btn-primary" disabled={!addWs || !!busy}
+                <button className="btn btn-secondary" disabled={!addWs || !!busy}
                   onClick={async () => { if (await run('add', () => adminAddToWorkspace(userId, addWs, addRole))) setAddWs(''); }}>
                   {busy === 'add' ? <Loader2 size={14} className="spinning" /> : <Plus size={14} />} Add
                 </button>
               </div>
             )}
-          </>
-        )}
-      </div>
-    </div>
+          </section>
+
+          {catalogue && (
+            <section className="form-section">
+              <h3 className="form-section__title"><Settings2 size={15} /> Plan &amp; features</h3>
+              <p className="form-section__desc">
+                {planFor && detail.workspaces.length === 1 ? <>For <strong>{planFor.name}</strong>. </> : null}
+                The workspace's plan, and this customer's own features and limits. Anything left on "Plan" follows the plan.
+              </p>
+              {!planFor ? <p className="admin-empty-line">Add them to a workspace first.</p> : (
+                <>
+                  {detail.workspaces.length > 1 && (
+                    <div className="form-group">
+                      <label className="form-label" htmlFor="admin-plan-ws">Workspace</label>
+                      <select id="admin-plan-ws" className="form-select" value={planFor.id} onChange={(e) => setPlanWs(e.target.value)}>
+                        {detail.workspaces.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <WorkspacePlan key={planFor.id} workspaceId={planFor.id} plans={plans} catalogue={catalogue} canManage onChanged={() => { load(); onChanged(); }} />
+                </>
+              )}
+            </section>
+          )}
+        </div>
+      )}
+    </Sheet>
   );
 }
-
-const when = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
-const day = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
-const ago = (iso) => {
-  if (!iso) return 'never';
-  const mins = Math.round((Date.now() - new Date(iso)) / 60000);
-  if (mins < 60) return `${Math.max(mins, 1)}m ago`;
-  if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
-  return `${Math.round(mins / 1440)}d ago`;
-};
-const rupees = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
-const PLAN_BADGE = { free: 'badge-info', pro: 'badge-purple', business: 'badge-success' };
 
 // The last 30 days, one bar per day (days without sign-ups show as 0).
 function signupDays(rows) {
@@ -454,12 +551,12 @@ function signupDays(rows) {
 
 // Usage of one limit, e.g. "3 / 5", red when it's used up.
 const Used = ({ used, limit }) => (
-  <span style={{ fontVariantNumeric: 'tabular-nums', color: limit && used >= limit ? 'var(--accent-danger)' : undefined }}>{used} / {limit ?? '—'}</span>
+  <span className={`admin-used${limit && used >= limit ? ' is-full' : ''}`}>{used} / {limit ?? '—'}</span>
 );
 
 // Overview: how many people signed up and use the app, which plans they're on, and every
 // account with its plan and this month's usage. `onManage` opens an account's panel.
-function Overview({ onManage }) {
+function Overview({ onManage, onOpenTab, onCreate }) {
   const [data, setData] = useState(null);
   const [people, setPeople] = useState([]);
   const [search, setSearch] = useState('');
@@ -471,7 +568,7 @@ function Overview({ onManage }) {
       .catch((err) => toast.error(errMsg(err)));
   }, []);
   useEffect(() => { load(); }, [load]);
-  if (!data) return <div className="card"><div className="card-body"><div className="spinner" /></div></div>;
+  if (!data) return <Loading />;
 
   const u = data.users;
   const q = search.trim().toLowerCase();
@@ -479,118 +576,200 @@ function Overview({ onManage }) {
     && (!plan || p.workspaces.some((w) => w.plan_id === plan))
     && (!status || p.status === status));
   const planRows = data.plans.map((p) => ({ key: p.id, label: `${p.name} · ${rupees(p.price_inr)}/mo`, value: p.active }));
+  const filtered = !!(q || plan || status);
 
   return (
     <>
-      <div className="flex items-center justify-between mb-16">
-        <p className="form-helper" style={{ margin: 0 }}>Customers are accounts that signed up themselves (platform role "user"); your own admin accounts aren't counted.</p>
+      <div className="toolbar">
+        <p className="admin-intro">Customers are accounts that signed up themselves (platform role "user"); your own admin accounts aren't counted.</p>
         <button className="btn btn-ghost btn-sm" onClick={load}><RotateCcw size={14} /> Refresh</button>
       </div>
-      <div className="kpi-grid mb-24">
+
+      <div className="stat-row admin-stats" style={{ '--cols': 5 }}>
         <Kpi label="Customers" value={compact(u.total)} sub={`+${u.new_today} today · +${u.new_week} this week · +${u.new_month} in 30 days`} />
         <Kpi label="Active this week" value={compact(u.active_week)} sub={`${u.active_day} in the last 24 hours`} hint="Customers who signed in or did anything in the last 7 days" />
         <Kpi label="Paying workspaces" value={compact(data.paying)} sub={`of ${data.workspaces} workspaces · ${u.suspended} suspended accounts`} />
         <Kpi label="Monthly plan value" value={rupees(data.monthly_value_inr)} sub="active paid plans, at list price" />
         <Kpi label={`Used this month (${data.period})`} value={compact(data.usage.articles)} sub={`articles · ${compact(data.usage.ig_posts)} AI Instagram images`} />
       </div>
+
       {data.pending_upgrades > 0 && (
-        <div className="card mb-16"><div className="card-body" style={{ fontSize: 14 }}>
-          {data.pending_upgrades} plan upgrade request{data.pending_upgrades === 1 ? '' : 's'} waiting: see the <strong>Upgrade requests</strong> tab.
-        </div></div>
-      )}
-      <div className="ig-two-col mb-24">
-        <div className="card">
-          <div className="card-header"><h3>New sign-ups per day</h3><span className="badge badge-info">30 days</span></div>
-          <div className="card-body">
-            {data.signups.length ? <ColumnChart data={signupDays(data.signups)} label="Day" valueLabel="Sign-ups" /> : <p className="form-helper">No sign-ups in the last 30 days.</p>}
-          </div>
+        <div className="callout callout--warning admin-callout">
+          <AlertTriangle size={16} />
+          <span className="admin-callout__text">{data.pending_upgrades} plan upgrade request{data.pending_upgrades === 1 ? '' : 's'} waiting for you.</span>
+          <button className="btn btn-secondary btn-sm" onClick={() => onOpenTab('upgrades')}>Review requests</button>
         </div>
-        <div className="card">
-          <div className="card-header"><h3>Active workspaces per plan</h3></div>
-          <div className="card-body">
-            <BarList rows={planRows} total={planRows.reduce((n, r) => n + r.value, 0)} label="Workspaces per plan" />
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 12 }}>
-              <thead><tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}><th style={cell}>Plan</th><th style={cell}>Price</th><th style={cell}>Articles / mo</th><th style={cell}>AI images / mo</th></tr></thead>
+      )}
+
+      <div className="grid-2 mb-24">
+        <Section title="New sign-ups per day" actions={<span className="badge badge-info">30 days</span>}>
+          {data.signups.length ? <ColumnChart data={signupDays(data.signups)} label="Day" valueLabel="Sign-ups" /> : <p className="admin-empty-line">No sign-ups in the last 30 days.</p>}
+        </Section>
+        <Section title="Active workspaces per plan">
+          <BarList rows={planRows} total={planRows.reduce((n, r) => n + r.value, 0)} label="Workspaces per plan" />
+          <div className="table-container admin-mini-table">
+            <table className="data-table admin-table admin-table--compact">
+              <thead><tr><th scope="col">Plan</th><th scope="col" className="num">Price</th><th scope="col" className="num">Articles / mo</th><th scope="col" className="num">AI images / mo</th></tr></thead>
               <tbody>{data.plans.map((p) => (
-                <tr key={p.id} style={{ borderTop: '1px solid var(--border-color)' }}>
-                  <td style={cell}><span className={`badge ${PLAN_BADGE[p.id] || 'badge-info'}`}>{p.name}</span></td>
-                  <td style={cell}>{rupees(p.price_inr)}</td><td style={cell}>{p.monthly_article_limit}</td><td style={cell}>{p.monthly_ig_post_limit}</td>
+                <tr key={p.id}>
+                  <td><span className={`badge ${PLAN_BADGE[p.id] || 'badge-info'}`}>{p.name}</span></td>
+                  <td className="num">{rupees(p.price_inr)}</td><td className="num">{p.monthly_article_limit}</td><td className="num">{p.monthly_ig_post_limit}</td>
                 </tr>
               ))}</tbody>
             </table>
           </div>
-        </div>
+        </Section>
       </div>
 
-      <div className="card">
-        <div className="card-header"><h2>Users & plans ({shown.length})</h2></div>
-        <div className="card-body">
-          <div className="flex gap-8 mb-16" style={{ flexWrap: 'wrap' }}>
-            <input className="form-input" style={{ maxWidth: 280 }} placeholder="Search email, name or workspace" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <select className="form-select" style={{ maxWidth: 160 }} value={plan} onChange={(e) => setPlan(e.target.value)}>
+      <Section title={`Users & plans (${shown.length})`} description="Every account with its workspaces, plan and this month's usage." flush>
+        <div className="admin-toolbar-pad">
+          <div className="toolbar">
+            <div className="admin-search">
+              <Search size={15} aria-hidden="true" />
+              <input className="form-input" type="search" placeholder="Search email, name or workspace" aria-label="Search accounts" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <select className="form-select" aria-label="Filter by plan" value={plan} onChange={(e) => setPlan(e.target.value)}>
               <option value="">All plans</option>
               {data.plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-            <select className="form-select" style={{ maxWidth: 160 }} value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">Any status</option><option value="active">Active</option><option value="suspended">Suspended</option>
-            </select>
+            <Segmented size="sm" ariaLabel="Filter by account status" value={status || 'all'} onChange={(v) => setStatus(v === 'all' ? '' : v)}
+              options={[{ value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'suspended', label: 'Suspended' }]} />
           </div>
-          {!shown.length ? <div className="empty-state"><p>No accounts match.</p></div> : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead><tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
-                  <th style={cell}>Account</th><th style={cell}>Joined</th><th style={cell}>Last sign-in</th>
-                  <th style={cell}>Workspace · plan</th><th style={cell}>Articles</th><th style={cell}>AI images</th><th style={cell}>Connected</th><th style={cell} />
-                </tr></thead>
-                <tbody>
-                  {shown.map((p) => {
-                    const rows = p.workspaces.length ? p.workspaces : [null];
-                    return rows.map((w, k) => (
-                      <tr key={`${p.id}-${w?.id || 'none'}`} style={{ borderTop: k ? '1px dashed var(--border-color)' : '1px solid var(--border-color)', verticalAlign: 'top' }}>
+        </div>
+        {!shown.length ? (
+          filtered ? (
+            <EmptyState icon={Search} title="No accounts match" text="Try another search, or clear the filters to see every account."
+              action={<button className="btn btn-secondary" onClick={() => { setSearch(''); setPlan(''); setStatus(''); }}>Clear filters</button>} />
+          ) : (
+            <EmptyState icon={UsersIcon} title="No customers yet" text="Accounts appear here as soon as someone signs up."
+              action={<button className="btn btn-secondary" onClick={onCreate}><UserPlus size={16} /> Create user</button>} />
+          )
+        ) : (
+          <div className="table-container">
+            <table className="data-table admin-table admin-customers">
+              <thead><tr>
+                <th scope="col">Account</th><th scope="col">Joined</th><th scope="col">Last sign-in</th>
+                <th scope="col">Workspace and plan</th><th scope="col" className="num">Articles</th><th scope="col" className="num">AI images</th>
+                <th scope="col">Connected</th><th scope="col"><span className="sr-only">Actions</span></th>
+              </tr></thead>
+              <tbody>
+                {shown.map((p) => {
+                  const rows = p.workspaces.length ? p.workspaces : [null];
+                  return rows.map((w, k) => {
+                    const g = k < rows.length - 1 ? ' is-grouped' : '';
+                    return (
+                      <tr key={`${p.id}-${w?.id || 'none'}`}>
                         {k === 0 && (
                           <>
-                            <td style={cell} rowSpan={rows.length}>
-                              <div style={{ fontWeight: 600 }}>{p.name || p.email.split('@')[0]}</div>
-                              <div style={muted}>{p.email}</div>
-                              <div className="flex gap-8" style={{ marginTop: 4 }}>
+                            <td rowSpan={rows.length}>
+                              <div className="admin-cell-title">{p.name || p.email.split('@')[0]}</div>
+                              <div className="admin-sub">{p.email}</div>
+                              <div className="admin-badges">
                                 <span className={`badge ${STATUS_BADGE[p.status] || ''}`}>{p.status}</span>
                                 {p.role !== 'user' && <span className={`badge ${ROLE_BADGE[p.role] || ''}`}>{p.role}</span>}
                               </div>
                             </td>
-                            <td style={cell} rowSpan={rows.length}>{day(p.created_at)}</td>
-                            <td style={cell} rowSpan={rows.length} title={when(p.last_login)}>{ago(p.last_login)}</td>
+                            <td rowSpan={rows.length} className="admin-nowrap">{day(p.created_at)}</td>
+                            <td rowSpan={rows.length} title={when(p.last_login)} className="admin-nowrap">{ago(p.last_login)}</td>
                           </>
                         )}
                         {w ? (
                           <>
-                            <td style={cell}>
-                              <div>{w.name}{w.role !== 'owner' && <span style={muted}> ({w.role})</span>}</div>
-                              <span className={`badge ${PLAN_BADGE[w.plan_id] || 'badge-info'}`}>{w.plan_name || w.plan_id}{Number(w.price_inr) > 0 ? ` · ${rupees(w.price_inr)}` : ''}</span>
-                              {w.status !== 'active' && <span className="badge badge-danger" style={{ marginLeft: 6 }}>{w.status}</span>}
+                            <td className={g.trim() || undefined}>
+                              <div>{w.name}{w.role !== 'owner' && <span className="admin-sub"> ({w.role})</span>}</div>
+                              <div className="admin-badges">
+                                <span className={`badge ${PLAN_BADGE[w.plan_id] || 'badge-info'}`}>{w.plan_name || w.plan_id}{Number(w.price_inr) > 0 ? ` · ${rupees(w.price_inr)}` : ''}</span>
+                                {w.status !== 'active' && <span className="badge badge-danger">{w.status}</span>}
+                              </div>
                             </td>
-                            <td style={cell}><Used used={w.articles_used} limit={w.articles_limit} /></td>
-                            <td style={cell}><Used used={w.ig_used} limit={w.ig_limit} /></td>
-                            <td style={cell}>
-                              <div style={muted}>{w.store ? '✓ Shopify store' : '— no store'}</div>
-                              <div style={muted}>{w.instagram ? `✓ ${w.instagram} Instagram` : '— no Instagram'}</div>
+                            <td className={`num${g}`}><Used used={w.articles_used} limit={w.articles_limit} /></td>
+                            <td className={`num${g}`}><Used used={w.ig_used} limit={w.ig_limit} /></td>
+                            <td className={g.trim() || undefined}>
+                              <div className="admin-connected">
+                                <span className={`status ${w.store ? 'status--on' : 'status--off'}`}>{w.store ? 'Shopify store' : 'No store'}</span>
+                                <span className={`status ${w.instagram ? 'status--on' : 'status--off'}`}>{w.instagram ? `${w.instagram} Instagram` : 'No Instagram'}</span>
+                              </div>
                             </td>
                           </>
-                        ) : <td style={cell} colSpan={4}><span style={muted}>No workspace</span></td>}
+                        ) : <td colSpan={4}><span className="admin-sub">No workspace</span></td>}
                         {k === 0 && (
-                          <td style={cell} rowSpan={rows.length}>
-                            <button className="btn btn-secondary btn-sm" onClick={() => onManage(p)}><Settings2 size={14} /> Manage</button>
+                          <td rowSpan={rows.length}>
+                            <div className="admin-row-actions">
+                              <button className="btn btn-secondary btn-sm" onClick={() => onManage(p)}><Settings2 size={14} /> Manage</button>
+                            </div>
                           </td>
                         )}
                       </tr>
-                    ));
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
+                    );
+                  });
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
     </>
+  );
+}
+
+// Every account in a table: status, platform role, workspaces and the row's actions.
+function UsersTable({ list, isSuper, me, busy, act, onManage }) {
+  return (
+    <div className="table-container">
+      <table className="data-table admin-table">
+        <thead>
+          <tr>
+            <th scope="col">Account</th>
+            <th scope="col">Status</th>
+            <th scope="col">Platform role</th>
+            <th scope="col" className="num">Workspaces</th>
+            <th scope="col"><span className="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((u) => (
+            <tr key={u.id}>
+              <td><div className="admin-cell-title">{u.email}</div>{u.name ? <div className="admin-sub">{u.name}</div> : null}</td>
+              <td><span className={`badge ${STATUS_BADGE[u.status]}`}>{u.status}</span></td>
+              <td>
+                {isSuper && u.id !== me.id ? (
+                  <select className="form-select admin-inline-select" aria-label={`Platform role for ${u.email}`}
+                    value={u.role} disabled={busy === u.id}
+                    onChange={(e) => act(adminSetRole, u.id, e.target.value)}>
+                    <option value="user">user</option>
+                    <option value="admin">admin</option>
+                    <option value="superadmin">superadmin</option>
+                  </select>
+                ) : <span className={`badge ${ROLE_BADGE[u.role]}`}>{u.role}</span>}
+              </td>
+              <td className="num">{u.workspace_count}</td>
+              <td>
+                <div className="admin-row-actions">
+                  {u.status === 'pending' && (
+                    <button className="btn btn-success btn-sm" disabled={busy === u.id} onClick={() => act(adminApproveUser, u.id)}>
+                      <CheckCircle2 size={13} /> Approve
+                    </button>
+                  )}
+                  {u.status === 'active' && u.id !== me.id && (
+                    <button className="btn btn-ghost btn-sm admin-btn-danger" disabled={busy === u.id} onClick={() => act(adminSuspendUser, u.id)}>
+                      <Ban size={13} /> Suspend
+                    </button>
+                  )}
+                  {u.status === 'suspended' && (
+                    <button className="btn btn-ghost btn-sm" disabled={busy === u.id} onClick={() => act(adminReactivateUser, u.id)}>
+                      <RotateCcw size={13} /> Reactivate
+                    </button>
+                  )}
+                  <button className="btn btn-secondary btn-sm" onClick={() => onManage(u)} title="Password and workspaces">
+                    <Settings2 size={13} /> Manage
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -638,77 +817,113 @@ function ImageEngine() {
     setTesting(false);
   };
 
-  if (!info) return <div className="card"><div className="card-body"><div className="spinner" /></div></div>;
+  if (!info) return <Loading />;
   const codex = info.codex || {};
-  return (
-    <>
-      <div className="card mb-16">
-        <div className="card-header"><h2><ImageIcon size={16} /> Image engine</h2></div>
-        <div className="card-body">
-          <p className="form-helper mb-16">
-            Every AI image in the app (Instagram product posts, Studio posts, blog images) is made by this engine.
-            It is <strong>{info.provider}</strong>{info.configured !== info.provider ? ` (setting: ${info.configured})` : ''}.
-            {info.provider !== 'codex' && ' The ChatGPT sign-in below is only used when the server is set to Codex.'}
-          </p>
-          <table style={{ fontSize: 13, borderCollapse: 'collapse' }}>
-            <tbody>
-              <tr><td style={{ ...cell, color: 'var(--text-muted)' }}>ChatGPT sign-in</td><td style={cell}>{codex.signedIn ? <span className="badge badge-success">Signed in</span> : <span className="badge badge-danger">Not signed in</span>}</td></tr>
-              {codex.signedIn && <>
-                <tr><td style={{ ...cell, color: 'var(--text-muted)' }}>Account</td><td style={cell}>{codex.email || '—'}{codex.plan ? ` · ${codex.plan} plan` : ''}</td></tr>
-                <tr><td style={{ ...cell, color: 'var(--text-muted)' }}>Access renewed</td><td style={cell}>{when(codex.lastRefresh)} (renews itself; valid until {when(codex.tokenExpiresAt)})</td></tr>
-              </>}
-              {!codex.signedIn && codex.detail && <tr><td style={{ ...cell, color: 'var(--text-muted)' }}>Detail</td><td style={cell}>{codex.detail}</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
+  const waiting = state === 'waiting' && !!login;
+  const done = state === 'done';
+  const stepClass = (n) => {
+    const current = waiting ? 2 : done ? 4 : 1;
+    if (n < current) return 'is-done';
+    return n === current ? 'is-active' : undefined;
+  };
 
-      <div className="card mb-16">
-        <div className="card-header"><h2><LogIn size={16} /> Sign in with ChatGPT</h2></div>
-        <div className="card-body">
-          <p className="form-helper mb-16">
-            Use a ChatGPT account whose plan includes image generation (Plus, Pro or Business). Its image limits are shared with
-            that account's own ChatGPT use. You type your password only on OpenAI's page; the server keeps the sign-in, never your password.
-          </p>
-          {(state === 'waiting' && login) ? (
-            <div>
-              <div className="mb-16"><strong>1.</strong> Open OpenAI's sign-in page and log in with the ChatGPT account:{' '}
-                <a className="btn btn-sm btn-primary" href={login.verificationUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} /> Open sign-in page</a>
-              </div>
-              <div className="mb-16"><strong>2.</strong> Enter this one-time code there:
-                <div className="flex items-center gap-8" style={{ marginTop: 8 }}>
-                  <code style={{ fontSize: 26, letterSpacing: 4, padding: '6px 14px', border: '1px solid var(--border-color)', borderRadius: 8 }}>{login.userCode}</code>
-                  <button className="btn btn-sm btn-ghost" onClick={copyCode}><Copy size={14} /> Copy</button>
-                </div>
-              </div>
-              <div className="flex items-center gap-8"><Loader2 size={14} className="spinning" /> Waiting for you to approve it… (the code expires at {new Date(login.expiresAt).toLocaleTimeString()})
-                <button className="btn btn-sm btn-ghost" onClick={() => { setState(''); setLogin(null); }}>Cancel</button>
-              </div>
+  return (
+    <div className="stack">
+      <div className="card">
+        <div className="status-card">
+          <div className={`status-card__icon${codex.signedIn ? ' is-on' : ''}`}><ImageIcon size={20} /></div>
+          <div className="status-card__main">
+            <div className="status-card__title">
+              Image engine
+              <span className={`status ${codex.signedIn ? 'status--on' : 'status--error'}`}>{codex.signedIn ? 'Signed in to ChatGPT' : 'Not signed in to ChatGPT'}</span>
             </div>
-          ) : (
-            <div className="flex items-center gap-8" style={{ flexWrap: 'wrap' }}>
-              <button className="btn btn-primary" onClick={start} disabled={state === 'starting'}>
-                {state === 'starting' ? <Loader2 size={14} className="spinning" /> : <LogIn size={14} />} {codex.signedIn ? 'Sign in again (or with another account)' : 'Sign in with ChatGPT'}
-              </button>
-              {state === 'done' && <span style={{ color: 'var(--accent-success)' }}><CheckCircle2 size={14} /> Signed in. Make a test image to check it can draw.</span>}
-              {state === 'expired' && <span className="form-helper">The code expired before it was approved. Start again.</span>}
-            </div>
+            <div className="status-card__text">Every AI image in the app (Instagram product posts, Studio posts, blog images) is made by this engine.</div>
+          </div>
+        </div>
+        <div className="card-body admin-engine-kv">
+          <dl className="kv">
+            <dt>Engine</dt>
+            <dd><strong>{info.provider}</strong>{info.configured !== info.provider ? ` (setting: ${info.configured})` : ''}</dd>
+            {codex.signedIn && <>
+              <dt>Account</dt>
+              <dd>{codex.email || '—'}{codex.plan ? ` · ${codex.plan} plan` : ''}</dd>
+              <dt>Access renewed</dt>
+              <dd>{when(codex.lastRefresh)} (renews itself; valid until {when(codex.tokenExpiresAt)})</dd>
+            </>}
+            {!codex.signedIn && codex.detail && <>
+              <dt>Detail</dt>
+              <dd>{codex.detail}</dd>
+            </>}
+          </dl>
+          {info.provider !== 'codex' && (
+            <div className="callout callout--info mt-16"><Info size={16} /><span>The ChatGPT sign-in below is only used when the server is set to Codex.</span></div>
           )}
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-header"><h2><ImageIcon size={16} /> Test</h2></div>
-        <div className="card-body">
-          <p className="form-helper mb-16">Makes one small image with the engine (uses one image from its limit) to prove it works.</p>
-          <button className="btn btn-secondary" onClick={runTest} disabled={testing}>
-            {testing ? <><Loader2 size={14} className="spinning" /> Drawing… (up to a minute)</> : 'Make a test image'}
-          </button>
-          {test?.image && <div style={{ marginTop: 16 }}><img src={test.image} alt="Test from the image engine" style={{ width: 220, borderRadius: 8 }} /><div style={{ ...muted, marginTop: 6 }}>Made by {test.provider}: the engine works.</div></div>}
-          {test?.error && <div style={{ marginTop: 16, color: 'var(--accent-danger)' }}>The engine failed: {test.error}</div>}
-        </div>
-      </div>
-    </>
+      <Section title="Sign in with ChatGPT"
+        description="Use a ChatGPT account whose plan includes image generation (Plus, Pro or Business). Its image limits are shared with that account's own ChatGPT use.">
+        <ol className="steps-list admin-steps">
+          <li className={stepClass(1)}>
+            <div>
+              <div className="admin-step__title">Get a one-time code</div>
+              {waiting ? <div className="admin-step__text">Code ready. It expires at {new Date(login.expiresAt).toLocaleTimeString()}.</div> : (
+                <div className="admin-step__body">
+                  <button className="btn btn-primary" onClick={start} disabled={state === 'starting'}>
+                    {state === 'starting' ? <Loader2 size={14} className="spinning" /> : <LogIn size={14} />} {codex.signedIn ? 'Sign in again (or with another account)' : 'Sign in with ChatGPT'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </li>
+          <li className={stepClass(2)}>
+            <div>
+              <div className="admin-step__title">Sign in at OpenAI and enter the code</div>
+              <div className="admin-step__text">You type your password only on OpenAI's page; the server keeps the sign-in, never your password.</div>
+              {waiting && (
+                <div className="admin-step__body">
+                  <a className="btn btn-sm btn-primary" href={login.verificationUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} /> Open sign-in page</a>
+                  <div className="admin-code-row">
+                    <code className="admin-code">{login.userCode}</code>
+                    <button className="btn btn-sm btn-ghost" onClick={copyCode}><Copy size={14} /> Copy</button>
+                  </div>
+                  <div className="admin-waiting">
+                    <Loader2 size={14} className="spinning" /> Waiting for you to approve it…
+                    <button className="btn btn-sm btn-ghost" onClick={() => { setState(''); setLogin(null); }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </li>
+          <li className={stepClass(3)}>
+            <div>
+              <div className="admin-step__title">Done</div>
+              {!done && state !== 'expired' && state !== 'error' && <div className="admin-step__text">This page notices by itself when you approve the code.</div>}
+              {(done || state === 'expired' || state === 'error') && (
+                <div className="admin-step__body">
+                  {done && <div className="callout callout--success"><CheckCircle2 size={16} /><span>Signed in. Make a test image to check it can draw.</span></div>}
+                  {state === 'expired' && <div className="callout callout--warning"><AlertTriangle size={16} /><span>The code expired before it was approved. Start again.</span></div>}
+                  {state === 'error' && <div className="callout callout--danger"><AlertTriangle size={16} /><span>Sign-in didn't go through. Start again to get a new code.</span></div>}
+                </div>
+              )}
+            </div>
+          </li>
+        </ol>
+      </Section>
+
+      <Section title="Test the engine" description="Makes one small image with the engine (uses one image from its limit) to prove it works.">
+        <button className="btn btn-secondary" onClick={runTest} disabled={testing}>
+          {testing ? <><Loader2 size={14} className="spinning" /> Drawing… (up to a minute)</> : <><ImageIcon size={14} /> Make a test image</>}
+        </button>
+        {test?.image && (
+          <div className="admin-test-image">
+            <img src={test.image} alt="Test from the image engine" />
+            <div className="callout callout--success"><CheckCircle2 size={16} /><span>Made by {test.provider}: the engine works.</span></div>
+          </div>
+        )}
+        {test?.error && <div className="admin-test-image"><div className="callout callout--danger"><AlertTriangle size={16} /><span>The engine failed: {test.error}</span></div></div>}
+      </Section>
+    </div>
   );
 }
 
@@ -716,8 +931,14 @@ export default function Admin() {
   const { user: me } = useAuth();
   const isSuper = me?.role === 'superadmin';
   const [params] = useSearchParams();
-  const [tab, setTab] = useState(params.get('tab') || 'overview');
-  useEffect(() => { if (params.get('tab')) setTab(params.get('tab')); }, [params]);
+  // ?tab=create (the old "Create user" tab) opens the create-user panel instead.
+  const [tab, setTab] = useState(() => { const t = params.get('tab'); return t && t !== 'create' ? t : 'overview'; });
+  const [createOpen, setCreateOpen] = useState(() => params.get('tab') === 'create');
+  useEffect(() => {
+    const t = params.get('tab');
+    if (t === 'create') setCreateOpen(true);
+    else if (t) setTab(t);
+  }, [params]);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [workspaces, setWorkspaces] = useState([]);
@@ -727,15 +948,23 @@ export default function Admin() {
   const [activity, setActivity] = useState([]);
   const [busy, setBusy] = useState(null);
 
+  // List filters (kept here so they survive the refresh after an action)
+  const [userSearch, setUserSearch] = useState('');
+  const [userStatus, setUserStatus] = useState('all');
+  const [wsSearch, setWsSearch] = useState('');
+  const [wsStatus, setWsStatus] = useState('all');
+
   const EMPTY_USER = { email: '', password: '', name: '', role: 'user', workspaceId: '', workspaceRole: 'member' };
   const [nu, setNu] = useState(EMPTY_USER);
   const [creating, setCreating] = useState(false);
   const [managing, setManaging] = useState(null);
   const closePanel = useCallback(() => setManaging(null), []);
+  const openCreate = useCallback(() => setCreateOpen(true), []);
+  const closeCreate = useCallback(() => setCreateOpen(false), []);
   // An admin manages ordinary users; a superadmin manages everyone.
   const canManageUser = (u) => isSuper || u.role === 'user';
 
-  // `quiet` refreshes the lists without the full-page spinner, so an open panel stays put.
+  // `quiet` refreshes the lists without the spinner, so an open panel stays put.
   const loadAll = (quiet) => {
     if (quiet !== true) setLoading(true);
     Promise.all([adminGetUsers(), adminGetWorkspaces(), adminGetPlans(), adminGetUpgradeRequests(), adminGetActivity()])
@@ -762,293 +991,333 @@ export default function Admin() {
 
   const createUser = async (e) => {
     e.preventDefault();
-    if (!nu.email || nu.password.length < 8) return toast.error('Email + 8-char password required');
+    if (!nu.email || nu.password.length < 8) return toast.error('Enter an email and a password of at least 8 characters');
     setCreating(true);
     try {
       await adminCreateUser({ ...nu, workspaceId: nu.workspaceId || undefined });
       const ws = workspaces.find((w) => w.id === nu.workspaceId);
       toast.success(ws ? `User created and added to ${ws.name} as ${nu.workspaceRole}` : 'User created with a personal workspace');
       setNu(EMPTY_USER);
+      setCreateOpen(false);
       loadAll();
     } catch (err) { toast.error(err.response?.data?.error || 'Failed'); }
     setCreating(false);
+    return undefined;
   };
 
-  const pendingUsers = users.filter(u => u.status === 'pending');
+  const pendingUsers = users.filter((u) => u.status === 'pending');
 
-  if (loading) {
-    return <div className="page-container"><div className="empty-state"><div className="spinner spinner-lg" /></div></div>;
-  }
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'plans', label: 'Plans' },
+    { id: 'workspaces', label: 'Workspaces', count: workspaces.length },
+    { id: 'users', label: 'Users', count: users.length },
+    pendingUsers.length > 0 && { id: 'pending', label: 'Pending users', count: pendingUsers.length, alert: true },
+    { id: 'upgrades', label: 'Upgrade requests', count: requests.length, alert: true },
+    { id: 'activity', label: 'Activity' },
+    { id: 'roles', label: 'Roles & permissions' },
+    isSuper && { id: 'engine', label: 'Image engine' },
+  ].filter(Boolean);
 
-  const Tab = ({ id, label, count }) => (
-    <button className={`btn btn-sm ${tab === id ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(id)}>
-      {label}{count ? ` (${count})` : ''}
-    </button>
-  );
+  // Users tab: search + status filter (client-side)
+  const uq = userSearch.trim().toLowerCase();
+  const countBy = (list, s) => list.filter((x) => x.status === s).length;
+  const shownUsers = tab === 'pending' ? pendingUsers : users.filter((u) => (!uq || `${u.email} ${u.name || ''}`.toLowerCase().includes(uq))
+    && (userStatus === 'all' || u.status === userStatus));
+  const userFiltered = tab === 'users' && !!(uq || userStatus !== 'all');
+
+  // Workspaces tab: search + status filter (client-side)
+  const wq = wsSearch.trim().toLowerCase();
+  const shownWorkspaces = workspaces.filter((w) => (!wq || `${w.name} ${w.slug || ''} ${w.owner_email || ''}`.toLowerCase().includes(wq))
+    && (wsStatus === 'all' || w.status === wsStatus));
+  const wsFiltered = !!(wq || wsStatus !== 'all');
 
   return (
     <div className="page-container fade-in">
-      <div className="page-header">
-        <h1>Admin Console</h1>
-        <p>Who signed up, which plans they're on and how much they use{isSuper ? ' — superadmin: full control over workspaces, users and plans' : ''}</p>
+      <PageHeader
+        title="Admin Console"
+        subtitle="Who signed up, which plans they're on and how much they use."
+        actions={<button className="btn btn-primary" onClick={openCreate}><UserPlus size={16} /> Create user</button>}
+      />
+
+      <div className="tabs" role="tablist" aria-label="Admin sections">
+        {tabs.map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={`tab${tab === t.id ? ' active' : ''}`} onClick={() => setTab(t.id)}>
+            {t.label}
+            {t.count ? <span className={`admin-tab-count${t.alert ? ' is-alert' : ''}`}>{t.count}</span> : null}
+          </button>
+        ))}
       </div>
 
-      <div className="flex gap-8 mb-24" style={{ flexWrap: 'wrap' }}>
-        <Tab id="overview" label="Overview" />
-        <Tab id="plans" label="Plans" />
-        <Tab id="workspaces" label="Workspaces" count={workspaces.length} />
-        <Tab id="users" label="Users" count={users.length} />
-        {pendingUsers.length > 0 && <Tab id="pending" label="Pending users" count={pendingUsers.length} />}
-        <Tab id="upgrades" label="Upgrade requests" count={requests.length} />
-        <Tab id="activity" label="Activity" />
-        <Tab id="roles" label="Roles & permissions" />
-        {isSuper && <Tab id="engine" label="Image engine" />}
-        <Tab id="create" label="+ Create user" />
-      </div>
-
-      {tab === 'overview' && <Overview onManage={(u) => setManaging(u)} />}
-      {tab === 'plans' && <PlansEditor plans={plans} catalogue={catalogue} isSuper={isSuper} onSaved={() => loadAll(true)} />}
-      {tab === 'engine' && isSuper && <ImageEngine />}
-
-      {/* ROLES & PERMISSIONS */}
-      {tab === 'roles' && (
+      {loading ? <Loading /> : (
         <>
-          <p className="form-helper mb-16">
-            <ShieldCheck size={13} /> Two kinds of role. A <strong>platform role</strong> decides who runs this Admin console. A
-            <strong> workspace role</strong> decides what someone can do inside one workspace (a store). One person can be an owner in
-            one workspace and a member in another.
-          </p>
-          <PermissionTable title="Platform roles" columns={['user', 'admin', 'superadmin']} rows={PLATFORM_PERMISSIONS} />
-          <PermissionTable title="Workspace roles" columns={['member', 'admin', 'owner']} rows={WORKSPACE_PERMISSIONS} />
+          {tab === 'overview' && <Overview onManage={(u) => setManaging(u)} onOpenTab={setTab} onCreate={openCreate} />}
+          {tab === 'plans' && <PlansEditor plans={plans} catalogue={catalogue} isSuper={isSuper} onSaved={() => loadAll(true)} />}
+          {tab === 'engine' && isSuper && <ImageEngine />}
+
+          {/* ROLES & PERMISSIONS */}
+          {tab === 'roles' && (
+            <div className="stack">
+              <div className="callout callout--info">
+                <ShieldCheck size={16} />
+                <span>
+                  Two kinds of role. A <strong>platform role</strong> decides who runs this Admin console. A
+                  <strong> workspace role</strong> decides what someone can do inside one workspace (a store). One person can be an owner in
+                  one workspace and a member in another.
+                </span>
+              </div>
+              <PermissionTable title="Platform roles" description="Who can run this Admin console, and how much of it." columns={['User', 'Admin', 'Superadmin']} rows={PLATFORM_PERMISSIONS} />
+              <PermissionTable title="Workspace roles" description="What someone can do inside one workspace." columns={['Member', 'Admin', 'Owner']} rows={WORKSPACE_PERMISSIONS} />
+            </div>
+          )}
+
+          {/* WORKSPACES */}
+          {tab === 'workspaces' && (
+            <Section title="Workspaces" description="Each workspace is one customer's store, with its plan, usage and members." flush>
+              {workspaces.length > 0 && (
+                <div className="admin-toolbar-pad">
+                  <div className="toolbar">
+                    <div className="admin-search">
+                      <Search size={15} aria-hidden="true" />
+                      <input className="form-input" type="search" placeholder="Search name or owner" aria-label="Search workspaces" value={wsSearch} onChange={(e) => setWsSearch(e.target.value)} />
+                    </div>
+                    <Segmented size="sm" ariaLabel="Filter by workspace status" value={wsStatus} onChange={setWsStatus}
+                      options={[
+                        { value: 'all', label: `All (${workspaces.length})` },
+                        { value: 'active', label: `Active (${countBy(workspaces, 'active')})` },
+                        { value: 'suspended', label: `Suspended (${countBy(workspaces, 'suspended')})` },
+                      ]} />
+                  </div>
+                </div>
+              )}
+              {shownWorkspaces.length === 0 ? (
+                wsFiltered ? (
+                  <EmptyState icon={Search} title="No workspaces match" text="Try another search or status."
+                    action={<button className="btn btn-secondary" onClick={() => { setWsSearch(''); setWsStatus('all'); }}>Clear filters</button>} />
+                ) : (
+                  <EmptyState icon={Building2} title="No workspaces yet" text="Every new account gets a workspace of its own, and it shows up here."
+                    action={<button className="btn btn-secondary" onClick={openCreate}><UserPlus size={16} /> Create user</button>} />
+                )
+              ) : (
+                <div className="table-container">
+                  <table className="data-table admin-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Workspace</th>
+                        <th scope="col">Owner</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Plan</th>
+                        <th scope="col" className="num">Articles this month</th>
+                        <th scope="col" className="num">Members</th>
+                        <th scope="col"><span className="sr-only">Actions</span></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shownWorkspaces.map((w) => (
+                        <tr key={w.id}>
+                          <td><div className="admin-cell-title">{w.name}</div><div className="admin-sub">{w.slug}</div></td>
+                          <td>{w.owner_email || <span className="admin-sub">No owner</span>}</td>
+                          <td><span className={`badge ${STATUS_BADGE[w.status]}`}>{w.status}</span></td>
+                          <td>
+                            <select className="form-select admin-inline-select" aria-label={`Plan for ${w.name}`}
+                              value={w.plan_id} disabled={busy === w.id}
+                              onChange={(e) => act(adminSetWorkspacePlan, w.id, e.target.value)}>
+                              {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                          </td>
+                          <td className="num"><Used used={w.used} limit={w.monthly_article_limit} /></td>
+                          <td className="num">{w.member_count}</td>
+                          <td>
+                            <div className="admin-row-actions">
+                              {w.status === 'active' ? (
+                                <button className="btn btn-ghost btn-sm admin-btn-danger" disabled={busy === w.id} onClick={() => act(adminSuspendWorkspace, w.id)}>
+                                  <Ban size={13} /> Suspend
+                                </button>
+                              ) : (
+                                <button className="btn btn-secondary btn-sm" disabled={busy === w.id} onClick={() => act(adminReactivateWorkspace, w.id)}>
+                                  <RotateCcw size={13} /> Reactivate
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Section>
+          )}
+
+          {/* USERS */}
+          {(tab === 'users' || tab === 'pending') && (
+            <Section
+              title={tab === 'pending' ? 'Pending sign-ups' : 'All users'}
+              description={tab === 'pending' ? 'Accounts from the old approval flow that are still waiting. Approve them to let them in.' : 'Every account on the platform, including admins.'}
+              flush
+            >
+              {tab === 'users' && users.length > 0 && (
+                <div className="admin-toolbar-pad">
+                  <div className="toolbar">
+                    <div className="admin-search">
+                      <Search size={15} aria-hidden="true" />
+                      <input className="form-input" type="search" placeholder="Search email or name" aria-label="Search users" value={userSearch} onChange={(e) => setUserSearch(e.target.value)} />
+                    </div>
+                    <Segmented size="sm" ariaLabel="Filter by account status" value={userStatus} onChange={setUserStatus}
+                      options={[
+                        { value: 'all', label: `All (${users.length})` },
+                        { value: 'active', label: `Active (${countBy(users, 'active')})` },
+                        { value: 'pending', label: `Pending (${pendingUsers.length})` },
+                        { value: 'suspended', label: `Suspended (${countBy(users, 'suspended')})` },
+                      ]} />
+                  </div>
+                </div>
+              )}
+              {shownUsers.length === 0 ? (
+                tab === 'pending' ? (
+                  <EmptyState icon={CheckCircle2} title="No pending sign-ups" text="Sign-up is open, so new accounts are active straight away."
+                    action={<button className="btn btn-secondary" onClick={() => setTab('users')}>See all users</button>} />
+                ) : userFiltered ? (
+                  <EmptyState icon={Search} title="No users match" text="Try another search or status."
+                    action={<button className="btn btn-secondary" onClick={() => { setUserSearch(''); setUserStatus('all'); }}>Clear filters</button>} />
+                ) : (
+                  <EmptyState icon={UsersIcon} title="No users yet" text="Accounts appear here when people sign up or you create one."
+                    action={<button className="btn btn-secondary" onClick={openCreate}><UserPlus size={16} /> Create user</button>} />
+                )
+              ) : (
+                <UsersTable list={shownUsers} isSuper={isSuper} me={me} busy={busy} act={act} onManage={(u) => setManaging(u)} />
+              )}
+            </Section>
+          )}
+
+          {/* UPGRADE REQUESTS */}
+          {tab === 'upgrades' && (
+            <Section title="Upgrade requests" description="Workspaces asking for a bigger plan. Approving moves the workspace to that plan straight away." flush>
+              {requests.length === 0 ? (
+                <EmptyState icon={Inbox} title="No upgrade requests" text="When a workspace asks for a bigger plan, the request waits here for you to approve or reject."
+                  action={<button className="btn btn-secondary" onClick={() => setTab('workspaces')}>See workspaces</button>} />
+              ) : (
+                <div className="list">
+                  {requests.map((r) => (
+                    <div key={r.id} className="list-item">
+                      <div className="list-item__media"><ArrowUpCircle size={20} aria-hidden="true" /></div>
+                      <div className="list-item__main">
+                        <div className="list-item__title">
+                          {r.workspace_name}
+                          <span className="badge badge-info admin-cap">{r.requested_plan}</span>
+                        </div>
+                        <div className="list-item__meta">
+                          <span>Asked by {r.requester_email}</span>
+                          <span>{new Date(r.created_at).toLocaleString()}</span>
+                        </div>
+                      </div>
+                      <div className="list-item__actions">
+                        <button className="btn btn-ghost btn-sm" disabled={busy === r.id} onClick={() => act(adminRejectUpgrade, r.id)}>Reject</button>
+                        <button className="btn btn-success btn-sm" disabled={busy === r.id} onClick={() => act(adminApproveUpgrade, r.id)}><CheckCircle2 size={13} /> Approve</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Section>
+          )}
+
+          {/* ACTIVITY */}
+          {tab === 'activity' && (
+            <Section title="Recent activity" description="Sign-ins and changes across the platform, newest first." flush>
+              {activity.length === 0 ? (
+                <EmptyState icon={ActivityIcon} title="No activity yet" text="Sign-ins and admin changes appear here as they happen." />
+              ) : (
+                <div className="table-container">
+                  <table className="data-table admin-table">
+                    <thead>
+                      <tr><th scope="col">When</th><th scope="col">Account</th><th scope="col">Action</th><th scope="col">Detail</th></tr>
+                    </thead>
+                    <tbody>
+                      {activity.map((a) => (
+                        <tr key={a.id}>
+                          <td className="admin-nowrap">{new Date(a.created_at).toLocaleString()}</td>
+                          <td>{a.email || '—'}</td>
+                          <td><span className="badge badge-purple">{a.action}</span></td>
+                          <td className="admin-wrap">{a.detail || ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Section>
+          )}
         </>
       )}
 
-      {/* WORKSPACES */}
-      {tab === 'workspaces' && (
-        <div className="card">
-          <div className="card-header"><h2><Building2 size={16} /> Workspaces</h2></div>
-          <div className="card-body" style={{ overflowX: 'auto' }}>
-            {workspaces.length === 0 ? (
-              <div className="empty-state"><p>No workspaces.</p></div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
-                    <th style={{ padding: '8px' }}>Workspace</th>
-                    <th style={{ padding: '8px' }}>Owner</th>
-                    <th style={{ padding: '8px' }}>Status</th>
-                    <th style={{ padding: '8px' }}>Plan / Usage</th>
-                    <th style={{ padding: '8px' }}>Members</th>
-                    <th style={{ padding: '8px' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workspaces.map(w => (
-                    <tr key={w.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
-                      <td style={{ padding: '8px' }}><strong>{w.name}</strong><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{w.slug}</div></td>
-                      <td style={{ padding: '8px' }}>{w.owner_email}</td>
-                      <td style={{ padding: '8px' }}><span className={`badge ${STATUS_BADGE[w.status]}`}>{w.status}</span></td>
-                      <td style={{ padding: '8px' }}>
-                        <select className="form-select" style={{ minWidth: 110, padding: '4px 8px', fontSize: 12 }}
-                          value={w.plan_id} disabled={busy === w.id}
-                          onChange={e => act(adminSetWorkspacePlan, w.id, e.target.value)}>
-                          {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                        <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{w.used}/{w.monthly_article_limit} used</div>
-                      </td>
-                      <td style={{ padding: '8px' }}>{w.member_count}</td>
-                      <td style={{ padding: '8px' }}>
-                        {w.status === 'active' ? (
-                          <button className="btn btn-danger btn-sm" disabled={busy === w.id} onClick={() => act(adminSuspendWorkspace, w.id)}>
-                            <Ban size={13} /> Suspend
-                          </button>
-                        ) : (
-                          <button className="btn btn-secondary btn-sm" disabled={busy === w.id} onClick={() => act(adminReactivateWorkspace, w.id)}>
-                            <RotateCcw size={13} /> Reactivate
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* USERS */}
-      {(tab === 'users' || tab === 'pending') && (
-        <div className="card">
-          <div className="card-header"><h2>{tab === 'pending' ? 'Pending user signups' : 'All users'}</h2></div>
-          <div className="card-body" style={{ overflowX: 'auto' }}>
-            {(tab === 'pending' ? pendingUsers : users).length === 0 ? (
-              <div className="empty-state"><p>{tab === 'pending' ? 'No pending signups.' : 'No users.'}</p></div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
-                    <th style={{ padding: '8px' }}>Email</th>
-                    <th style={{ padding: '8px' }}>Status</th>
-                    <th style={{ padding: '8px' }}>Role</th>
-                    <th style={{ padding: '8px' }}>Workspaces</th>
-                    <th style={{ padding: '8px' }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(tab === 'pending' ? pendingUsers : users).map(u => (
-                    <tr key={u.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
-                      <td style={{ padding: '8px' }}>{u.email}{u.name ? <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{u.name}</div> : null}</td>
-                      <td style={{ padding: '8px' }}><span className={`badge ${STATUS_BADGE[u.status]}`}>{u.status}</span></td>
-                      <td style={{ padding: '8px' }}>
-                        {isSuper && u.id !== me.id ? (
-                          <select className="form-select" style={{ minWidth: 110, padding: '4px 8px', fontSize: 12 }}
-                            value={u.role} disabled={busy === u.id}
-                            onChange={e => act(adminSetRole, u.id, e.target.value)}>
-                            <option value="user">user</option>
-                            <option value="admin">admin</option>
-                            <option value="superadmin">superadmin</option>
-                          </select>
-                        ) : <span className={`badge ${ROLE_BADGE[u.role]}`}>{u.role}</span>}
-                      </td>
-                      <td style={{ padding: '8px' }}>{u.workspace_count}</td>
-                      <td style={{ padding: '8px' }}>
-                        <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-                          <button className="btn btn-secondary btn-sm" onClick={() => setManaging(u)} title="Password and workspaces">
-                            <Settings2 size={13} /> Manage
-                          </button>
-                          {u.status === 'pending' && (
-                            <button className="btn btn-success btn-sm" disabled={busy === u.id} onClick={() => act(adminApproveUser, u.id)}>
-                              <CheckCircle2 size={13} /> Approve
-                            </button>
-                          )}
-                          {u.status === 'active' && u.id !== me.id && (
-                            <button className="btn btn-danger btn-sm" disabled={busy === u.id} onClick={() => act(adminSuspendUser, u.id)}>
-                              <Ban size={13} /> Suspend
-                            </button>
-                          )}
-                          {u.status === 'suspended' && (
-                            <button className="btn btn-secondary btn-sm" disabled={busy === u.id} onClick={() => act(adminReactivateUser, u.id)}>
-                              <RotateCcw size={13} /> Reactivate
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* UPGRADE REQUESTS */}
-      {tab === 'upgrades' && (
-        <div className="card">
-          <div className="card-header"><h2>Pending upgrade requests</h2></div>
-          <div className="card-body">
-            {requests.length === 0 ? (
-              <div className="empty-state"><p>No pending requests.</p></div>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <tbody>
-                  {requests.map(r => (
-                    <tr key={r.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
-                      <td style={{ padding: '8px' }}><strong>{r.workspace_name}</strong><div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{r.requester_email}</div></td>
-                      <td style={{ padding: '8px' }}>→ <strong style={{ textTransform: 'capitalize' }}>{r.requested_plan}</strong></td>
-                      <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{new Date(r.created_at).toLocaleString()}</td>
-                      <td style={{ padding: '8px' }}>
-                        <div className="flex gap-8">
-                          <button className="btn btn-success btn-sm" disabled={busy === r.id} onClick={() => act(adminApproveUpgrade, r.id)}>Approve</button>
-                          <button className="btn btn-ghost btn-sm" disabled={busy === r.id} onClick={() => act(adminRejectUpgrade, r.id)}>Reject</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ACTIVITY */}
-      {tab === 'activity' && (
-        <div className="card">
-          <div className="card-header"><h2><ActivityIcon size={16} /> Recent activity</h2></div>
-          <div className="card-body">
-            {activity.length === 0 ? <div className="empty-state"><p>No activity.</p></div> : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <tbody>
-                  {activity.map(a => (
-                    <tr key={a.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
-                      <td style={{ padding: '6px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{new Date(a.created_at).toLocaleString()}</td>
-                      <td style={{ padding: '6px 8px' }}>{a.email || '—'}</td>
-                      <td style={{ padding: '6px 8px' }}><span className="badge badge-purple">{a.action}</span></td>
-                      <td style={{ padding: '6px 8px', color: 'var(--text-secondary)' }}>{a.detail || ''}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* CREATE USER */}
-      {tab === 'create' && (
-        <div className="card" style={{ maxWidth: 560 }}>
-          <div className="card-header"><h2><UserPlus size={16} /> Create user</h2></div>
-          <div className="card-body">
-            <form onSubmit={createUser}>
-              <div className="form-group">
-                <label className="form-label">Email</label>
-                <input className="form-input" type="email" value={nu.email} onChange={e => setNu({ ...nu, email: e.target.value })} />
+      <Sheet open={createOpen} title="Create user" subtitle="There is no email, so give them their password yourself."
+        onClose={closeCreate} busy={creating} width={560}
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost" onClick={closeCreate} disabled={creating}>Cancel</button>
+            <button type="submit" form="admin-create-user" className="btn btn-primary" disabled={creating}>
+              {creating ? <><Loader2 size={16} className="spinning" /> Creating…</> : <><UserPlus size={16} /> Create user</>}
+            </button>
+          </>
+        )}>
+        <form id="admin-create-user" onSubmit={createUser}>
+          <div className="form-section">
+            <div className="form-section__title">Account</div>
+            <div className="form-section__desc">How they sign in.</div>
+            <div className="form-grid">
+              <div className="form-group span-all">
+                <label className="form-label" htmlFor="admin-nu-email">Email</label>
+                <input id="admin-nu-email" className="form-input" type="email" autoComplete="off" value={nu.email} onChange={(e) => setNu({ ...nu, email: e.target.value })} />
               </div>
               <div className="form-group">
-                <label className="form-label">Password (min 8)</label>
-                <input className="form-input" type="text" value={nu.password} onChange={e => setNu({ ...nu, password: e.target.value })} />
+                <label className="form-label" htmlFor="admin-nu-password">Password</label>
+                <input id="admin-nu-password" className="form-input" type="text" autoComplete="new-password" value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} />
+                <div className="form-helper">At least 8 characters.</div>
               </div>
               <div className="form-group">
-                <label className="form-label">Name (optional)</label>
-                <input className="form-input" value={nu.name} onChange={e => setNu({ ...nu, name: e.target.value })} />
+                <label className="form-label" htmlFor="admin-nu-name">Name (optional)</label>
+                <input id="admin-nu-name" className="form-input" value={nu.name} onChange={(e) => setNu({ ...nu, name: e.target.value })} />
               </div>
-              <div className="form-group">
-                <label className="form-label">Role</label>
-                <select className="form-select" value={nu.role} onChange={e => setNu({ ...nu, role: e.target.value })}>
+            </div>
+          </div>
+          <div className="form-section">
+            <div className="form-section__title">Access</div>
+            <div className="form-section__desc">Their platform role and the workspace they join.</div>
+            <div className="form-grid">
+              <div className="form-group span-all">
+                <label className="form-label" htmlFor="admin-nu-role">Platform role</label>
+                <select id="admin-nu-role" className="form-select" value={nu.role} onChange={(e) => setNu({ ...nu, role: e.target.value })}>
                   <option value="user">user</option>
                   {isSuper && <option value="admin">admin</option>}
                   {isSuper && <option value="superadmin">superadmin</option>}
                 </select>
-                <div className="form-helper">Platform role. Almost everyone should be "user"; see Roles &amp; permissions.</div>
+                <div className="form-helper">Almost everyone should be "user"; see Roles &amp; permissions.</div>
               </div>
-              <div className="form-group">
-                <label className="form-label">Workspace</label>
-                <select className="form-select" value={nu.workspaceId} onChange={e => setNu({ ...nu, workspaceId: e.target.value })}>
+              <div className="form-group span-all">
+                <label className="form-label" htmlFor="admin-nu-ws">Workspace</label>
+                <select id="admin-nu-ws" className="form-select" value={nu.workspaceId} onChange={(e) => setNu({ ...nu, workspaceId: e.target.value })}>
                   <option value="">A new workspace of their own</option>
-                  {workspaces.map(w => <option key={w.id} value={w.id}>{w.name} ({w.owner_email || 'no owner'})</option>)}
+                  {workspaces.map((w) => <option key={w.id} value={w.id}>{w.name} ({w.owner_email || 'no owner'})</option>)}
                 </select>
               </div>
               {nu.workspaceId && (
-                <div className="form-group">
-                  <label className="form-label">Role in that workspace</label>
-                  <select className="form-select" value={nu.workspaceRole} onChange={e => setNu({ ...nu, workspaceRole: e.target.value })}>
-                    {WORKSPACE_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                <div className="form-group span-all">
+                  <label className="form-label" htmlFor="admin-nu-ws-role">Role in that workspace</label>
+                  <select id="admin-nu-ws-role" className="form-select" value={nu.workspaceRole} onChange={(e) => setNu({ ...nu, workspaceRole: e.target.value })}>
+                    {WORKSPACE_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
               )}
-              <button className="btn btn-primary w-full" type="submit" disabled={creating}>
-                {creating ? <><Loader2 size={16} className="spinning" /> Creating...</> : <><UserPlus size={16} /> Create User</>}
-              </button>
-            </form>
+            </div>
           </div>
-        </div>
-      )}
+        </form>
+      </Sheet>
+
       {managing && (
         <UserPanel userId={managing.id} workspaces={workspaces} plans={plans} catalogue={catalogue} canManage={canManageUser(managing)} onClose={closePanel} onChanged={() => loadAll(true)} />
       )}
-      <style>{`.spinning { animation: spin 1s linear infinite; }`}</style>
     </div>
   );
 }

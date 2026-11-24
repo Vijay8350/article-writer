@@ -1,0 +1,129 @@
+/* Instagram automation pages: Product Scheduler, AI Product Posts, Instagram Accounts.
+   Only tokens from index.css; layout blocks (.list, .form-section, .sheet…) come from there. */
+
+.iga-muted { font-size: 13px; color: var(--text-muted); }
+.iga-muted svg { width: 14px; height: 14px; vertical-align: -2px; }
+.iga-inline { display: inline-flex; align-items: center; gap: 6px; }
+.iga-error { font-size: 13px; color: var(--accent-danger); margin-top: 6px; overflow-wrap: anywhere; line-height: 1.45; }
+.iga-subtitle { font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+.iga-readonly { font-size: 14.5px; color: var(--text-primary); padding: 10px 14px; border-radius: var(--radius-md); background: var(--bg-subtle); overflow-wrap: anywhere; }
+.iga-sheet-callout { margin-bottom: 24px; }
+
+/* Header status line */
+.iga-statusbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; margin-top: 14px; }
+.iga-statusbar .status a { font-weight: 500; }
+
+/* A quiet text button ("Post history") */
+.iga-link { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; padding: 0; border: 0; background: none; color: var(--brand); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+.iga-link:hover { color: var(--brand-hover); }
+.iga-link:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 4px; }
+.iga-link svg { width: 14px; height: 14px; }
+
+/* Icon-only ghost buttons in list rows */
+.iga-icon-btn { padding: 6px 8px; }
+
+/* ── Job rows ── */
+.iga-job + .iga-job { border-top: 1px solid var(--border-secondary); }
+.iga-job > .list-item { border-top: 0; align-items: flex-start; }
+.iga-job .list-item__actions { align-self: center; }
+.iga-time { width: 64px; height: 50px; border-radius: 12px; background: var(--bg-subtle); flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; }
+.iga-time strong { font-size: 16px; font-weight: 600; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.iga-time span { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.iga-job.is-paused .iga-time { opacity: 0.55; }
+.iga-job__panel { padding: 0 24px 22px 104px; display: flex; flex-direction: column; gap: 18px; }
+@media (max-width: 700px) {
+  .iga-job__panel { padding: 0 16px 16px; }
+  .iga-time { width: 56px; height: 46px; }
+}
+
+/* Preview of the next post */
+.iga-preview { background: var(--bg-subtle); border-radius: var(--radius-md); padding: 14px 16px; }
+.iga-preview__photos { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; }
+.iga-preview__photos img { width: 88px; height: 88px; object-fit: cover; border-radius: 8px; flex: 0 0 auto; background: var(--bg-tertiary); }
+.iga-preview__caption { white-space: pre-wrap; font-size: 13.5px; line-height: 1.55; color: var(--text-primary); overflow-wrap: anywhere; }
+
+/* Post history table inside a job */
+.iga-history { border: 1px solid var(--border-secondary); border-radius: var(--radius-md); }
+.iga-history .data-table th { padding: 8px 12px; }
+.iga-history .data-table td { padding: 10px 12px; font-size: 13px; vertical-align: top; }
+.iga-history .nowrap { white-space: nowrap; }
+
+/* ── AI Product Posts: create steps ── */
+.iga-steps { gap: 0; }
+.iga-steps > li { padding: 22px 0; border-top: 1px solid var(--border-secondary); color: var(--text-primary); }
+.iga-steps > li:first-child { padding-top: 0; border-top: 0; }
+.iga-steps > li:last-child { padding-bottom: 0; }
+.iga-steps > li.is-done::before { background: var(--brand-tint); color: var(--brand); }
+.iga-step { min-width: 0; }
+.iga-step__title { font-size: 15px; font-weight: 600; margin: 3px 0 4px; }
+.iga-step__desc { font-size: 13px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.45; }
+.iga-load { display: flex; gap: 8px; margin: 10px 0 8px; }
+.iga-load .form-input { flex: 1; min-width: 0; }
+@media (max-width: 520px) { .iga-load { flex-wrap: wrap; } .iga-load .btn { width: 100%; } }
+.iga-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; margin: 14px 0 10px; }
+.iga-search { position: relative; flex: 0 1 280px; min-width: 200px; }
+.iga-search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--text-muted); pointer-events: none; }
+.iga-search .form-input { padding-left: 34px; padding-top: 8px; padding-bottom: 8px; }
+@media (max-width: 520px) { .iga-search { flex: 1 1 100%; } }
+.iga-opt-row { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 18px 20px; }
+.iga-opt-row > .form-group { margin-bottom: 0; }
+@media (max-width: 600px) { .iga-opt-row { grid-template-columns: 1fr; } }
+.iga-summary { display: flex; align-items: center; gap: 12px; margin: 8px 0 14px; min-width: 0; }
+.iga-summary img { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; background: var(--bg-tertiary); flex-shrink: 0; }
+.iga-summary strong { display: block; font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+.iga-create { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; }
+.iga-create .form-helper { margin-top: 0; flex: 1 1 240px; }
+
+/* ── AI Product Posts: post cards ── */
+.iga-post-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 16px; }
+.iga-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.iga-card-head .badge { flex: 0 0 auto; }
+.iga-card-title { font-size: 14px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; color: var(--text-primary); }
+.iga-card-title a { color: inherit; }
+.iga-card-title a:hover { color: var(--brand); }
+.iga-card-callout { padding: 10px 12px; font-size: 13px; }
+.iga-card-field .form-label { font-size: 12.5px; margin-bottom: 4px; }
+.iga-card-field .form-textarea { font-size: 13px; min-height: 0; }
+.iga-card-field .form-helper { margin-top: 4px; }
+.iga-card-caption summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); width: fit-content; }
+.iga-card-caption p { white-space: pre-wrap; font-size: 13px; margin-top: 6px; overflow-wrap: anywhere; color: var(--text-secondary); }
+.iga-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 4px; }
+.iga-card-actions .iga-push { margin-left: auto; }
+
+/* ── Instagram Accounts ── */
+.iga-accounts-card { overflow: hidden; }
+.iga-accounts-card .list-item.is-selected { background: var(--brand-tint); }
+.iga-accounts-card .list-item__media { color: var(--text-secondary); }
+.iga-profile { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 24px; }
+.iga-profile img { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--bg-tertiary); }
+.iga-profile__main { flex: 1; min-width: 220px; }
+.iga-profile__name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.iga-profile__name strong { font-size: 17px; }
+.iga-profile__name a { font-size: 13px; }
+.iga-profile__stats { display: flex; gap: 8px 24px; flex-wrap: wrap; margin: 10px 0; font-size: 14px; }
+.iga-profile__stats strong { font-variant-numeric: tabular-nums; }
+.iga-profile__bio { font-size: 14px; color: var(--text-secondary); white-space: pre-line; }
+.iga-profile__site { font-size: 13px; overflow-wrap: anywhere; }
+.iga-details-grid { margin-bottom: 24px; }
+.iga-details-grid .kv { font-size: 13.5px; }
+.iga-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.iga-checks li { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border-secondary); font-size: 13.5px; }
+.iga-checks li:first-child { border-top: 0; padding-top: 0; }
+.iga-checks li > svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; }
+.iga-checks li > div { min-width: 0; }
+.iga-check--ok { color: var(--accent-success); }
+.iga-check--bad { color: var(--accent-danger); }
+.iga-check--none { color: var(--text-faint); }
+.iga-recent { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+.iga-recent a { display: block; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-primary); background: var(--bg-tertiary); color: var(--text-muted); }
+.iga-recent img, .iga-recent__blank { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+.iga-recent__blank { display: flex; align-items: center; justify-content: center; font-size: 12px; }
+.iga-recent__meta { display: flex; gap: 10px; padding: 5px 8px; font-size: 12px; background: var(--bg-card); }
+.iga-recent__meta svg { width: 12px; height: 12px; vertical-align: -1px; margin-right: 3px; }
+.iga-help .steps-list li { font-size: 13.5px; }
+.iga-help__foot { font-size: 13px; color: var(--text-muted); margin-top: 14px; line-height: 1.5; }
+.iga-help-toggle { margin-top: 8px; }
+.iga-empty-actions { display: inline-flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+
+/* AI Product Posts keeps a slightly narrower page so the post grid stays readable */
+.iga-page { max-width: 1040px; }

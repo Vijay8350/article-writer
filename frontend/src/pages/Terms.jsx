@@ -1,16 +1,16 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import Seo from '../components/Seo';
+import SiteChrome from '../components/SiteChrome';
 
 export default function Terms() {
   return (
+    <SiteChrome>
     <div className="legal-page">
       <Seo
         title="Terms of Service"
         description="The terms governing your use of Article Writer."
         path="/terms"
       />
-      <Link to="/" className="legal-back">← Back to home</Link>
       <article className="legal-doc">
         <h1>Terms of Service</h1>
         <p className="legal-muted">Last updated: {new Date().toLocaleDateString()}</p>
@@ -55,5 +55,6 @@ export default function Terms() {
         .legal-muted { color: var(--text-muted); font-size: 13px; margin-bottom: 24px; }
       `}</style>
     </div>
+    </SiteChrome>
   );
 }

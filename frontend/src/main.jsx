@@ -3,9 +3,9 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { Toaster } from 'react-hot-toast';
+import './index.css'; // first, so page stylesheets imported by the app can build on it
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
-import './index.css';
 import { watchSystemTheme } from './lib/theme';
 
 watchSystemTheme(); // on 'System', follow the device's light/dark setting

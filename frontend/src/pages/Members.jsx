@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Trash2, Loader2, Copy, RefreshCw, Mail, KeyRound, X } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { UserPlus, Trash2, Loader2, Copy, RefreshCw, Mail, KeyRound, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { getMembers, getInvitations, createInvitation, revokeInvitation, setMemberRole, removeMember, resetMemberPassword } from '../lib/api';
+import { PageHeader, Section, Sheet } from '../components/ui';
+import '../styles/workspace.css';
 
-const ROLE_BADGE = { owner: 'badge-danger', admin: 'badge-warning', member: 'badge-purple' };
+const ROLE_LABEL = { owner: 'Owner', admin: 'Admin', member: 'Member' };
+const RoleBadge = ({ role }) => <span className="badge badge-purple">{ROLE_LABEL[role] || role}</span>;
 
 export default function Members() {
   const { user: me, activeWorkspace, activeRole } = useAuth();
@@ -17,8 +20,11 @@ export default function Members() {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('member');
   const [inviting, setInviting] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [lastInvite, setLastInvite] = useState(null);
   const [resetResult, setResetResult] = useState(null); // { email, tempPassword }
+
+  const closeInvite = useCallback(() => setInviteOpen(false), []);
 
   const load = () => {
     setLoading(true);
@@ -40,6 +46,7 @@ export default function Members() {
       setLastInvite({ email: email.trim(), url });
       toast.success('Invitation created');
       setEmail('');
+      setInviteOpen(false);
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed');
@@ -55,7 +62,7 @@ export default function Members() {
   };
 
   const handleReset = async (member) => {
-    if (!window.confirm(`Reset password for ${member.email}?\n\nThis changes their account login. You'll see the new password ONCE — share it with them securely.`)) return;
+    if (!window.confirm(`Reset password for ${member.email}?\n\nThis changes their account login. You'll see the new password only once, so share it with them securely.`)) return;
     setBusy(member.user_id);
     try {
       const res = await resetMemberPassword(member.user_id);
@@ -66,162 +73,190 @@ export default function Members() {
     setBusy(null);
   };
 
-  if (loading) return <div className="page-container"><div className="empty-state"><div className="spinner spinner-lg" /></div></div>;
+  const copyInviteLink = () => { navigator.clipboard.writeText(lastInvite.url); toast.success('Copied'); };
+
+  if (loading && members.length === 0) {
+    return <div className="page-container page-container--narrow fade-in"><div className="empty-state"><div className="spinner spinner-lg" /></div></div>;
+  }
+
+  const pending = invitations.filter(i => !i.accepted_at);
+  // Only the newest invite's link is known (links are stored hashed), so only its row can copy it.
+  const linkRowId = lastInvite ? pending.find(i => i.email?.toLowerCase() === lastInvite.email.toLowerCase())?.id : null;
 
   return (
-    <div className="page-container fade-in">
-      <div className="page-header">
-        <h1>Members</h1>
-        <p>People in <strong>{activeWorkspace?.name}</strong></p>
-      </div>
+    <div className="page-container page-container--narrow fade-in">
+      <PageHeader
+        title="Members"
+        subtitle={`People who can use ${activeWorkspace?.name || 'this workspace'}.`}
+        actions={canManage && (
+          <button className="btn btn-primary" onClick={() => setInviteOpen(true)}>
+            <UserPlus size={16} /> Invite teammate
+          </button>
+        )}
+      />
 
-      {canManage && (
-        <div className="card mb-24" style={{ maxWidth: 700 }}>
-          <div className="card-header"><h2><UserPlus size={16} /> Invite a teammate</h2></div>
-          <div className="card-body">
-            <form onSubmit={handleInvite}>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 12, alignItems: 'end' }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Email</label>
-                  <input className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="teammate@example.com" />
-                </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Role</label>
-                  <select className="form-select" value={role} onChange={e => setRole(e.target.value)}>
-                    <option value="member">Member</option>
-                    {isOwner && <option value="admin">Admin</option>}
-                  </select>
-                </div>
-                <button className="btn btn-primary" type="submit" disabled={inviting}>
-                  {inviting ? <Loader2 size={16} className="spinning" /> : <Mail size={16} />} Invite
-                </button>
+      <div className="stack">
+        {lastInvite && (
+          <div className="callout callout--success" role="status">
+            <CheckCircle2 size={18} />
+            <div className="wk-callout-body">
+              <div className="wk-callout-title">Invite link for {lastInvite.email}</div>
+              <p>Send this link to them. Invitations aren't emailed yet.</p>
+              <div className="members-link">
+                <code title={lastInvite.url}>{lastInvite.url}</code>
+                <button className="btn btn-secondary btn-sm" onClick={copyInviteLink}><Copy size={14} /> Copy link</button>
               </div>
-            </form>
-
-            {lastInvite && (
-              <div style={{ marginTop: 16, padding: 12, background: 'var(--brand-tint)', border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)' }}>
-                <div style={{ fontSize: 13, marginBottom: 6 }}>
-                  Share this link with <strong>{lastInvite.email}</strong> (email delivery comes later):
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <code style={{ flex: 1, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lastInvite.url}</code>
-                  <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard.writeText(lastInvite.url); toast.success('Copied'); }}>
-                    <Copy size={14} />
-                  </button>
-                </div>
-              </div>
-            )}
+            </div>
+            <button className="btn btn-ghost btn-sm btn-icon members-dismiss" onClick={() => setLastInvite(null)} aria-label="Dismiss" title="Dismiss">
+              <X size={14} />
+            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="card mb-24">
-        <div className="card-header">
-          <h2>Members ({members.length})</h2>
-          <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /></button>
-        </div>
-        <div className="card-body" style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '8px' }}>Email</th>
-                <th style={{ padding: '8px' }}>Role</th>
-                <th style={{ padding: '8px' }}>Joined</th>
-                <th style={{ padding: '8px' }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.map(m => (
-                <tr key={m.user_id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
-                  <td style={{ padding: '8px' }}>{m.email}{m.name ? <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{m.name}</div> : null}</td>
-                  <td style={{ padding: '8px' }}>
-                    {isOwner && m.user_id !== me.id ? (
-                      <select className="form-select" style={{ padding: '4px 8px', fontSize: 12 }}
-                        value={m.role} disabled={busy === m.user_id}
-                        onChange={e => act(setMemberRole, m.user_id, e.target.value)}>
-                        <option value="owner">owner</option>
-                        <option value="admin">admin</option>
-                        <option value="member">member</option>
-                      </select>
-                    ) : <span className={`badge ${ROLE_BADGE[m.role]}`}>{m.role}</span>}
-                  </td>
-                  <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{new Date(m.created_at).toLocaleDateString()}</td>
-                  <td style={{ padding: '8px' }}>
-                    <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-                      {canManage && m.user_id !== me.id && (m.role === 'member' || isOwner) && (
-                        <button className="btn btn-ghost btn-sm" disabled={busy === m.user_id} onClick={() => handleReset(m)} title="Reset password">
-                          <KeyRound size={14} />
-                        </button>
-                      )}
-                      {canManage && m.user_id !== me.id && m.role !== 'owner' && (
-                        <button className="btn btn-ghost btn-sm" disabled={busy === m.user_id} onClick={() => {
-                          if (window.confirm(`Remove ${m.email} from this workspace?`)) act(removeMember, m.user_id);
-                        }} title="Remove">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
+        <Section
+          flush
+          title="Members"
+          description={`${members.length} ${members.length === 1 ? 'person' : 'people'}`}
+          actions={(
+            <button className="btn btn-ghost btn-sm" onClick={load} disabled={loading} aria-label="Refresh the list" title="Refresh">
+              <RefreshCw size={14} className={loading ? 'spinning' : ''} /> Refresh
+            </button>
+          )}
+        >
+          <ul className="list">
+            {members.map(m => {
+              const isMe = m.user_id === me?.id;
+              return (
+                <li key={m.user_id} className="list-item">
+                  <span className="list-item__media wk-avatar wk-avatar--round" aria-hidden="true">{(m.name || m.email || '?').charAt(0)}</span>
+                  <div className="list-item__main">
+                    <div className="list-item__title">
+                      <span className="wk-truncate">{m.name || m.email}</span>
+                      {isMe && <span className="badge badge-info">You</span>}
                     </div>
-                  </td>
-                </tr>
+                    <div className="list-item__meta">
+                      {m.name && <span>{m.email}</span>}
+                      <span>Joined {new Date(m.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <div className="list-item__actions">
+                    {isOwner && !isMe ? (
+                      <select
+                        className="form-select members-role"
+                        aria-label={`Role for ${m.email}`}
+                        value={m.role}
+                        disabled={busy === m.user_id}
+                        onChange={e => act(setMemberRole, m.user_id, e.target.value)}
+                      >
+                        <option value="owner">Owner</option>
+                        <option value="admin">Admin</option>
+                        <option value="member">Member</option>
+                      </select>
+                    ) : <RoleBadge role={m.role} />}
+                    {canManage && !isMe && (m.role === 'member' || isOwner) && (
+                      <button className="btn btn-ghost btn-sm" disabled={busy === m.user_id} onClick={() => handleReset(m)} title="Reset password" aria-label={`Reset password for ${m.email}`}>
+                        <KeyRound size={14} /> Reset password
+                      </button>
+                    )}
+                    {canManage && !isMe && m.role !== 'owner' && (
+                      <button className="btn btn-ghost btn-sm" disabled={busy === m.user_id} onClick={() => {
+                        if (window.confirm(`Remove ${m.email} from this workspace?`)) act(removeMember, m.user_id);
+                      }} title="Remove" aria-label={`Remove ${m.email}`}>
+                        <Trash2 size={14} /> Remove
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </Section>
+
+        {canManage && pending.length > 0 && (
+          <Section flush title="Pending invitations" description="People with an invite link who haven't joined yet.">
+            <ul className="list">
+              {pending.map(i => (
+                <li key={i.id} className="list-item">
+                  <span className="list-item__media" aria-hidden="true"><Mail size={18} /></span>
+                  <div className="list-item__main">
+                    <div className="list-item__title"><span className="wk-truncate">{i.email}</span></div>
+                    <div className="list-item__meta">
+                      <RoleBadge role={i.role} />
+                      <span>Expires {new Date(i.expires_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <div className="list-item__actions">
+                    {i.id === linkRowId && (
+                      <button className="btn btn-secondary btn-sm" onClick={copyInviteLink}><Copy size={14} /> Copy link</button>
+                    )}
+                    <button className="btn btn-ghost btn-sm" disabled={busy === i.id} onClick={() => act(revokeInvitation, i.id)} aria-label={`Revoke the invitation for ${i.email}`}>
+                      <Trash2 size={14} /> Revoke
+                    </button>
+                  </div>
+                </li>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </ul>
+          </Section>
+        )}
       </div>
 
-      {canManage && invitations.length > 0 && (
-        <div className="card">
-          <div className="card-header"><h2>Pending invitations</h2></div>
-          <div className="card-body" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <tbody>
-                {invitations.filter(i => !i.accepted_at).map(i => (
-                  <tr key={i.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
-                    <td style={{ padding: '8px' }}>{i.email}</td>
-                    <td style={{ padding: '8px' }}><span className={`badge ${ROLE_BADGE[i.role]}`}>{i.role}</span></td>
-                    <td style={{ padding: '8px', color: 'var(--text-muted)' }}>expires {new Date(i.expires_at).toLocaleDateString()}</td>
-                    <td style={{ padding: '8px' }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => act(revokeInvitation, i.id)}><Trash2 size={14} /></button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {/* Invite: email + role */}
+      <Sheet
+        open={inviteOpen}
+        title="Invite a teammate"
+        subtitle="You'll get a link to send them. They join this workspace when they open it."
+        onClose={closeInvite}
+        busy={inviting}
+        width={480}
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost" onClick={closeInvite} disabled={inviting}>Cancel</button>
+            <button type="submit" form="invite-form" className="btn btn-primary" disabled={inviting}>
+              {inviting ? <Loader2 size={16} className="spinning" /> : <Mail size={16} />} Create invite link
+            </button>
+          </>
+        )}
+      >
+        <form id="invite-form" onSubmit={handleInvite}>
+          <div className="form-group">
+            <label className="form-label" htmlFor="invite-email">Email</label>
+            <input id="invite-email" className="form-input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="teammate@example.com" />
           </div>
-        </div>
-      )}
-      {/* Temp-password modal — shown ONCE after a reset */}
+          <div className="form-group">
+            <label className="form-label" htmlFor="invite-role">Role</label>
+            <select id="invite-role" className="form-select" value={role} onChange={e => setRole(e.target.value)}>
+              <option value="member">Member</option>
+              {isOwner && <option value="admin">Admin</option>}
+            </select>
+            <div className="form-helper">Admins can also manage members and settings.</div>
+          </div>
+        </form>
+      </Sheet>
+
+      {/* Temp-password dialog — shown ONCE after a reset */}
       {resetResult && (
-        <div className="pwd-modal" role="dialog" aria-modal="true">
-          <div className="pwd-modal__card">
-            <button className="pwd-modal__close" onClick={() => setResetResult(null)} aria-label="Close"><X size={18} /></button>
-            <h3 style={{ marginBottom: 8 }}>New password for {resetResult.email}</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16 }}>
-              {resetResult.notice}
-            </p>
-            <div className="pwd-modal__box">
+        <div className="app-modal" role="dialog" aria-modal="true" aria-label={`New password for ${resetResult.email}`}>
+          <div className="app-modal__card members-pwd">
+            <button className="app-modal__close" onClick={() => setResetResult(null)} aria-label="Close"><X size={18} /></button>
+            <h3>New password for {resetResult.email}</h3>
+            {resetResult.notice && <p className="members-pwd__notice">{resetResult.notice}</p>}
+            <div className="pwd-box">
               <code>{resetResult.tempPassword}</code>
               <button className="btn btn-secondary btn-sm" onClick={() => {
                 navigator.clipboard.writeText(resetResult.tempPassword);
                 toast.success('Copied');
               }}><Copy size={14} /> Copy</button>
             </div>
-            <p style={{ color: 'var(--accent-warning)', fontSize: 12, marginTop: 16 }}>
-              This password is shown ONCE. After you close this dialog you won't see it again — copy it now.
-            </p>
-            <button className="btn btn-primary w-full" style={{ marginTop: 14 }} onClick={() => setResetResult(null)}>I've shared it</button>
+            <div className="callout callout--warning">
+              <AlertTriangle size={16} />
+              <span>This password is shown only once. Copy it now; you won't see it again after you close this.</span>
+            </div>
+            <div className="form-actions">
+              <button className="btn btn-primary" onClick={() => setResetResult(null)}>I've shared it</button>
+            </div>
           </div>
         </div>
       )}
-      <style>{`
-        .spinning { animation: spin 1s linear infinite; }
-        .pwd-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.32); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 100; padding: 16px; }
-        .pwd-modal__card { background: var(--bg-card); border: 1px solid var(--border-primary); border-radius: var(--radius-lg); padding: 24px; max-width: 460px; width: 100%; position: relative; box-shadow: var(--shadow-lg); }
-        .pwd-modal__close { position: absolute; top: 12px; right: 12px; background: transparent; border: 0; color: var(--text-muted); cursor: pointer; padding: 6px; border-radius: 6px; }
-        .pwd-modal__close:hover { color: var(--text-primary); }
-        .pwd-modal__box { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--bg-subtle); border: 1px solid var(--border-primary); border-radius: var(--radius-md); }
-        .pwd-modal__box code { flex: 1; font-family: var(--font-mono); font-size: 15px; letter-spacing: 0.5px; color: var(--text-accent); user-select: all; }
-      `}</style>
     </div>
   );
 }

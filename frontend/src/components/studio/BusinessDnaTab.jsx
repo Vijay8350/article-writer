@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Loader2, Save, Wand2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Search, Loader2, Save, Wand2, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getIgBusinessDna, startIgResearch, saveIgBusinessDna, applyIgBusinessDna } from '../../lib/api';
-import { errMsg, fmt, muted, danger, toLines, fromLines, Field, TextInput, TextArea, Toggle, LoadingCard } from './shared';
+import { Section } from '../ui';
+import { errMsg, fmt, toLines, fromLines, Field, TextInput, TextArea, Toggle, LoadingCard } from './shared';
 
 const RUNNING = ['queued', 'researching', 'analyzing'];
 const LIST_FIELDS = ['offerings', 'usps', 'brand_values', 'key_messages', 'content_themes', 'ctas', 'keywords', 'dos', 'donts'];
@@ -89,136 +90,150 @@ export default function BusinessDnaTab({ accountId, canManage }) {
   const notes = dna?.research_notes;
   const p = { value: form, onChange: setForm, disabled: !canManage };
   const byCategory = (notes?.facts || []).reduce((m, f) => ({ ...m, [f.category]: [...(m[f.category] || []), f] }), {});
+  const runLabel = running ? 'Running now' : dna.research_status === 'error' ? 'Last run failed' : 'Last run';
 
   return (
-    <>
-      <div className="card mb-24">
-        <div className="card-header"><h2><Search size={16} /> Deep research</h2></div>
-        <div className="card-body">
-          <p className="form-helper mb-16" style={{ fontSize: 13 }}>
-            Reads the Instagram profile, captions and customer comments plus up to 10 pages of the website, extracts facts with quoted
-            evidence, writes the Business DNA only from those facts, then fact-checks it. Takes 1–3 minutes; you can leave this page.
-          </p>
-          <form onSubmit={research}>
-            <div className="ig-two-col">
-              <div className="form-group">
-                <label className="form-label">Website (optional — defaults to the link in the Instagram bio)</label>
-                <input className="form-input" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="yourstore.com" disabled={!canManage} />
-              </div>
-              <div className="form-group" style={{ display: 'flex', alignItems: 'flex-end' }}>
-                <label className="flex items-center gap-8" style={{ fontSize: 14, cursor: 'pointer', paddingBottom: 12 }}>
-                  <input type="checkbox" checked={includeIg} disabled={!canManage} onChange={(e) => setIncludeIg(e.target.checked)} style={{ accentColor: 'var(--accent-primary)' }} />
-                  Include Instagram (profile, captions, comments)
-                </label>
-              </div>
+    <div className="stack">
+      {!canManage && (
+        <div className="callout callout--info"><Info size={16} aria-hidden="true" /> Only workspace owners and admins can run research or edit the Business DNA.</div>
+      )}
+
+      <Section
+        title="Deep research"
+        description="Reads the Instagram profile, captions and customer comments plus up to 10 pages of the website, pulls out facts with quoted evidence, writes the Business DNA only from those facts, then fact-checks it. Takes 1–3 minutes; you can leave this page."
+      >
+        <form onSubmit={research}>
+          <div className="form-grid">
+            <div className="form-group">
+              <label className="form-label" htmlFor="ig-research-site">Website</label>
+              <input id="ig-research-site" className="form-input" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="yourstore.com"
+                disabled={!canManage} aria-describedby="ig-research-site-hint" />
+              <div className="form-helper" id="ig-research-site-hint">Optional. Defaults to the link in the Instagram bio.</div>
             </div>
+            <div className="form-group">
+              <span className="form-label">Sources</span>
+              <label className="ig-check-label">
+                <input type="checkbox" checked={includeIg} disabled={!canManage} onChange={(e) => setIncludeIg(e.target.checked)} />
+                Include Instagram (profile, captions, comments)
+              </label>
+            </div>
+          </div>
+          <div className="form-actions ig-mt">
             <button className="btn btn-primary" type="submit" disabled={!canManage || running || busy === 'research'}>
               {running || busy === 'research' ? <><Loader2 size={16} className="spinning" /> Researching…</> : <><Search size={16} /> {built ? 'Research again' : 'Start research'}</>}
             </button>
-          </form>
+          </div>
+        </form>
 
-          {dna?.research_progress?.length > 0 && (
-            <div className="mt-16" style={{ borderTop: '1px solid var(--border-secondary)', paddingTop: 12 }}>
-              <div className="flex items-center gap-8 mb-16" style={{ fontSize: 13 }}>
-                <strong>{running ? 'Running' : dna.research_status === 'error' ? 'Last run failed' : 'Last run'}</strong>
-                {dna.research_error && <span style={danger}>{dna.research_error}</span>}
-              </div>
-              <div style={{ maxHeight: 260, overflowY: 'auto', fontSize: 13 }}>
-                {[...dna.research_progress].reverse().map((ev, i) => (
-                  <div key={i} className="flex gap-8" style={{ alignItems: 'flex-start', padding: '3px 0' }}>
-                    {ev.level === 'warn'
-                      ? <AlertTriangle size={14} style={{ color: 'var(--accent-warning)', flex: '0 0 auto', marginTop: 3 }} />
-                      : <CheckCircle2 size={14} style={{ color: 'var(--accent-success)', flex: '0 0 auto', marginTop: 3 }} />}
-                    <span>{ev.step}{ev.detail ? <span style={muted}> — {ev.detail}</span> : null}</span>
-                  </div>
-                ))}
-              </div>
+        {dna?.research_progress?.length > 0 && (
+          <div className="ig-run" aria-live="polite">
+            <div className="ig-run__head">
+              <span className={`status ${running ? 'status--warn' : dna.research_status === 'error' ? 'status--error' : 'status--on'}`}>{runLabel}</span>
             </div>
-          )}
-        </div>
-      </div>
+            {dna.research_error && <div className="callout callout--danger callout--compact mb-16">{dna.research_error}</div>}
+            <div className="ig-log">
+              {[...dna.research_progress].reverse().map((ev, i) => (
+                <div key={i} className="ig-log__row">
+                  {ev.level === 'warn'
+                    ? <AlertTriangle size={14} className="ig-log__warn" aria-label="Warning" />
+                    : <CheckCircle2 size={14} className="ig-log__ok" aria-label="Done" />}
+                  <span>{ev.step}{ev.detail ? <span className="ig-meta"> — {ev.detail}</span> : null}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Section>
 
       {built && (
         <>
-          <div className="card mb-24">
-            <div className="card-header">
-              <h2>Business DNA</h2>
-              <span style={muted}>Built {fmt(dna.generated_at)}</span>
-            </div>
-            <div className="card-body">
-              <div className="mb-16">
-                <Toggle checked={form.use_in_generation} disabled={!canManage} onChange={(v) => setForm({ ...form, use_in_generation: v })}
-                  label="Use in generation" sub="Feed these business facts into every idea and caption for this account" />
+          <Section title="Business DNA" description={`Built ${fmt(dna.generated_at)}. Correct anything the research got wrong, then save.`}>
+            <Toggle checked={form.use_in_generation} disabled={!canManage} onChange={(v) => setForm({ ...form, use_in_generation: v })}
+              label="Use in generation" sub="Feed these business facts into every idea and caption for this account." />
+
+            <div className="form-section ig-after-toggle">
+              <h3 className="form-section__title">The business</h3>
+              <p className="form-section__desc">What it is, who it serves, and how it sounds.</p>
+              <div className="form-grid">
+                <Field label="Business name"><TextInput {...p} field="business_name" /></Field>
+                <Field label="Website"><TextInput {...p} field="website_url" /></Field>
+                <Field label="Industry"><TextInput {...p} field="industry" /></Field>
+                <Field label="Language"><TextInput {...p} field="language" /></Field>
+                <Field label="Summary" span><TextArea {...p} field="summary" rows={4} /></Field>
+                <Field label="Target customers"><TextArea {...p} field="target_customers" rows={2} /></Field>
+                <Field label="Brand voice"><TextArea {...p} field="brand_voice" rows={2} /></Field>
+                <Field label="Tone"><TextInput {...p} field="tone" /></Field>
+                <Field label="Visual cues"><TextArea {...p} field="visual_cues" rows={2} /></Field>
               </div>
-              <div className="ig-two-col">
-                <div>
-                  <Field label="Business name"><TextInput {...p} field="business_name" /></Field>
-                  <Field label="Website"><TextInput {...p} field="website_url" /></Field>
-                  <Field label="Summary"><TextArea {...p} field="summary" rows={4} /></Field>
-                  <Field label="Industry"><TextInput {...p} field="industry" /></Field>
-                  <Field label="Target customers"><TextArea {...p} field="target_customers" rows={2} /></Field>
-                  <Field label="Brand voice"><TextArea {...p} field="brand_voice" rows={2} /></Field>
-                  <Field label="Tone"><TextInput {...p} field="tone" /></Field>
-                  <Field label="Visual cues"><TextArea {...p} field="visual_cues" rows={2} /></Field>
-                  <Field label="Language"><TextInput {...p} field="language" /></Field>
-                </div>
-                <div>
-                  <Field label="Offerings (one per line)"><TextArea {...p} field="offerings" /></Field>
-                  <Field label="What makes it different"><TextArea {...p} field="usps" /></Field>
-                  <Field label="Values"><TextArea {...p} field="brand_values" rows={2} /></Field>
-                  <Field label="Key messages"><TextArea {...p} field="key_messages" /></Field>
-                  <Field label="Content themes"><TextArea {...p} field="content_themes" /></Field>
-                  <Field label="Calls to action"><TextArea {...p} field="ctas" rows={2} /></Field>
-                  <Field label="Keywords"><TextArea {...p} field="keywords" rows={2} /></Field>
-                  <Field label="Do's"><TextArea {...p} field="dos" rows={2} /></Field>
-                  <Field label="Don'ts"><TextArea {...p} field="donts" rows={2} /></Field>
-                </div>
-              </div>
-              {canManage && (
-                <div className="flex gap-12" style={{ flexWrap: 'wrap' }}>
-                  <button className="btn btn-primary" onClick={save} disabled={!!busy}>
-                    {busy === 'save' ? <Loader2 size={16} className="spinning" /> : <Save size={16} />} Save
-                  </button>
-                  <button className="btn btn-secondary" onClick={apply} disabled={!!busy}>
-                    {busy === 'apply' ? <Loader2 size={16} className="spinning" /> : <Wand2 size={16} />} Apply to Account DNA
-                  </button>
-                </div>
-              )}
             </div>
-          </div>
+
+            <div className="form-section">
+              <h3 className="form-section__title">What to say</h3>
+              <p className="form-section__desc">One item per line.</p>
+              <div className="form-grid">
+                <Field label="Offerings"><TextArea {...p} field="offerings" /></Field>
+                <Field label="What makes it different"><TextArea {...p} field="usps" /></Field>
+                <Field label="Key messages"><TextArea {...p} field="key_messages" /></Field>
+                <Field label="Content themes"><TextArea {...p} field="content_themes" /></Field>
+                <Field label="Values"><TextArea {...p} field="brand_values" rows={2} /></Field>
+                <Field label="Calls to action"><TextArea {...p} field="ctas" rows={2} /></Field>
+                <Field label="Keywords" span><TextArea {...p} field="keywords" rows={2} /></Field>
+              </div>
+            </div>
+
+            <div className="form-section">
+              <h3 className="form-section__title">Rules</h3>
+              <p className="form-section__desc">One per line.</p>
+              <div className="form-grid">
+                <Field label="Do's"><TextArea {...p} field="dos" rows={2} /></Field>
+                <Field label="Don'ts"><TextArea {...p} field="donts" rows={2} /></Field>
+              </div>
+            </div>
+
+            {canManage && (
+              <div className="form-actions ig-end">
+                <button className="btn btn-secondary" onClick={apply} disabled={!!busy}>
+                  {busy === 'apply' ? <Loader2 size={16} className="spinning" /> : <Wand2 size={16} />} Apply to Account DNA
+                </button>
+                <button className="btn btn-primary" onClick={save} disabled={!!busy}>
+                  {busy === 'save' ? <Loader2 size={16} className="spinning" /> : <Save size={16} />} Save
+                </button>
+              </div>
+            )}
+          </Section>
 
           {notes && (
-            <div className="card">
-              <div className="card-header">
-                <h2>Research notes</h2>
-                <span style={muted}>{notes.stats?.facts} facts · {notes.stats?.pages} pages · {notes.stats?.captions} captions · {notes.stats?.comments} comments</span>
-              </div>
-              <div className="card-body">
-                {notes.gaps?.length > 0 && (
-                  <div className="mb-16">
-                    <strong style={{ fontSize: 14 }}>What the research couldn't establish</strong>
-                    <ul style={{ paddingLeft: 18, fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-                      {notes.gaps.map((g) => <li key={g}>{g}</li>)}
-                    </ul>
+            <Section
+              title="Research notes"
+              description={`${notes.stats?.facts ?? 0} facts from ${notes.stats?.pages ?? 0} pages, ${notes.stats?.captions ?? 0} captions and ${notes.stats?.comments ?? 0} comments.`}
+            >
+              {notes.gaps?.length > 0 && (
+                <div className="callout callout--warning mb-16">
+                  <AlertTriangle size={16} aria-hidden="true" />
+                  <div>
+                    <strong>What the research couldn't establish</strong>
+                    <ul>{notes.gaps.map((g) => <li key={g}>{g}</li>)}</ul>
                   </div>
-                )}
+                </div>
+              )}
+              <div className="ig-facts">
                 {Object.entries(byCategory).map(([cat, facts]) => (
-                  <details key={cat} style={{ marginBottom: 8 }}>
-                    <summary style={{ cursor: 'pointer', fontSize: 14, textTransform: 'capitalize' }}>{cat.replace('_', ' ')} ({facts.length})</summary>
-                    <ul style={{ paddingLeft: 18, fontSize: 13, marginTop: 6 }}>
+                  <details key={cat}>
+                    <summary>{cat.replace('_', ' ')} ({facts.length})</summary>
+                    <ul>
                       {facts.map((f, i) => (
-                        <li key={i} style={{ marginBottom: 4 }}>
-                          {f.fact}{f.evidence && <span style={muted}> — “{f.evidence}”</span>} <span style={muted}>({f.source})</span>
+                        <li key={i}>
+                          {f.fact}{f.evidence && <span className="ig-meta"> — “{f.evidence}”</span>} <span className="ig-meta">({f.source})</span>
                         </li>
                       ))}
                     </ul>
                   </details>
                 ))}
               </div>
-            </div>
+            </Section>
           )}
         </>
       )}
-    </>
+    </div>
   );
 }

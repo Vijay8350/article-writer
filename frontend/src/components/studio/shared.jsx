@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useId } from 'react';
+import { Switch, SettingRow } from '../ui';
 
 // Small helpers shared by the Instagram Studio tabs.
 
@@ -33,37 +34,42 @@ export function timezoneOptions(current) {
   return [...new Set([current, 'Asia/Kolkata', 'UTC', ...all].filter(Boolean))];
 }
 
-export function Field({ label, hint, children }) {
+// A labelled field. The label and hint are tied to the (single) child control.
+// `span` makes it take the whole row of a .form-grid.
+export function Field({ label, hint, children, span = false }) {
+  const autoId = useId();
+  const id = (React.isValidElement(children) && children.props.id) || autoId;
+  const hintId = hint ? `${id}-hint` : undefined;
+  const control = React.isValidElement(children)
+    ? React.cloneElement(children, { id, ...(hintId ? { 'aria-describedby': hintId } : {}) })
+    : children;
   return (
-    <div className="form-group">
-      <label className="form-label">{label}</label>
-      {children}
-      {hint && <div className="form-helper">{hint}</div>}
+    <div className={`form-group${span ? ' span-all' : ''}`}>
+      <label className="form-label" htmlFor={id}>{label}</label>
+      {control}
+      {hint && <div className="form-helper" id={hintId}>{hint}</div>}
     </div>
   );
 }
 
 // Controlled text input / textarea bound to obj[key].
-export function TextInput({ value, onChange, field, placeholder, disabled }) {
-  return <input className="form-input" value={value[field] ?? ''} disabled={disabled} placeholder={placeholder}
+export function TextInput({ value, onChange, field, placeholder, disabled, id, ...rest }) {
+  return <input className="form-input" id={id} aria-describedby={rest['aria-describedby']} value={value[field] ?? ''} disabled={disabled} placeholder={placeholder}
     onChange={(e) => onChange({ ...value, [field]: e.target.value })} />;
 }
 
-export function TextArea({ value, onChange, field, placeholder, rows = 3, disabled }) {
-  return <textarea className="form-textarea" style={{ minHeight: 0 }} rows={rows} value={value[field] ?? ''} disabled={disabled}
+export function TextArea({ value, onChange, field, placeholder, rows = 3, disabled, id, ...rest }) {
+  return <textarea className="form-textarea" id={id} aria-describedby={rest['aria-describedby']} style={{ minHeight: 0 }} rows={rows} value={value[field] ?? ''} disabled={disabled}
     placeholder={placeholder} onChange={(e) => onChange({ ...value, [field]: e.target.value })} />;
 }
 
+// An on/off setting: title and explanation on the left, a switch on the right.
 export function Toggle({ checked, onChange, label, sub, disabled }) {
+  const id = useId();
   return (
-    <label className="flex items-center justify-between gap-12" style={{ cursor: disabled ? 'default' : 'pointer' }}>
-      <span>
-        <span style={{ display: 'block', fontWeight: 600, fontSize: 14 }}>{label}</span>
-        {sub && <span style={muted}>{sub}</span>}
-      </span>
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)}
-        style={{ width: 20, height: 20, accentColor: 'var(--accent-primary)', flex: '0 0 auto' }} />
-    </label>
+    <SettingRow title={label} description={sub} htmlFor={id}>
+      <Switch id={id} checked={checked} disabled={disabled} onChange={onChange} />
+    </SettingRow>
   );
 }
 

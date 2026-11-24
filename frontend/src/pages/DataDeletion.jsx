@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Seo from '../components/Seo';
+import SiteChrome from '../components/SiteChrome';
 import { getDataDeletionStatus } from '../lib/api';
 
 // Public page Meta links to from the Facebook data-deletion callback
@@ -16,9 +17,9 @@ export default function DataDeletion() {
   }, [code]);
 
   return (
+    <SiteChrome>
     <div className="legal-page">
       <Seo title="Data Deletion" description="How to delete the Instagram and Facebook data Article Writer stores." path="/data-deletion" />
-      <Link to="/" className="legal-back">← Back to home</Link>
       <article className="legal-doc">
         <h1>Data Deletion</h1>
 
@@ -64,5 +65,6 @@ export default function DataDeletion() {
         .legal-callout { border: 1px solid var(--border-primary); border-radius: var(--radius-md); padding: 16px; margin-bottom: 8px; }
       `}</style>
     </div>
+    </SiteChrome>
   );
 }

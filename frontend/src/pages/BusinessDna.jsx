@@ -1,25 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Dna, RefreshCw, Loader2, Store, Instagram, Package, FolderOpen, FileText } from 'lucide-react';
+import {
+  Dna, RefreshCw, Loader2, Store, Instagram, Package, FolderOpen, FileText, AlertTriangle, Heart, MessageCircle, Trash2,
+} from 'lucide-react';
 import {
   getBusinessDna, fetchBusinessDna, fetchSocialBusinessDna, clearBusinessDna, getInstagramAccounts, syncCollections,
 } from '../lib/api';
 import toast from 'react-hot-toast';
+import { PageHeader, Section, Segmented, EmptyState, SettingRow } from '../components/ui';
+import '../styles/workspace.css';
 
 const SOURCES = {
   shopify: {
     label: 'Shopify store',
     icon: Store,
-    hint: 'Reads products, collections, pages and blog articles from your connected store via the Admin API.',
-    loading: 'Analyzing your Shopify store...',
-    loadingSub: 'Fetching products, collections, articles, and pages',
+    hint: 'Reads products, collections, pages and blog articles from your connected Shopify store.',
+    loading: 'Reading your Shopify store…',
+    loadingSub: 'Fetching products, collections, articles and pages',
   },
   social: {
-    label: 'Instagram + Website',
+    label: 'Instagram + website',
     icon: Instagram,
-    hint: 'Reads your Instagram profile and posts plus your public website (and its product catalog if it runs on Shopify). AI then turns it into a brand profile: voice, audience, content pillars and keywords.',
-    loading: 'Building your brand DNA...',
-    loadingSub: 'Reading Instagram and your website, then analyzing with AI',
+    hint: 'Reads your Instagram profile and posts and your public website (and its products, if it runs on Shopify). AI then writes a brand profile: voice, audience, content pillars and keywords.',
+    loading: 'Building your brand DNA…',
+    loadingSub: 'Reading Instagram and your website, then analysing with AI',
   },
 };
 
@@ -76,7 +80,7 @@ export default function BusinessDna() {
         ? await fetchSocialBusinessDna({ websiteUrl: websiteUrl.trim() || undefined, instagramAccountId: igAccountId || undefined })
         : await fetchBusinessDna();
       setDna(res.data);
-      toast.success('Business DNA ready!');
+      toast.success('Business DNA ready');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to build Business DNA');
     }
@@ -93,74 +97,86 @@ export default function BusinessDna() {
     }
   };
 
+  const confirmClear = () => {
+    if (window.confirm('Clear Business DNA for this workspace?\n\nThe AI forgets your products, collections and brand profile until you build it again.')) handleClear();
+  };
+
   if (loading) {
-    return <div className="page-container"><div className="empty-state"><div className="spinner spinner-lg" /></div></div>;
+    return <div className="page-container fade-in"><div className="empty-state"><div className="spinner spinner-lg" /></div></div>;
   }
 
   const sourceInfo = SOURCES[source];
   const selectedAccount = igAccounts.find(a => a.id === igAccountId);
   const isRefresh = dna && (dna.source || 'shopify') === source;
+  const builtFrom = dna ? SOURCES[dna.source || 'shopify'].label : null;
+  const buildLabel = isRefresh ? 'Refresh Business DNA' : 'Build Business DNA';
+
+  const buildButton = (
+    <button className="btn btn-primary" onClick={handleFetch} disabled={fetching}>
+      {fetching
+        ? <><Loader2 size={16} className="spinning" /> Working…</>
+        : <><RefreshCw size={16} /> {buildLabel}</>}
+    </button>
+  );
 
   return (
-    <div className="page-container fade-in">
-      <div className="page-header flex items-center justify-between">
-        <div>
-          <h1>Business DNA</h1>
-          <p>Teach the AI your brand so articles are contextual, on-voice and link to real products</p>
-        </div>
-        {dna && <button className="btn btn-danger btn-sm" onClick={handleClear}>Clear</button>}
-      </div>
+    <div className="page-container fade-in wk-page">
+      <PageHeader
+        title="Business DNA"
+        subtitle="Teach the AI your brand so articles sound like you and link to real products."
+        actions={buildButton}
+      />
 
       {fetching && (
         <div className="loading-overlay">
           <div className="spinner spinner-lg" />
           <div className="loading-text">{sourceInfo.loading}</div>
-          <div className="loading-text" style={{ fontSize: 12 }}>{sourceInfo.loadingSub}</div>
+          <div className="loading-text bdna-loading-sub">{sourceInfo.loadingSub}</div>
         </div>
       )}
 
-      {/* Builder: pick a source */}
-      <div className="card mb-24">
-        <div className="card-header"><h2>Build from</h2></div>
-        <div className="card-body">
-          <div className="flex gap-8 mb-16">
-            {Object.entries(SOURCES).map(([id, s]) => (
-              <button
-                key={id}
-                className={`btn ${source === id ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ flex: 1 }}
-                onClick={() => setSource(id)}
-              >
-                <s.icon size={16} /> {s.label}
-              </button>
-            ))}
-          </div>
-          <div className="form-helper mb-16">{sourceInfo.hint}</div>
+      <div className="stack">
+        {/* Builder: pick a source */}
+        <Section
+          className="bdna-source"
+          title="Build from"
+          description={dna
+            ? `Last built from ${builtFrom}${dna.fetchedAt ? ` on ${new Date(dna.fetchedAt).toLocaleString()}` : ''}.`
+            : 'Choose where the AI learns about your brand.'}
+        >
+          <Segmented
+            value={source}
+            onChange={setSource}
+            ariaLabel="Build from"
+            options={Object.entries(SOURCES).map(([value, s]) => ({ value, label: s.label, icon: s.icon }))}
+          />
+          <p className="form-helper bdna-source__hint">{sourceInfo.hint}</p>
 
           {source === 'social' && (
-            <>
+            <div className="form-grid bdna-source__fields">
               <div className="form-group">
-                <label className="form-label">Instagram account</label>
                 {igAccounts.length > 0 ? (
-                  <select className="form-select" value={igAccountId} onChange={e => setIgAccountId(e.target.value)}>
-                    <option value="">None (website only)</option>
-                    {igAccounts.map(a => <option key={a.id} value={a.id}>@{a.username || a.ig_user_id}</option>)}
-                  </select>
+                  <>
+                    <label className="form-label" htmlFor="dna-ig-account">Instagram account</label>
+                    <select id="dna-ig-account" className="form-select" value={igAccountId} onChange={e => setIgAccountId(e.target.value)}>
+                      <option value="">None (website only)</option>
+                      {igAccounts.map(a => <option key={a.id} value={a.id}>@{a.username || a.ig_user_id}</option>)}
+                    </select>
+                  </>
                 ) : (
-                  <div className="form-helper">
-                    No Instagram account connected yet. <Link to="/instagram">Connect one on the Instagram page</Link>, or build from your website only.
-                  </div>
-                )}
-                {selectedAccount?.token_error && (
-                  <div className="form-helper" style={{ color: 'var(--accent-warning)' }}>
-                    This account's token has a problem ({selectedAccount.token_error}). Reconnect it on the <Link to="/instagram">Instagram page</Link> if the build fails.
-                  </div>
+                  <>
+                    <div className="form-label">Instagram account</div>
+                    <div className="form-helper">
+                      No Instagram account connected yet. <Link to="/instagram">Connect one</Link>, or build from your website only.
+                    </div>
+                  </>
                 )}
               </div>
 
               <div className="form-group">
-                <label className="form-label">Website URL</label>
+                <label className="form-label" htmlFor="dna-website">Website URL</label>
                 <input
+                  id="dna-website"
                   className="form-input"
                   value={websiteUrl}
                   onChange={e => setWebsiteUrl(e.target.value)}
@@ -168,102 +184,112 @@ export default function BusinessDna() {
                 />
                 <div className="form-helper">Leave blank to use the website in your Instagram bio.</div>
               </div>
-            </>
+
+              {selectedAccount?.token_error && (
+                <div className="callout callout--warning span-all">
+                  <AlertTriangle size={16} />
+                  <span>
+                    This account's sign-in has a problem ({selectedAccount.token_error}). If the build fails, reconnect it on the <Link to="/instagram">Instagram page</Link>.
+                  </span>
+                </div>
+              )}
+            </div>
           )}
 
-          <button className="btn btn-primary w-full" onClick={handleFetch} disabled={fetching}>
-            {fetching
-              ? <><Loader2 size={16} className="spinning" /> Working...</>
-              : <><RefreshCw size={16} /> {isRefresh ? 'Refresh Business DNA' : 'Build Business DNA'}</>}
-          </button>
           {dna && !isRefresh && (
-            <div className="form-helper mt-16">This replaces your current Business DNA (built from {SOURCES[dna.source || 'shopify'].label}).</div>
+            <div className="callout callout--warning">
+              <AlertTriangle size={16} />
+              <span>Building from {sourceInfo.label} replaces your current Business DNA (built from {builtFrom}).</span>
+            </div>
           )}
-        </div>
-      </div>
+        </Section>
 
-      {!dna ? (
-        <div className="card">
-          <div className="card-body">
-            <div className="empty-state">
-              <Dna size={48} />
-              <h3>No Business DNA Yet</h3>
-              <p>Pick a source above and build it. Every article, scheduled post and campaign in this workspace uses it for context, product links and images.</p>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="stats-grid slide-up">
-            <div className="stat-card">
-              <div className="stat-icon"><Store size={18} /></div>
-              <div className="stat-value" style={{ fontSize: 18 }}>{dna.shop?.name}</div>
-              <div className="stat-label">{dna.shop?.domain || (dna.instagram ? `@${dna.instagram.username}` : '')}</div>
-            </div>
-            {dna.instagram && (
+        {!dna ? (
+          <Section>
+            <EmptyState
+              icon={Dna}
+              title="No Business DNA yet"
+              text="Pick a source above and build it. Every article, scheduled post and campaign in this workspace uses it for context, product links and images."
+              action={(
+                <button className="btn btn-primary" onClick={handleFetch} disabled={fetching}>
+                  <RefreshCw size={16} /> Build Business DNA
+                </button>
+              )}
+            />
+          </Section>
+        ) : (
+          <>
+            <div className={`stat-row bdna-stats${dna.instagram ? ' has-5' : ''}`}>
+              <div className="stat-card bdna-stats__store">
+                <div className="stat-icon"><Store size={18} /></div>
+                <div className="stat-value">{dna.shop?.name || dna.instagram?.name || dna.website?.hostname || '—'}</div>
+                <div className="stat-label">{dna.shop?.domain || (dna.instagram ? `@${dna.instagram.username}` : '')}</div>
+              </div>
+              {dna.instagram && (
+                <div className="stat-card">
+                  <div className="stat-icon"><Instagram size={18} /></div>
+                  <div className="stat-value">{fmt(dna.instagram.followersCount)}</div>
+                  <div className="stat-label">Instagram followers</div>
+                </div>
+              )}
               <div className="stat-card">
-                <div className="stat-icon"><Instagram size={18} /></div>
-                <div className="stat-value">{fmt(dna.instagram.followersCount)}</div>
-                <div className="stat-label">Instagram followers</div>
+                <div className="stat-icon"><Package size={18} /></div>
+                <div className="stat-value">{dna.analysis?.totalProducts}</div>
+                <div className="stat-label">Products</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-icon"><FolderOpen size={18} /></div>
+                <div className="stat-value">{dna.analysis?.totalCollections}</div>
+                <div className="stat-label">Collections</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-icon"><FileText size={18} /></div>
+                <div className="stat-value">{dna.analysis?.totalArticles}</div>
+                <div className="stat-label">Articles</div>
+              </div>
+            </div>
+
+            {dna.warnings?.length > 0 && (
+              <div className="callout callout--warning" role="status">
+                <AlertTriangle size={18} />
+                <div className="wk-callout-body">
+                  <div className="wk-callout-title">Some things need attention</div>
+                  <ul className="wk-callout-list">
+                    {dna.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                  </ul>
+                  {dna.warnings.some(w => w.includes('read_content')) && (
+                    <>
+                      <p className="wk-callout-sub">To fix it in Shopify admin:</p>
+                      <ol className="steps-list wk-steps">
+                        <li><span>Go to <strong>Settings → Apps and sales channels → Develop apps</strong> and select your app.</span></li>
+                        <li><span>Open <strong>Configuration → Admin API access scopes</strong> and add <strong>read_content</strong> and <strong>write_content</strong>.</span></li>
+                        <li><span>Save, then reinstall the app.</span></li>
+                      </ol>
+                    </>
+                  )}
+                </div>
               </div>
             )}
-            <div className="stat-card">
-              <div className="stat-icon"><Package size={18} /></div>
-              <div className="stat-value">{dna.analysis?.totalProducts}</div>
-              <div className="stat-label">Products</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon"><FolderOpen size={18} /></div>
-              <div className="stat-value">{dna.analysis?.totalCollections}</div>
-              <div className="stat-label">Collections</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-icon"><FileText size={18} /></div>
-              <div className="stat-value">{dna.analysis?.totalArticles}</div>
-              <div className="stat-label">Articles</div>
-            </div>
-          </div>
 
-          {dna.warnings?.length > 0 && (
-            <div className="card mb-24 slide-up" style={{ borderColor: 'rgba(178,91,0,0.18)' }}>
-              <div className="card-header" style={{ background: 'var(--warning-tint)', borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0' }}>
-                <h3>Heads up</h3>
-              </div>
-              <div className="card-body">
-                {dna.warnings.map((w, i) => (
-                  <p key={i} style={{ fontSize: 13, color: 'var(--accent-warning)', marginBottom: 8 }}>• {w}</p>
-                ))}
-                {dna.warnings.some(w => w.includes('read_content')) && (
-                  <p className="form-helper mt-16">
-                    To fix: Go to <strong>Shopify Admin → Settings → Apps and sales channels → Develop apps</strong> → Select your app →
-                    <strong> Configuration → Admin API access scopes</strong> → Add <strong>read_content</strong> and <strong>write_content</strong> scopes → Save → Reinstall app.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* AI brand profile (Instagram + Website DNA) */}
-          {dna.brand && (
-            <div className="card mb-24 slide-up">
-              <div className="card-header">
-                <h3>Brand Profile</h3>
-                <span className="badge badge-purple">by {dna.brand.aiProvider === 'deepseek' ? 'DeepSeek' : 'Gemini'}</span>
-              </div>
-              <div className="card-body">
-                {dna.brand.summary && <p style={{ fontSize: 15, marginBottom: 20 }}>{dna.brand.summary}</p>}
+            {/* AI brand profile (Instagram + website DNA) */}
+            {dna.brand && (
+              <Section
+                title="Brand profile"
+                actions={<span className="badge badge-purple">Written by {dna.brand.aiProvider === 'deepseek' ? 'DeepSeek' : 'Gemini'}</span>}
+              >
+                {dna.brand.summary && <p className="bdna-lead">{dna.brand.summary}</p>}
                 <div className="dna-grid">
                   <div>
                     {dna.brand.voice && (
                       <div className="dna-section">
-                        <div className="dna-section-title">Brand Voice</div>
-                        <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{dna.brand.voice}</p>
+                        <div className="dna-section-title">Brand voice</div>
+                        <p className="bdna-text">{dna.brand.voice}</p>
                       </div>
                     )}
                     {dna.brand.valuePropositions?.length > 0 && (
                       <div className="dna-section">
-                        <div className="dna-section-title">What Makes It Different</div>
-                        <ul style={{ fontSize: 14, color: 'var(--text-secondary)', paddingLeft: 18 }}>
+                        <div className="dna-section-title">What makes it different</div>
+                        <ul className="bdna-bullets">
                           {dna.brand.valuePropositions.map(v => <li key={v}>{v}</li>)}
                         </ul>
                       </div>
@@ -272,7 +298,7 @@ export default function BusinessDna() {
                   <div>
                     {dna.brand.contentPillars?.length > 0 && (
                       <div className="dna-section">
-                        <div className="dna-section-title">Content Pillars</div>
+                        <div className="dna-section-title">Content pillars</div>
                         <div className="dna-tags">{dna.brand.contentPillars.map(p => <span key={p} className="dna-tag">{p}</span>)}</div>
                       </div>
                     )}
@@ -284,108 +310,100 @@ export default function BusinessDna() {
                     )}
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
+              </Section>
+            )}
 
-          {(dna.instagram || dna.website) && (
-            <div className="dna-grid mb-24">
-              {dna.instagram && (
-                <div className="card slide-up">
-                  <div className="card-header">
-                    <h3>Instagram</h3>
-                    <a href={`https://www.instagram.com/${dna.instagram.username}/`} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
-                      @{dna.instagram.username}
-                    </a>
-                  </div>
-                  <div className="card-body" style={{ maxHeight: 420, overflowY: 'auto' }}>
-                    {dna.instagram.name && <p style={{ fontWeight: 600 }}>{dna.instagram.name}</p>}
-                    {dna.instagram.biography && (
-                      <p style={{ fontSize: 14, color: 'var(--text-secondary)', whiteSpace: 'pre-line', margin: '6px 0' }}>{dna.instagram.biography}</p>
+            {(dna.instagram || dna.website) && (
+              <div className="grid-2">
+                {dna.instagram && (
+                  <Section
+                    title="Instagram"
+                    bodyClassName="bdna-scroll"
+                    actions={(
+                      <a href={`https://www.instagram.com/${dna.instagram.username}/`} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
+                        @{dna.instagram.username}
+                      </a>
                     )}
-                    <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+                  >
+                    {dna.instagram.name && <p className="bdna-ig-name">{dna.instagram.name}</p>}
+                    {dna.instagram.biography && <p className="bdna-ig-bio">{dna.instagram.biography}</p>}
+                    <p className="bdna-ig-counts">
                       {fmt(dna.instagram.followersCount)} followers · {fmt(dna.instagram.mediaCount)} posts
                     </p>
                     {dna.instagram.topHashtags?.length > 0 && (
                       <div className="dna-section">
-                        <div className="dna-section-title">Top Hashtags</div>
+                        <div className="dna-section-title">Top hashtags</div>
                         <div className="dna-tags">{dna.instagram.topHashtags.map(h => <span key={h} className="dna-tag">{h}</span>)}</div>
                       </div>
                     )}
                     {dna.instagram.recentPosts?.length > 0 && (
                       <div className="dna-section">
-                        <div className="dna-section-title">Recent Posts</div>
+                        <div className="dna-section-title">Recent posts</div>
                         {dna.instagram.recentPosts.map((p, i) => (
-                          <div key={p.permalink || i} style={{ padding: '8px 0', borderBottom: '1px solid var(--border-secondary)', fontSize: 13 }}>
-                            <div style={{ color: 'var(--text-secondary)' }}>
+                          <div key={p.permalink || i} className="bdna-post">
+                            <div>
                               {p.caption ? (p.caption.length > 140 ? `${p.caption.slice(0, 140)}…` : p.caption) : <em>No caption</em>}
                             </div>
-                            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 4 }}>
-                              {p.likeCount != null && <>❤ {fmt(p.likeCount)} · </>}
-                              {p.commentsCount != null && <>💬 {fmt(p.commentsCount)} · </>}
-                              {p.timestamp && new Date(p.timestamp).toLocaleDateString()}
-                              {p.permalink && <> · <a href={p.permalink} target="_blank" rel="noreferrer">View</a></>}
+                            <div className="bdna-post__meta">
+                              {p.likeCount != null && <span><Heart size={12} aria-label="Likes" /> {fmt(p.likeCount)}</span>}
+                              {p.commentsCount != null && <span><MessageCircle size={12} aria-label="Comments" /> {fmt(p.commentsCount)}</span>}
+                              {p.timestamp && <span>{new Date(p.timestamp).toLocaleDateString()}</span>}
+                              {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer">View</a>}
                             </div>
                           </div>
                         ))}
                       </div>
                     )}
-                  </div>
-                </div>
-              )}
+                  </Section>
+                )}
 
-              {dna.website && (
-                <div className="card slide-up">
-                  <div className="card-header">
-                    <h3>Website</h3>
-                    <span className={`badge ${dna.website.isShopify ? 'badge-success' : 'badge-info'}`}>
-                      {dna.website.isShopify ? 'Shopify storefront' : 'Website'}
-                    </span>
-                  </div>
-                  <div className="card-body">
-                    <a href={dna.website.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>{dna.website.hostname}</a>
-                    {dna.website.title && <p style={{ fontSize: 14, marginTop: 6 }}>{dna.website.title}</p>}
-                    {dna.website.description && (
-                      <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '6px 0 16px' }}>{dna.website.description}</p>
+                {dna.website && (
+                  <Section
+                    title="Website"
+                    actions={(
+                      <span className={`badge ${dna.website.isShopify ? 'badge-success' : 'badge-info'}`}>
+                        {dna.website.isShopify ? 'Shopify storefront' : 'Website'}
+                      </span>
                     )}
+                  >
+                    <a href={dna.website.url} target="_blank" rel="noreferrer" className="bdna-site">{dna.website.hostname}</a>
+                    {dna.website.title && <p className="bdna-site-title">{dna.website.title}</p>}
+                    {dna.website.description && <p className="bdna-site-desc">{dna.website.description}</p>}
                     {dna.website.headings?.length > 0 && (
                       <div className="dna-section">
-                        <div className="dna-section-title">Key Headings</div>
+                        <div className="dna-section-title">Key headings</div>
                         <div className="dna-tags">{dna.website.headings.map(h => <span key={h} className="dna-tag">{h}</span>)}</div>
                       </div>
                     )}
                     {Object.keys(dna.website.socialLinks || {}).length > 0 && (
                       <div className="dna-section">
-                        <div className="dna-section-title">Social Profiles</div>
+                        <div className="dna-section-title">Social profiles</div>
                         {Object.entries(dna.website.socialLinks).map(([net, url]) => (
-                          <p key={net} style={{ fontSize: 13 }}><a href={url} target="_blank" rel="noreferrer">{url.replace(/^https:\/\//, '')}</a></p>
+                          <p key={net} className="bdna-social"><a href={url} target="_blank" rel="noreferrer">{url.replace(/^https:\/\//, '')}</a></p>
                         ))}
                       </div>
                     )}
                     {dna.website.aboutUrl && (
                       <p className="form-helper">Brand story read from <a href={dna.website.aboutUrl} target="_blank" rel="noreferrer">{new URL(dna.website.aboutUrl).pathname}</a></p>
                     )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+                  </Section>
+                )}
+              </div>
+            )}
 
-          <div className="dna-grid">
-            <div className="card slide-up">
-              <div className="card-header"><h3>Business Analysis</h3></div>
-              <div className="card-body">
+            <div className="grid-2">
+              <Section title="Business analysis">
                 <div className="dna-section">
                   <div className="dna-section-title">Niche</div>
-                  <p style={{ fontSize: 15 }}>{dna.analysis?.niche}</p>
+                  <p>{dna.analysis?.niche}</p>
                 </div>
                 <div className="dna-section">
-                  <div className="dna-section-title">Target Audience</div>
-                  <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{dna.analysis?.targetAudience}</p>
+                  <div className="dna-section-title">Target audience</div>
+                  <p className="bdna-text">{dna.analysis?.targetAudience}</p>
                 </div>
                 {dna.analysis?.productTypes?.length > 0 && (
                   <div className="dna-section">
-                    <div className="dna-section-title">Product Types</div>
+                    <div className="dna-section-title">Product types</div>
                     <div className="dna-tags">
                       {dna.analysis.productTypes.map(t => <span key={t} className="dna-tag">{t}</span>)}
                     </div>
@@ -393,89 +411,95 @@ export default function BusinessDna() {
                 )}
                 {dna.analysis?.topTags?.length > 0 && (
                   <div className="dna-section">
-                    <div className="dna-section-title">Top Tags</div>
+                    <div className="dna-section-title">Top tags</div>
                     <div className="dna-tags">
                       {dna.analysis.topTags.slice(0, 12).map(t => <span key={t} className="dna-tag">{t}</span>)}
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
+              </Section>
 
-            <div className="card slide-up">
-              <div className="card-header">
-                <h3>Collections ({dna.collections?.length || 0})</h3>
-                <button className="btn btn-ghost btn-sm" onClick={handleSyncCollections} disabled={syncingCollections} title="Get the latest collections from Shopify">
-                  {syncingCollections ? <Loader2 size={14} className="spinning" /> : <RefreshCw size={14} />} Sync
-                </button>
-              </div>
-              <div className="card-body" style={{ maxHeight: 300, overflowY: 'auto' }}>
-                {dna.collections?.map(c => (
-                  <div key={c.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border-secondary)', fontSize: 14 }}>
-                    <span style={{ fontWeight: 500 }}>{c.title}</span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: 12, marginLeft: 8 }}>/collections/{c.handle}</span>
+              <Section
+                flush
+                title="Collections"
+                description={`${dna.collections?.length || 0} in your store`}
+                actions={(
+                  <button className="btn btn-ghost btn-sm" onClick={handleSyncCollections} disabled={syncingCollections} title="Get the latest collections from Shopify">
+                    {syncingCollections ? <Loader2 size={14} className="spinning" /> : <RefreshCw size={14} />} Sync
+                  </button>
+                )}
+              >
+                {dna.collections?.length > 0 ? (
+                  <div className="bdna-rows">
+                    {dna.collections.map(c => (
+                      <div key={c.id} className="bdna-row">
+                        <strong>{c.title}</strong>
+                        <span>/collections/{c.handle}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-                {(!dna.collections || dna.collections.length === 0) && <p style={{ color: 'var(--text-muted)' }}>No collections found</p>}
-              </div>
+                ) : (
+                  <p className="bdna-none">No collections found</p>
+                )}
+              </Section>
             </div>
-          </div>
 
-          <div className="card mt-24 slide-up">
-            <div className="card-header"><h3>Products ({dna.products?.length || 0})</h3></div>
-            <div className="card-body">
+            <Section flush title="Products" description={`${dna.products?.length || 0} in your store`}>
               {dna.products?.length > 0 ? (
-                <div className="table-container" style={{ maxHeight: 400, overflowY: 'auto' }}>
-                  <table className="data-table">
-                    <thead><tr><th>Product</th><th>Type</th><th>Handle</th></tr></thead>
-                    <tbody>
-                      {dna.products.slice(0, 50).map(p => (
-                        <tr key={p.id}>
-                          <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{p.title}</td>
-                          <td><span className="badge badge-purple">{p.productType || '—'}</span></td>
-                          <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>/products/{p.handle}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {dna.products.length > 50 && <p className="form-helper mt-16">Showing 50 of {dna.products.length} products</p>}
-                </div>
+                <>
+                  <div className="table-container bdna-table">
+                    <table className="data-table">
+                      <thead><tr><th>Product</th><th>Type</th><th>Handle</th></tr></thead>
+                      <tbody>
+                        {dna.products.slice(0, 50).map(p => (
+                          <tr key={p.id}>
+                            <td className="is-title">{p.title}</td>
+                            <td><span className="badge badge-purple">{p.productType || '—'}</span></td>
+                            <td className="is-sub">/products/{p.handle}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {dna.products.length > 50 && <p className="bdna-table-foot">Showing 50 of {dna.products.length} products</p>}
+                </>
               ) : (
-                <p style={{ color: 'var(--text-muted)' }}>No products found</p>
+                <p className="bdna-none">No products found</p>
               )}
-            </div>
-          </div>
+            </Section>
 
-          <div className="card mt-24 slide-up">
-            <div className="card-header"><h3>Existing Articles ({dna.articles?.length || 0})</h3></div>
-            <div className="card-body">
+            <Section flush title="Existing articles" description={`${dna.articles?.length || 0} on your blog`}>
               {dna.articles?.length > 0 ? (
-                <div className="table-container" style={{ maxHeight: 300, overflowY: 'auto' }}>
+                <div className="table-container bdna-table">
                   <table className="data-table">
                     <thead><tr><th>Title</th><th>Blog</th><th>Tags</th></tr></thead>
                     <tbody>
                       {dna.articles.map(a => (
                         <tr key={a.id}>
-                          <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{a.title}</td>
+                          <td className="is-title">{a.title}</td>
                           <td><span className="badge badge-info">{a.blogTitle}</span></td>
-                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{a.tags || '—'}</td>
+                          <td className="is-sub">{a.tags || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               ) : (
-                <p style={{ color: 'var(--text-muted)' }}>No existing articles found</p>
+                <p className="bdna-none">No existing articles found</p>
               )}
-            </div>
-          </div>
+            </Section>
 
-          <p className="form-helper mt-16">
-            Built from {SOURCES[dna.source || 'shopify'].label} · Last updated: {new Date(dna.fetchedAt).toLocaleString()}
-          </p>
-        </>
-      )}
-      <style>{`.spinning { animation: spin 1s linear infinite; }`}</style>
+            <Section title="Danger zone" className="danger-zone">
+              <SettingRow
+                title="Clear Business DNA"
+                description="Removes what the AI has learned about your store from this workspace. Articles and campaigns need it, so build it again before writing more."
+              >
+                <button className="btn btn-danger btn-sm" onClick={confirmClear}><Trash2 size={14} /> Clear</button>
+              </SettingRow>
+            </Section>
+          </>
+        )}
+      </div>
     </div>
   );
 }

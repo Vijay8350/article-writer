@@ -1,0 +1,132 @@
+/* Admin console (pages/Admin.jsx). Tokens only; shared building blocks live in index.css. */
+
+/* Counts on the tabs */
+.admin-tab-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: var(--radius-pill); background: var(--fill-secondary); color: var(--text-secondary); font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.admin-tab-count.is-alert { background: var(--warning-tint); color: var(--accent-warning); }
+
+/* One-line explanations above a tab's content */
+.admin-intro { flex: 1 1 360px; margin: 0; max-width: 760px; font-size: 13.5px; line-height: 1.5; color: var(--text-muted); }
+
+/* Small secondary text in rows and cells */
+.admin-sub { font-size: 12.5px; color: var(--text-muted); font-weight: 400; }
+.admin-cell-title { font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
+.admin-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.admin-cap { text-transform: capitalize; }
+.admin-center { text-align: center !important; }
+.admin-empty-line { font-size: 14px; color: var(--text-muted); margin: 0 0 12px; }
+.admin-nowrap { white-space: nowrap; }
+.admin-wrap { overflow-wrap: anywhere; min-width: 200px; }
+
+/* Toolbar inside a flush card */
+.admin-toolbar-pad { padding: 16px 24px 0; }
+.admin-toolbar-pad .toolbar { margin-bottom: 16px; }
+@media (max-width: 600px) { .admin-toolbar-pad { padding: 14px 16px 0; } }
+.admin-search { position: relative; display: inline-flex; align-items: center; flex: 0 1 300px; min-width: 0; }
+.admin-search > svg { position: absolute; left: 12px; color: var(--text-faint); pointer-events: none; }
+.toolbar .admin-search .form-input { width: 100%; min-width: 0; padding-left: 36px; }
+@media (max-width: 600px) { .admin-search { flex: 1 1 100%; } }
+
+/* Tables */
+.admin-table td { font-size: 13.5px; }
+.admin-table--compact th, .admin-table--compact td { padding: 8px 12px; font-size: 13px; }
+.admin-table--compact th:first-child, .admin-table--compact td:first-child { padding-left: 0; }
+.admin-table--compact th:last-child, .admin-table--compact td:last-child { padding-right: 0; }
+.admin-mini-table { margin-top: 16px; }
+.admin-inline-select.form-select { width: auto; min-width: 120px; padding: 5px 32px 5px 10px; font-size: 13px; background-position: right 8px center; }
+.admin-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: nowrap; }
+.admin-btn-danger.btn-ghost { color: var(--accent-danger); }
+.admin-btn-danger.btn-ghost:hover:not(:disabled) { background: var(--danger-tint); color: var(--accent-danger); }
+
+/* Usage "3 / 5", red once it's used up */
+.admin-used { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.admin-used.is-full { color: var(--accent-danger); font-weight: 600; }
+
+/* Customers table: one person may span several workspace rows */
+.admin-customers td { vertical-align: top; }
+.admin-customers td.is-grouped { border-bottom-style: dashed; }
+.admin-customers tbody tr:hover td { background: transparent; }
+.admin-connected { display: flex; flex-direction: column; gap: 4px; }
+.admin-connected .status { font-size: 12.5px; white-space: nowrap; }
+
+/* Five stat tiles: on phones the last one takes the whole row */
+.admin-stats .kpi-tile { margin: 0; }
+@media (max-width: 700px) { .admin-stats > :last-child:nth-child(odd) { grid-column: 1 / -1; } }
+
+/* Callout with a button on the right */
+.admin-callout { align-items: center; margin-bottom: 24px; flex-wrap: wrap; }
+.admin-callout__text { flex: 1 1 240px; }
+
+/* Roles & permissions marks */
+.admin-mark { display: inline-flex; align-items: center; justify-content: center; }
+.admin-mark--yes { color: var(--accent-success); }
+.admin-mark--no { color: var(--text-faint); }
+.admin-mark--text { font-size: 12.5px; color: var(--text-secondary); white-space: nowrap; }
+.admin-perm-table td:first-child { color: var(--text-primary); min-width: 240px; }
+
+/* Plans editor: a column per plan, plan names and Save stay in view */
+.admin-plans { overflow: hidden; }
+.admin-plans__scroll { overflow: auto; max-height: calc(100vh - 160px); }
+.admin-plans__table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+.admin-plans__table th, .admin-plans__table td { padding: 10px 14px; border-bottom: 1px solid var(--border-secondary); text-align: left; vertical-align: middle; background: var(--bg-card); }
+.admin-plans__table tbody tr:last-child th, .admin-plans__table tbody tr:last-child td { border-bottom: 0; }
+.admin-plans__table thead th { position: sticky; top: 0; z-index: 2; vertical-align: top; padding-top: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--border-primary); min-width: 190px; }
+.admin-plans__table tbody th { position: sticky; left: 0; z-index: 1; font-weight: 500; color: var(--text-primary); min-width: 220px; max-width: 280px; border-right: 1px solid var(--border-secondary); }
+.admin-plans__table thead th.admin-plans__corner { left: 0; z-index: 3; color: var(--text-muted); font-size: 12.5px; font-weight: 600; border-right: 1px solid var(--border-secondary); }
+.admin-plans__table tbody th .admin-sub { display: block; margin-top: 2px; line-height: 1.4; }
+.admin-plans__plan { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.admin-plans__dirty { margin-top: 6px; font-size: 12px; font-weight: 500; color: var(--accent-warning); }
+.admin-plans__table .form-input { padding: 7px 10px; font-size: 13.5px; min-width: 140px; }
+.admin-plans__table tr.admin-plans__group th { position: static; padding-top: 18px; padding-bottom: 8px; background: var(--bg-subtle); border-right: 0; max-width: none; font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+.admin-plans__group-label { position: sticky; left: 14px; display: inline-flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.admin-plans__group-label .admin-sub { display: inline; margin: 0; }
+.admin-switch-cell { display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: var(--text-secondary); }
+@media (max-width: 600px) {
+  .admin-plans__table tbody th { min-width: 150px; }
+  .admin-plans__table thead th { min-width: 170px; }
+  .admin-plans__table th, .admin-plans__table td { padding: 8px 10px; }
+}
+
+/* Manage user sheet */
+.sheet:has(.admin-user) .sheet__head h2 { overflow-wrap: anywhere; }
+.admin-user { display: flex; flex-direction: column; }
+.admin-user__badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.admin-user > .callout { margin-bottom: 20px; }
+.admin-user .form-section__title { display: flex; align-items: center; gap: 8px; }
+.admin-user .form-section__title svg { color: var(--text-muted); }
+.admin-inline-form { display: flex; gap: 8px; flex-wrap: wrap; }
+.admin-inline-form > .form-input, .admin-inline-form > .form-select { flex: 1 1 220px; width: auto; min-width: 0; }
+.admin-inline-form > .admin-inline-select.form-select { flex: 0 0 auto; padding-top: 10px; padding-bottom: 10px; }
+.admin-user .pwd-box { margin-top: 12px; }
+.admin-box { border: 1px solid var(--border-primary); border-radius: var(--radius-md); margin-bottom: 12px; }
+.admin-box .list-item { padding: 12px 14px; gap: 12px; }
+.admin-box .list-item__title { font-size: 14px; }
+.admin-box .list-item__meta { font-size: 12.5px; }
+
+/* One workspace's plan and this customer's own changes */
+.admin-plan-box { border: 1px solid var(--border-primary); border-radius: var(--radius-md); padding: 16px; }
+.admin-plan-box__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.admin-plan-box__head .form-label { margin: 0; }
+.admin-plan-group { font-size: 12.5px; font-weight: 600; color: var(--text-muted); margin: 20px 0 4px; }
+.admin-plan-rows .setting-row { flex-wrap: wrap; gap: 8px 16px; padding: 12px 0; }
+.admin-plan-rows .setting-row:first-child { padding-top: 8px; }
+.admin-plan-rows .setting-row__text { flex: 1 1 200px; }
+.admin-plan-rows .setting-row__title { font-size: 14px; }
+.admin-plan-rows .setting-row__control { flex-wrap: wrap; }
+.admin-num-input.form-input { width: 96px; padding: 5px 10px; font-size: 13px; }
+.admin-plan-box__actions { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-secondary); }
+.admin-loading-sm { display: grid; place-items: center; padding: 24px; }
+
+/* Image engine sign-in steps */
+.admin-steps li.is-active::before { background: var(--brand-tint); color: var(--brand); }
+.admin-steps li.is-done::before { background: var(--success-tint); color: var(--accent-success); }
+.admin-step__title { font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+.admin-step__text { color: var(--text-muted); font-size: 13.5px; }
+.admin-step__body { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 8px; }
+.admin-step__body .callout { align-self: stretch; }
+.admin-code-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.admin-code { font-family: var(--font-mono); font-size: 26px; letter-spacing: 4px; padding: 6px 14px; color: var(--text-primary); background: var(--bg-subtle); border: 1px solid var(--border-primary); border-radius: var(--radius-md); user-select: all; }
+.admin-waiting { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13.5px; color: var(--text-secondary); }
+.admin-test-image { margin-top: 16px; }
+.admin-test-image img { width: 220px; max-width: 100%; border-radius: var(--radius-md); display: block; border: 1px solid var(--border-primary); }
+.admin-test-image .callout { margin-top: 10px; }
+.admin-engine-kv { border-top: 1px solid var(--border-secondary); }

@@ -1,0 +1,143 @@
+/* Instagram pages: Studio (and its tabs), Campaigns, Comments, Insights.
+   Everything is scoped under .ig-page so it can't leak into other pages. */
+
+/* ─── Shared bits ─── */
+.ig-page .ig-meta { font-size: 12.5px; color: var(--text-muted); overflow-wrap: anywhere; }
+.ig-page .ig-error { font-size: 13px; color: var(--accent-danger); overflow-wrap: anywhere; }
+.ig-page .ig-wrap-head > .card-header { flex-wrap: wrap; }
+.ig-page .ig-wrap-head .section__actions { flex-shrink: 1; min-width: 0; max-width: 100%; }
+.ig-page .ig-footnote { padding: 12px 24px 16px; border-top: 1px solid var(--border-secondary); font-size: 12.5px; color: var(--text-muted); }
+.ig-page .ig-footnote svg { vertical-align: -1px; }
+.ig-page .callout--compact { padding: 8px 12px; font-size: 13px; }
+.ig-page .form-actions.ig-end { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border-secondary); }
+.ig-page .form-actions.ig-end--split { justify-content: space-between; }
+.ig-page .ig-mt { margin-top: 20px; }
+.ig-page .ig-after-toggle { margin-top: 8px; padding-top: 24px; border-top: 1px solid var(--border-secondary); }
+.ig-page .callout ul { margin: 4px 0 0; padding-left: 18px; }
+.ig-page .ig-checks { display: flex; gap: 10px 22px; flex-wrap: wrap; }
+.ig-page .ig-check-label { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-secondary); cursor: pointer; }
+.ig-page .ig-check-label input { width: 18px; height: 18px; flex-shrink: 0; cursor: pointer; }
+.ig-page .ig-check-label input:disabled { cursor: not-allowed; }
+.ig-page .ig-seg-full .segmented { display: flex; width: 100%; }
+.ig-page .ig-seg-full .segmented button { flex: 1 1 auto; }
+.ig-page .card .kpi-tile { background: var(--bg-subtle); border-color: transparent; }
+.ig-page .ig-chart-group + .ig-chart-group { margin-top: 24px; }
+.ig-page .ig-account-select { width: auto; min-width: 200px; }
+.ig-page .ig-account-name { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; color: var(--text-secondary); }
+
+/* List rows that hold more than one line of text */
+.ig-page .list-item--top { align-items: flex-start; }
+.ig-page .list-item__text { font-size: 14px; color: var(--text-secondary); margin-top: 6px; overflow-wrap: anywhere; }
+.ig-page .list-item__icon { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; flex-shrink: 0; background: var(--bg-subtle); color: var(--text-muted); }
+.ig-page .list-item__icon.is-info { background: var(--brand-tint); color: var(--brand); }
+.ig-page .list-item__icon.is-warn { background: var(--warning-tint); color: var(--accent-warning); }
+.ig-page .list-item__icon.is-error { background: var(--danger-tint); color: var(--accent-danger); }
+
+/* Activity rows */
+.ig-page .ig-log-msg { font-size: 14px; color: var(--text-primary); overflow-wrap: anywhere; }
+.ig-page .ig-stage { display: inline-block; }
+.ig-page .ig-stage::first-letter { text-transform: uppercase; }
+
+/* ─── Studio: readiness row under the header ─── */
+.ig-page .ig-ready { display: flex; align-items: center; gap: 8px 18px; flex-wrap: wrap; margin: -12px 0 20px; }
+.ig-page .ig-ready .status { cursor: default; }
+.ig-page .ig-ready-callout { margin-bottom: 20px; }
+.ig-page .ig-ready-callout ul { list-style: none; padding: 0; display: grid; gap: 4px; }
+
+/* Content tab: composer and post cards */
+.ig-page .ig-compose-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; flex-wrap: wrap; margin-top: 18px; }
+.ig-page .ig-post-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.ig-page .ig-post-head .badge { flex: 0 0 auto; }
+.ig-page .ig-post-title { font-size: 15px; line-height: 1.3; font-weight: 600; color: var(--text-primary); }
+.ig-page .ig-post-lines { padding-left: 18px; font-size: 13px; color: var(--text-secondary); }
+.ig-page .ig-post-caption summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); width: fit-content; }
+.ig-page .ig-post-caption p { white-space: pre-wrap; font-size: 13px; margin-top: 6px; overflow-wrap: anywhere; color: var(--text-secondary); }
+.ig-page .ig-post-caption p.ig-meta { white-space: normal; }
+.ig-page .ig-post-score { font-size: 12.5px; color: var(--text-secondary); }
+.ig-page .ig-post-score.is-bad { color: var(--accent-danger); }
+.ig-page .ig-post-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 4px; }
+
+/* Schedule tab: autopilot switch and time slots */
+.ig-page .status-card__title label { cursor: pointer; }
+.ig-page .callout p + p { margin-top: 4px; }
+.ig-page .ig-slots { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.ig-page .ig-slot { display: flex; align-items: center; gap: 8px; }
+.ig-page .ig-slot .form-input { width: 160px; }
+
+/* Business DNA tab: research progress and notes */
+.ig-page .ig-run { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-secondary); }
+.ig-page .ig-run__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; font-size: 14px; }
+.ig-page .ig-log { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+.ig-page .ig-log__row { display: flex; gap: 8px; align-items: flex-start; }
+.ig-page .ig-log__row svg { flex-shrink: 0; margin-top: 3px; }
+.ig-page .ig-log__ok { color: var(--accent-success); }
+.ig-page .ig-log__warn { color: var(--accent-warning); }
+.ig-page .ig-facts details + details { margin-top: 8px; }
+.ig-page .ig-facts summary { cursor: pointer; font-size: 14px; font-weight: 500; color: var(--text-primary); width: fit-content; }
+.ig-page .ig-facts summary::first-letter { text-transform: uppercase; }
+.ig-page .ig-facts ul { padding-left: 18px; margin-top: 6px; font-size: 13px; color: var(--text-secondary); display: grid; gap: 4px; }
+
+/* Analytics tab and Insights: table cells */
+.ig-page .ig-likes { display: flex; align-items: center; gap: 10px; min-width: 160px; }
+.ig-page .ig-likes .meter { flex: 1; }
+.ig-page .ig-likes span { min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.ig-page .ig-cell-title { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.ig-page .ig-cell-title svg { vertical-align: -1px; }
+.ig-page .ig-post-cell { display: flex; align-items: center; gap: 12px; color: inherit; min-width: 240px; white-space: normal; }
+.ig-page .ig-thumb { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--bg-tertiary); display: block; }
+.ig-page .ig-post-cell__text { min-width: 0; font-size: 13px; color: var(--text-secondary); }
+.ig-page .ig-post-cell__text .badge { margin-right: 6px; }
+
+/* ─── Campaigns ─── */
+.ig-page .ig-progress { display: flex; align-items: center; gap: 8px 12px; margin-top: 10px; flex-wrap: wrap; }
+.ig-page .ig-progress .meter { flex: 1 1 160px; max-width: 280px; }
+.ig-page .ig-progress span { font-size: 13px; color: var(--text-secondary); }
+.ig-page .ig-steps { list-style: none; display: flex; align-items: center; gap: 8px; margin: 0 0 24px; padding: 0; flex-wrap: wrap; }
+.ig-page .ig-steps li { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--text-muted); }
+.ig-page .ig-steps li + li::before { content: ""; width: 18px; height: 1px; background: var(--border-strong); }
+.ig-page .ig-steps__num { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; background: var(--bg-subtle); color: var(--text-muted); }
+.ig-page .ig-steps li.is-done .ig-steps__num { background: var(--brand-tint); color: var(--brand); }
+.ig-page .ig-steps li.is-current { color: var(--text-primary); }
+.ig-page .ig-steps li.is-current .ig-steps__num { background: var(--ink); color: var(--on-ink); }
+.ig-page .ig-review { background: var(--bg-subtle); border-radius: var(--radius-md); padding: 16px; font-size: 14px; line-height: 1.6; color: var(--text-primary); overflow-wrap: anywhere; }
+.ig-page .ig-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+
+/* ─── Comments ─── */
+.ig-page .ig-top-posts { display: flex; flex-direction: column; gap: 8px; }
+.ig-page .ig-top-post { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.ig-page .ig-top-post a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ig-page .ig-top-post span { font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.ig-page .ig-comment__text { font-size: 14.5px; color: var(--text-primary); margin-top: 6px; overflow-wrap: anywhere; }
+.ig-page .ig-comment__reply { margin-top: 8px; padding: 6px 12px; border-left: 2px solid var(--border-strong); font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.ig-page .ig-reply-box { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.ig-page .ig-reply-box .form-input { flex: 1 1 240px; width: auto; }
+.ig-page .ig-rules { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.ig-page .ig-rule { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+.ig-page .ig-rule .form-input { width: auto; }
+.ig-page .ig-rule .form-input:first-child { flex: 1 1 150px; }
+.ig-page .ig-rule .form-input:nth-child(2) { flex: 2 1 220px; }
+.ig-page .ig-number { max-width: 140px; }
+.ig-page .ig-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+/* ─── Insights ─── */
+.ig-page .ig-updated { font-size: 12.5px; color: var(--text-muted); }
+.ig-page .ig-profile { display: flex; align-items: center; gap: 16px 20px; flex-wrap: wrap; }
+.ig-page .ig-profile__pic { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.ig-page .ig-profile__main { flex: 1 1 220px; min-width: 0; }
+.ig-page .ig-profile__name { font-size: 17px; font-weight: 600; color: var(--text-primary); margin-right: 6px; }
+.ig-page .ig-profile__bio { font-size: 13px; color: var(--text-secondary); white-space: pre-line; margin-top: 4px; }
+.ig-page .ig-profile__stats { display: flex; gap: 28px; }
+.ig-page .ig-peak { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; }
+.ig-page .ig-peak strong { color: var(--text-primary); }
+.ig-page .ig-notes p + p { margin-top: 4px; }
+.ig-page .empty-state .spinner + p { margin-top: 16px; margin-bottom: 0; }
+.ig-page .insights-table td.ig-post-td { white-space: normal; min-width: 260px; }
+.ig-page .ig-sort { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; white-space: nowrap; }
+.ig-page .ig-sort:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+.ig-page .ig-post-cell:hover .ig-post-cell__text { color: var(--text-primary); }
+
+@media (max-width: 600px) {
+  .ig-page .ig-footnote { padding: 12px 16px 14px; }
+  .ig-page .ig-account-select { min-width: 0; width: 100%; }
+  .ig-page .ig-ready { margin-top: -8px; }
+}

@@ -26,10 +26,31 @@ api.interceptors.request.use((cfg) => {
   return cfg;
 });
 
+// Plain-language fallbacks for errors that arrive without a message of our own
+// (pages show `err.response?.data?.error || err.message`).
+const FRIENDLY = {
+  400: "Something in the form isn't right. Check it and try again.",
+  403: "You don't have access to this.",
+  404: "We couldn't find that. It may have been removed.",
+  413: 'That file is too large.',
+  429: 'Too many requests right now. Wait a minute and try again.',
+  500: 'Something went wrong on our side. Try again in a moment.',
+  502: 'The service is restarting. Try again in a moment.',
+  503: 'The service is busy. Try again in a moment.',
+  504: 'That took too long to answer. Try again in a moment.',
+};
+function friendlyMessage(error) {
+  if (error.code === 'ECONNABORTED') return 'This is taking longer than expected. Check back in a minute — it may still finish.';
+  if (!error.response) return "Can't reach the server. Check your internet connection and try again.";
+  const s = error.response.status;
+  return FRIENDLY[s] || (s >= 500 ? FRIENDLY[500] : `Something went wrong (error ${s}).`);
+}
+
 // On 401, drop the token and bounce to /login (unless we're already on an auth page).
 api.interceptors.response.use(
   (r) => r,
   (error) => {
+    if (error && !error.response?.data?.error && error.code !== 'ERR_CANCELED') error.message = friendlyMessage(error);
     if (error.response?.status === 401) {
       setToken(null);
       const path = window.location.pathname;

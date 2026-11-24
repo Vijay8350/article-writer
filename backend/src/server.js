@@ -66,7 +66,23 @@ app.use('/api/seo', seoRouter);
 app.use('/api/dashboard', dashboardRouter);
 
 // Global error handler
+// An error from a service we call (a store, Instagram, an AI API) that no route handled:
+// say what happened in plain words instead of passing on "Request failed with status code 429".
+function upstreamMessage(err) {
+  const s = err.response?.status;
+  if (s === 429) return 'That service is limiting requests right now. Wait a minute and try again.';
+  if (s === 401 || s === 403) return 'A connected service refused access. Check the connection in Settings and try again.';
+  if (s === 404) return 'That address could not be found. Check it and try again.';
+  return 'A service we rely on did not answer properly. Try again in a moment.';
+}
+
 app.use((err, req, res, next) => {
+  if (err?.isAxiosError && !err.status) {
+    let host = '';
+    try { host = new URL(err.config?.url, err.config?.baseURL).host; } catch { /* no URL */ } // host only: query strings can hold tokens
+    console.warn(`⚠️ ${req.method} ${req.path}: upstream ${err.response?.status || err.code || ''} ${host}`.trim());
+    return res.status(502).json({ success: false, error: upstreamMessage(err) });
+  }
   const expected = err.status && err.status < 500; // a refusal the user should see (plan limit, locked feature…)
   if (expected) console.warn(`⚠️ ${req.method} ${req.path}: ${err.message}`);
   else { console.error('❌ Error:', err.message); console.error(err.stack); }

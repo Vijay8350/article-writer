@@ -67,7 +67,9 @@ function useReveal() {
 }
 
 // ─── Global navigation ───
-function GlobalNav() {
+// `home` = on the home page (anchors scroll); elsewhere they lead back to the home page.
+export function GlobalNav({ home = true }) {
+  const to = (href) => (home ? href : `/${href}`);
   const [open, setOpen] = useState(false);
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
@@ -81,7 +83,7 @@ function GlobalNav() {
           <span>Article Writer</span>
         </Link>
         <ul className="gn__links">
-          {NAV.map((n) => <li key={n.href}><a href={n.href}>{n.label}</a></li>)}
+          {NAV.map((n) => <li key={n.href}><a href={to(n.href)}>{n.label}</a></li>)}
         </ul>
         <div className="gn__actions">
           <ThemeToggle className="gn__theme" />
@@ -95,7 +97,7 @@ function GlobalNav() {
       {open && (
         <div className="gn__sheet">
           <ul>
-            {NAV.map((n) => <li key={n.href}><a href={n.href} onClick={() => setOpen(false)}>{n.label}</a></li>)}
+            {NAV.map((n) => <li key={n.href}><a href={to(n.href)} onClick={() => setOpen(false)}>{n.label}</a></li>)}
             <li><Link to="/login">Sign in</Link></li>
           </ul>
           <Link to="/signup" className="btn btn-primary btn-lg w-full">Start free</Link>
@@ -461,7 +463,8 @@ function FinalCTA() {
   );
 }
 
-function Footer() {
+export function Footer({ home = true }) {
+  const to = (href) => (home ? href : `/${href}`);
   return (
     <footer className="foot">
       <div className="lp-wrap">
@@ -471,10 +474,10 @@ function Footer() {
         <div className="foot__cols">
           <div>
             <h4>Product</h4>
-            <a href="#articles">Blog articles</a>
-            <a href="#seo">SEO automation</a>
-            <a href="#instagram">Instagram</a>
-            <a href="#pricing">Pricing</a>
+            <a href={to('#articles')}>Blog articles</a>
+            <a href={to('#seo')}>SEO automation</a>
+            <a href={to('#instagram')}>Instagram</a>
+            <a href={to('#pricing')}>Pricing</a>
           </div>
           <div>
             <h4>Account</h4>
@@ -562,7 +565,7 @@ export default function Landing() {
 }
 
 // ─── Page-scoped CSS ───
-const LANDING_CSS = `
+export const LANDING_CSS = `
   html { scroll-behavior: smooth; }
   :root[data-theme='dark'] .lp {
     --lp-alt: #101012; --lp-tile: #1c1c1e; --lp-chip: #2c2c2e; --lp-card: #1c1c1e;

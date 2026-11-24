@@ -1,16 +1,17 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import Seo from '../components/Seo';
+import SiteChrome from '../components/SiteChrome';
 
 export default function Privacy() {
   return (
+    <SiteChrome>
     <div className="legal-page">
       <Seo
         title="Privacy Policy"
         description="How Article Writer collects, stores, and uses your data."
         path="/privacy"
       />
-      <Link to="/" className="legal-back">← Back to home</Link>
       <article className="legal-doc">
         <h1>Privacy Policy</h1>
         <p className="legal-muted">Last updated: {new Date().toLocaleDateString()}</p>
@@ -52,5 +53,6 @@ export default function Privacy() {
         .legal-muted { color: var(--text-muted); font-size: 13px; margin-bottom: 24px; }
       `}</style>
     </div>
+    </SiteChrome>
   );
 }

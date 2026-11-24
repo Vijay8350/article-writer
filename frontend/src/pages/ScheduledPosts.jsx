@@ -1,14 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { CalendarClock, Plus, Trash2, Loader2, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { CalendarClock, Plus, Trash2, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getScheduledPosts, createScheduledPost, cancelScheduledPost, getBusinessDna, getSettings } from '../lib/api';
+import { PageHeader, Sheet, Segmented, EmptyState, Section } from '../components/ui';
+import { fmtDateTime } from '../lib/dates';
+import '../styles/blog.css';
 
-const STATUS_BADGE = {
-  pending: 'badge-purple',
-  processing: 'badge-warning',
-  published: 'badge-success',
-  failed: 'badge-danger',
+const STATUS = {
+  pending: { cls: '', label: 'Scheduled' },
+  processing: { cls: 'status--warn', label: 'Writing now' },
+  published: { cls: 'status--on', label: 'Published' },
+  failed: { cls: 'status--error', label: 'Failed' },
 };
+
+const AI_LABEL = { gemini: 'Gemini', deepseek: 'DeepSeek' };
+const AI_OPTIONS = [
+  { value: 'gemini', label: 'Gemini' },
+  { value: 'deepseek', label: 'DeepSeek' },
+];
+
+// Filters what's already loaded; nothing is fetched again.
+const FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'past', label: 'Past' },
+];
+const isUpcoming = (job) => job.status === 'pending' || job.status === 'processing';
 
 export default function ScheduledPosts() {
   const [jobs, setJobs] = useState([]);
@@ -20,6 +37,8 @@ export default function ScheduledPosts() {
   const [aiModel, setAiModel] = useState('gemini');
   const [blogId, setBlogId] = useState('');
   const [creating, setCreating] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [filter, setFilter] = useState('all');
 
   const load = () => {
     setLoading(true);
@@ -43,6 +62,9 @@ export default function ScheduledPosts() {
     }).catch(() => {});
   }, []);
 
+  // Stable, so the sheet doesn't re-focus its first field on every keystroke.
+  const closeSheet = useCallback(() => setSheetOpen(false), []);
+
   const handleCreate = async (e) => {
     e.preventDefault();
     if (!topic.trim()) return toast.error('Enter a topic');
@@ -58,9 +80,10 @@ export default function ScheduledPosts() {
         wordCount,
         aiModel,
       });
-      toast.success('Scheduled!');
+      toast.success('Scheduled');
       setTopic('');
       setRunAt('');
+      setSheetOpen(false);
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to schedule');
@@ -68,9 +91,10 @@ export default function ScheduledPosts() {
     setCreating(false);
   };
 
-  const handleCancel = async (id) => {
+  const handleCancel = async (job) => {
+    if (!window.confirm(`Cancel "${job.topic.slice(0, 80)}"? It's taken off the queue and won't be written.`)) return;
     try {
-      await cancelScheduledPost(id);
+      await cancelScheduledPost(job.id);
       toast.success('Cancelled');
       load();
     } catch (err) {
@@ -78,119 +102,151 @@ export default function ScheduledPosts() {
     }
   };
 
-  return (
-    <div className="page-container fade-in">
-      <div className="page-header">
-        <h1>Scheduled Posts</h1>
-        <p>Queue article topics — they generate and publish automatically at the set time</p>
-      </div>
+  const blogTitle = (id) => blogs.find(b => String(b.id) === String(id))?.title;
+  const upcomingCount = jobs.filter(isUpcoming).length;
+  const shown = filter === 'all' ? jobs : jobs.filter(j => (filter === 'upcoming' ? isUpcoming(j) : !isUpcoming(j)));
+  const filterOptions = FILTERS.map(f => ({
+    ...f,
+    label: f.value === 'upcoming' && upcomingCount ? `Upcoming (${upcomingCount})` : f.label,
+  }));
 
-      <div className="card mb-24" style={{ maxWidth: 800 }}>
-        <div className="card-header"><h2>Schedule a Post</h2></div>
-        <div className="card-body">
-          <form onSubmit={handleCreate}>
-            <div className="form-group">
-              <label className="form-label">Topic *</label>
-              <textarea className="form-textarea" rows={2} value={topic}
-                onChange={e => setTopic(e.target.value)} placeholder="e.g., Holiday gift guide for our bestsellers" />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+  return (
+    <div className="page-container fade-in blog-page">
+      <PageHeader
+        title="Scheduled Posts"
+        subtitle="Queue article topics. Each one is written and published at the time you set."
+        actions={<button className="btn btn-primary" onClick={() => setSheetOpen(true)}><Plus size={16} /> Schedule a post</button>}
+      />
+
+      {jobs.length > 0 && (
+        <div className="toolbar">
+          <Segmented value={filter} onChange={setFilter} options={filterOptions} ariaLabel="Show" />
+        </div>
+      )}
+
+      <Section
+        title="Queue"
+        flush
+        className="blog-list-card"
+        actions={<button className="btn btn-ghost btn-sm" onClick={load} disabled={loading}><RefreshCw size={14} className={loading ? 'spinning' : ''} /> Refresh</button>}
+      >
+        {loading && jobs.length === 0 ? (
+          <div className="empty-state"><div className="spinner spinner-lg" /></div>
+        ) : jobs.length === 0 ? (
+          <EmptyState
+            icon={CalendarClock}
+            title="No scheduled posts"
+            text="Schedule a topic and it's written and published at the time you pick."
+            action={<button className="btn btn-primary" onClick={() => setSheetOpen(true)}><Plus size={16} /> Schedule a post</button>}
+          />
+        ) : shown.length === 0 ? (
+          <EmptyState
+            icon={CalendarClock}
+            title={filter === 'upcoming' ? 'Nothing upcoming' : 'Nothing here yet'}
+            text={filter === 'upcoming' ? 'Every post in the queue has already run.' : 'Posts appear here once they have run.'}
+            action={<button className="btn btn-secondary" onClick={() => setFilter('all')}>Show all</button>}
+          />
+        ) : (
+          <div className="list">
+            {shown.map(job => {
+              const st = STATUS[job.status] || { cls: '', label: job.status };
+              const blog = blogTitle(job.blog_id);
+              return (
+                <div className="list-item" key={job.id}>
+                  <div className="list-item__main">
+                    <div className="list-item__title">
+                      <span className="blog-clamp" title={job.topic}>{job.topic}</span>
+                    </div>
+                    <div className="list-item__meta">
+                      <span className={`status ${st.cls}`}>{st.label}</span>
+                      <span>{fmtDateTime(job.run_at)}</span>
+                      {job.word_count ? <span>{job.word_count} words</span> : null}
+                      {job.ai_model ? <span>{AI_LABEL[job.ai_model] || job.ai_model}</span> : null}
+                      {blog && <span>{blog}</span>}
+                    </div>
+                    {job.status === 'failed' && job.error && (
+                      <div className="callout callout--danger callout--compact blog-row-error" title={job.error}>
+                        <AlertCircle size={15} />
+                        <span>{job.error.length > 160 ? `${job.error.slice(0, 160)}…` : job.error}</span>
+                      </div>
+                    )}
+                  </div>
+                  {job.status === 'pending' && (
+                    <div className="list-item__actions">
+                      <button className="btn btn-ghost btn-sm" onClick={() => handleCancel(job)} aria-label={`Cancel ${job.topic}`}>
+                        <Trash2 size={14} /> Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Section>
+
+      <Sheet
+        open={sheetOpen}
+        title="Schedule a post"
+        subtitle="The article is written and published to your blog at the time you pick."
+        onClose={closeSheet}
+        busy={creating}
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost" onClick={closeSheet} disabled={creating}>Cancel</button>
+            <button className="btn btn-primary" type="submit" form="schedule-form" disabled={creating}>
+              {creating ? <><Loader2 size={16} className="spinning" /> Scheduling…</> : <><Plus size={16} /> Schedule post</>}
+            </button>
+          </>
+        )}
+      >
+        <form id="schedule-form" onSubmit={handleCreate}>
+          <div className="form-section">
+            <h3 className="form-section__title">What to write</h3>
+            <p className="form-section__desc">The topic, how long it should be, and which AI writes it.</p>
+            <div className="form-grid">
+              <div className="form-group span-all">
+                <label className="form-label" htmlFor="sp-topic">Topic</label>
+                <textarea id="sp-topic" className="form-textarea" rows={3} value={topic}
+                  onChange={e => setTopic(e.target.value)} placeholder="e.g. Holiday gift guide for our bestsellers" />
+              </div>
               <div className="form-group">
-                <label className="form-label">Run at *</label>
-                <input className="form-input" type="datetime-local" value={runAt}
+                <label className="form-label" htmlFor="sp-words">Words <span className="range-value">{wordCount}</span></label>
+                <input id="sp-words" type="range" className="range-slider" min={500} max={5000} step={100}
+                  value={wordCount} onChange={e => setWordCount(Number(e.target.value))} />
+                <div className="form-helper blog-range-ends"><span>500</span><span>5,000</span></div>
+              </div>
+              <div className="form-group blog-seg-field">
+                <span className="form-label">AI model</span>
+                <Segmented value={aiModel} onChange={setAiModel} options={AI_OPTIONS} ariaLabel="AI model" />
+              </div>
+            </div>
+          </div>
+
+          <div className="form-section">
+            <h3 className="form-section__title">When and where</h3>
+            <p className="form-section__desc">The time it runs, in your local time, and the blog it goes to.</p>
+            <div className="form-grid">
+              <div className="form-group">
+                <label className="form-label" htmlFor="sp-run-at">Run at</label>
+                <input id="sp-run-at" className="form-input" type="datetime-local" value={runAt}
                   onChange={e => setRunAt(e.target.value)} />
               </div>
               <div className="form-group">
-                <label className="form-label">Word Count: <span className="range-value">{wordCount}</span></label>
-                <input type="range" className="range-slider" min={500} max={5000} step={100}
-                  value={wordCount} onChange={e => setWordCount(Number(e.target.value))} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">AI Model</label>
-                <select className="form-select" value={aiModel} onChange={e => setAiModel(e.target.value)}>
-                  <option value="gemini">Gemini</option>
-                  <option value="deepseek">DeepSeek</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Blog</label>
+                <label className="form-label" htmlFor="sp-blog">Blog</label>
                 {blogs.length ? (
-                  <select className="form-select" value={blogId} onChange={e => setBlogId(e.target.value)}>
+                  <select id="sp-blog" className="form-select" value={blogId} onChange={e => setBlogId(e.target.value)}>
                     {blogs.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
                   </select>
                 ) : (
-                  <input className="form-input" value={blogId} onChange={e => setBlogId(e.target.value)}
+                  <input id="sp-blog" className="form-input" value={blogId} onChange={e => setBlogId(e.target.value)}
                     placeholder="Blog ID" />
                 )}
               </div>
             </div>
-            <button className="btn btn-primary w-full" type="submit" disabled={creating}>
-              {creating ? <><Loader2 size={16} className="spinning" /> Scheduling...</> : <><Plus size={16} /> Schedule Post</>}
-            </button>
-          </form>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-header">
-          <h2>Queue</h2>
-          <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /> Refresh</button>
-        </div>
-        <div className="card-body">
-          {loading ? (
-            <div className="empty-state"><div className="spinner spinner-lg" /></div>
-          ) : jobs.length === 0 ? (
-            <div className="empty-state">
-              <CalendarClock size={48} />
-              <h3>No scheduled posts</h3>
-              <p>Queue a topic above and it'll be generated and published automatically.</p>
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                <thead>
-                  <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
-                    <th style={{ padding: '8px 12px' }}>Topic</th>
-                    <th style={{ padding: '8px 12px' }}>Run At</th>
-                    <th style={{ padding: '8px 12px' }}>Status</th>
-                    <th style={{ padding: '8px 12px' }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jobs.map(job => (
-                    <tr key={job.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
-                      <td style={{ padding: '10px 12px', maxWidth: 320 }}>
-                        <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={job.topic}>
-                          {job.topic}
-                        </div>
-                        {job.status === 'failed' && job.error && (
-                          <div style={{ fontSize: 11, color: 'var(--accent-danger)' }} title={job.error}>
-                            {job.error.slice(0, 80)}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
-                        {new Date(job.run_at).toLocaleString()}
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <span className={`badge ${STATUS_BADGE[job.status] || 'badge-purple'}`}>{job.status}</span>
-                      </td>
-                      <td style={{ padding: '10px 12px' }}>
-                        {job.status === 'pending' && (
-                          <button className="btn btn-ghost btn-sm" onClick={() => handleCancel(job.id)} title="Cancel">
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-      <style>{`.spinning { animation: spin 1s linear infinite; }`}</style>
+          </div>
+        </form>
+      </Sheet>
     </div>
   );
 }

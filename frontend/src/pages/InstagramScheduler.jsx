@@ -1,21 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AlarmClock, Plus, Play, Pause, Trash2, RefreshCw, Loader2, ChevronDown, ChevronRight, Eye, Send, Save, Copy, X,
+  AlarmClock, Plus, Trash2, RefreshCw, Loader2, ChevronDown, ChevronRight, Eye, Send, Copy, Pencil, Instagram,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ScheduleWindow, ImagesPerPost } from '../components/ScheduleFields';
+import { PageHeader, Sheet, EmptyState, Section, Switch } from '../components/ui';
 import { toDateTimeInput, toDateInput, fromDateTimeInput, endOfDay, scheduleText } from '../lib/dates';
 import {
   getInstagramAccounts, getInstagramAutomations, createInstagramAutomation, updateInstagramAutomation,
   deleteInstagramAutomation, previewInstagramPost, postInstagramNow, getInstagramPosts, getProductImageStatus,
 } from '../lib/api';
+import '../styles/ig-automation.css';
 
 const POST_BADGE = { published: 'badge-success', failed: 'badge-danger' };
+// The last post's result as a status dot.
+const LAST_STATUS = { published: ['status--on', 'posted'], failed: ['status--error', 'failed'] };
 const errMsg = (err, fallback) => err.response?.data?.error || fallback;
 const fmt = (d) => (d ? new Date(d).toLocaleString() : '—');
-const muted = { fontSize: 12, color: 'var(--text-muted)' };
-const danger = { fontSize: 12, color: 'var(--accent-danger)' };
 const siteLabel = (j) => j.name || j.site_name || j.site_url.replace(/^https?:\/\//, '');
 
 // "today 2:00 PM" / "tomorrow 10:00 AM" / "10/3/2026 9:00 AM"
@@ -57,58 +59,85 @@ export const jobPayload = (form) => ({
   endsAt: endOfDay(form.endsAt),
 });
 
-export function JobFields({ value, onChange, accounts, styles = [] }) {
+// The job form, in four sections. `siteField` (optional) is shown first under Products:
+// the website input when creating, or the website as text when editing.
+export function JobFields({ value, onChange, accounts, styles = [], siteField = null }) {
   const set = (key) => (e) => onChange({ ...value, [key]: e.target.value });
+  const id = useId();
   return (
     <>
-      <div className="form-group">
-        <label className="form-label">Campaign name (optional)</label>
-        <input className="form-input" value={value.name} onChange={set('name')} maxLength={120} placeholder="e.g. Daily price banners" />
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
-        <div className="form-group">
-          <label className="form-label">Instagram account</label>
-          <select className="form-select" value={value.accountId} onChange={set('accountId')}>
-            {accounts.map(a => <option key={a.id} value={a.id}>@{a.username}</option>)}
-          </select>
-        </div>
-        <div className="form-group">
-          <label className="form-label">Post every day at</label>
-          <input className="form-input" type="time" value={value.postTime} onChange={set('postTime')} required />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Time zone</label>
-          <select className="form-select" value={value.timezone} onChange={set('timezone')}>
-            {timezoneOptions(value.timezone).map(tz => <option key={tz} value={tz}>{tz}</option>)}
-          </select>
+      <div className="form-section">
+        <h3 className="form-section__title">Products</h3>
+        <p className="form-section__desc">The store this job posts from, and a name to find the job by.</p>
+        <div className="form-grid">
+          {siteField}
+          <div className="form-group span-all">
+            <label className="form-label" htmlFor={`${id}-name`}>Campaign name (optional)</label>
+            <input id={`${id}-name`} className="form-input" value={value.name} onChange={set('name')} maxLength={120} placeholder="e.g. Daily price banners" />
+          </div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
-        <div className="form-group">
-          <label className="form-label">Image style</label>
-          <select className="form-select" value={value.imageStyle || 'banner'} onChange={set('imageStyle')}>
-            {styles.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-            <option value="auto">Mix promo and styled posts</option>
-          </select>
-          <div className="form-helper">Every day gets a new look and a new scene the AI designs around your product, so no two posts in a row look alike. The product itself always stays exactly as in your photo.</div>
+
+      <div className="form-section">
+        <h3 className="form-section__title">Posting</h3>
+        <p className="form-section__desc">Where it posts, and when. It posts once a day at this time.</p>
+        <div className="form-grid">
+          <div className="form-group span-all">
+            <label className="form-label" htmlFor={`${id}-account`}>Instagram account</label>
+            <select id={`${id}-account`} className="form-select" value={value.accountId} onChange={set('accountId')}>
+              {accounts.map(a => <option key={a.id} value={a.id}>@{a.username}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor={`${id}-time`}>Post every day at</label>
+            <input id={`${id}-time`} className="form-input" type="time" value={value.postTime} onChange={set('postTime')} required />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor={`${id}-tz`}>Time zone</label>
+            <select id={`${id}-tz`} className="form-select" value={value.timezone} onChange={set('timezone')}>
+              {timezoneOptions(value.timezone).map(tz => <option key={tz} value={tz}>{tz}</option>)}
+            </select>
+          </div>
+          <ScheduleWindow startsAt={value.startsAt} endsAt={value.endsAt} onChange={(change) => onChange({ ...value, ...change })} />
         </div>
-        <ImagesPerPost value={value.imagesPerPost} onChange={(imagesPerPost) => onChange({ ...value, imagesPerPost })} />
-        <ScheduleWindow startsAt={value.startsAt} endsAt={value.endsAt} onChange={(change) => onChange({ ...value, ...change })} />
       </div>
-      <div className="form-group">
-        <label className="form-label">Instructions for the image (optional)</label>
-        <input className="form-input" value={value.imageNotes || ''} onChange={set('imageNotes')} maxLength={500}
-          placeholder="e.g. With price banner, festive red and gold, mention free shipping" />
+
+      <div className="form-section">
+        <h3 className="form-section__title">Look</h3>
+        <p className="form-section__desc">Every day gets a new look and scene. The product always stays exactly as in your photo.</p>
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label" htmlFor={`${id}-style`}>Image style</label>
+            <select id={`${id}-style`} className="form-select" value={value.imageStyle || 'banner'} onChange={set('imageStyle')}>
+              {styles.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+              <option value="auto">Mix promo and styled posts</option>
+            </select>
+          </div>
+          <ImagesPerPost value={value.imagesPerPost} onChange={(imagesPerPost) => onChange({ ...value, imagesPerPost })} />
+          <div className="form-group span-all">
+            <label className="form-label" htmlFor={`${id}-notes`}>Instructions for the image (optional)</label>
+            <input id={`${id}-notes`} className="form-input" value={value.imageNotes || ''} onChange={set('imageNotes')} maxLength={500}
+              placeholder="e.g. With price banner, festive red and gold, mention free shipping" />
+          </div>
+        </div>
       </div>
-      <div className="form-group">
-        <label className="form-label">Caption instructions for DeepSeek (optional)</label>
-        <textarea className="form-textarea" rows={2} value={value.captionInstructions} onChange={set('captionInstructions')}
-          placeholder="e.g. Write in Hinglish, friendly tone, mention free shipping on orders above ₹499" />
-      </div>
-      <div className="form-group">
-        <label className="form-label">Hashtags to always include (optional)</label>
-        <input className="form-input" value={value.hashtags} onChange={set('hashtags')} placeholder="#yourbrand #jewellery" />
-        <div className="form-helper">DeepSeek adds more relevant hashtags on top (Instagram allows 30 in total).</div>
+
+      <div className="form-section">
+        <h3 className="form-section__title">Caption</h3>
+        <p className="form-section__desc">DeepSeek writes a new caption for every post.</p>
+        <div className="form-grid">
+          <div className="form-group span-all">
+            <label className="form-label" htmlFor={`${id}-caption`}>Caption instructions (optional)</label>
+            <textarea id={`${id}-caption`} className="form-textarea" rows={2} value={value.captionInstructions} onChange={set('captionInstructions')}
+              placeholder="e.g. Write in Hinglish, friendly tone, mention free shipping on orders above ₹499" />
+            <div className="form-helper">Links in captions aren't clickable on Instagram, so keep your store link in your bio too.</div>
+          </div>
+          <div className="form-group span-all">
+            <label className="form-label" htmlFor={`${id}-tags`}>Hashtags to always include (optional)</label>
+            <input id={`${id}-tags`} className="form-input" value={value.hashtags} onChange={set('hashtags')} placeholder="#yourbrand #jewellery" />
+            <div className="form-helper">DeepSeek adds more relevant hashtags on top (Instagram allows 30 in total).</div>
+          </div>
+        </div>
       </div>
     </>
   );
@@ -116,19 +145,50 @@ export function JobFields({ value, onChange, accounts, styles = [] }) {
 
 function PreviewCard({ preview }) {
   return (
-    <div style={{ background: 'var(--bg-subtle)', borderRadius: 'var(--radius-md)', padding: 12 }}>
-      <div className="form-label">
-        Next product · store photos the images are made from
+    <div className="iga-preview">
+      <div className="iga-subtitle">Next post · the store photos it is made from</div>
+      <div className="iga-preview__photos">
+        {preview.imageUrls.map(u => <img key={u} src={u} alt="" width={88} height={88} />)}
       </div>
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 12 }}>
-        {preview.imageUrls.map(u => (
-          <img key={u} src={u} alt="" width={96} height={96} style={{ borderRadius: 6, flex: '0 0 auto' }} />
-        ))}
+      <div className="iga-preview__caption">{preview.caption}</div>
+      <div className="form-helper">
+        Preview only, nothing was posted. The real post gets a freshly written caption, with these photos placed on new designed backgrounds.
       </div>
-      <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.5, overflowWrap: 'anywhere' }}>{preview.caption}</div>
-      <div className="form-helper" style={{ marginTop: 8 }}>
-        Preview only — nothing was posted. The real post gets a freshly written caption, with these photos placed on new designed backgrounds.
-      </div>
+    </div>
+  );
+}
+
+function PostHistory({ posts }) {
+  if (!posts) return <div className="iga-muted iga-inline"><Loader2 size={14} className="spinning" /> Loading…</div>;
+  if (posts.length === 0) return <div className="iga-muted">Nothing posted by this job yet. Use Preview to check the next post, or Post now.</div>;
+  return (
+    <div className="table-container iga-history">
+      <table className="data-table">
+        <thead>
+          <tr><th>Product</th><th>Result</th><th>Post</th><th>When</th></tr>
+        </thead>
+        <tbody>
+          {posts.map(p => (
+            <tr key={p.id}>
+              <td>
+                {p.product_url
+                  ? <a href={p.product_url} target="_blank" rel="noreferrer">{p.product_title}</a>
+                  : (p.product_title || '—')}
+                {p.error && <div className="iga-error">{p.error}</div>}
+              </td>
+              <td className="nowrap">
+                <span className={`badge ${POST_BADGE[p.status] || ''}`}>{p.status}</span>
+                {p.trigger === 'manual' && <span className="iga-muted"> · manual</span>}
+                {p.image_source === 'photo' && <span className="iga-muted"> · store photo</span>}
+              </td>
+              <td className="nowrap">
+                {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer">View post</a>}
+              </td>
+              <td className="nowrap iga-muted">{fmt(p.created_at)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -146,7 +206,8 @@ export default function InstagramScheduler() {
   const [expanded, setExpanded] = useState(null);
   const [posts, setPosts] = useState({});
   const [previews, setPreviews] = useState({});
-  const [edits, setEdits] = useState({});
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
 
   const load = async () => {
     try {
@@ -155,7 +216,6 @@ export default function InstagramScheduler() {
       setAccounts(accList);
       setJobs(auto.data || []);
       setNewJob(j => (accList.some(a => a.id === j.accountId) ? j : { ...j, accountId: accList[0]?.id || '' }));
-      if (!auto.data?.length) setShowForm(true);
     } catch (err) {
       toast.error(errMsg(err, 'Failed to load the scheduler'));
     }
@@ -179,11 +239,19 @@ export default function InstagramScheduler() {
     setPosts(p => ({ ...p, [id]: res.data || [] }));
   };
 
+  // Opens a job's history (and its preview, if one was made).
   const open = (j) => {
     setExpanded(j.id);
-    setEdits(e => ({ ...e, [j.id]: jobForm(j) }));
     loadPosts(j.id).catch(() => {});
   };
+
+  const openEdit = (j) => {
+    setEditId(j.id);
+    setEditForm(jobForm(j));
+  };
+  // Stable, so the sheets don't re-run their open effect (and move focus) on every keystroke.
+  const closeEdit = useCallback(() => { setEditId(null); setEditForm(null); }, []);
+  const closeNew = useCallback(() => setShowForm(false), []);
 
   const handleCreate = (e) => {
     e.preventDefault();
@@ -201,8 +269,7 @@ export default function InstagramScheduler() {
   const handleDuplicate = (j) => {
     setNewJob({ ...jobForm(j), siteUrl: j.site_url });
     setShowForm(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    toast('Copied — pick a new time and save', { icon: '📋' });
+    toast('Copied. Pick a new time and save.');
   };
 
   const handlePreview = (j) => run(`preview:${j.id}`, async () => {
@@ -230,8 +297,9 @@ export default function InstagramScheduler() {
   });
 
   const handleSave = (j) => run(`save:${j.id}`, async () => {
-    await updateInstagramAutomation(j.id, jobPayload(edits[j.id]));
+    await updateInstagramAutomation(j.id, jobPayload(editForm));
     toast.success('Saved');
+    closeEdit();
     await load();
   });
 
@@ -246,194 +314,197 @@ export default function InstagramScheduler() {
 
   const activeJobs = jobs.filter(j => j.status === 'active' && j.next_run_at);
   const nextJob = [...activeJobs].sort((a, b) => new Date(a.next_run_at) - new Date(b.next_run_at))[0];
+  const editJob = jobs.find(j => j.id === editId);
+  const creating = busy === 'create';
+  const saving = editJob && busy === `save:${editJob.id}`;
+
+  const newJobButton = (
+    <button className="btn btn-primary" onClick={() => setShowForm(true)}><Plus size={16} /> New job</button>
+  );
 
   return (
     <div className="page-container fade-in">
-      <div className="page-header flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 12, maxWidth: 900 }}>
-        <div>
-          <h1>Instagram Scheduler</h1>
-          <p>
-            Add as many posting jobs as you like. Each job takes the next product from a website, sets it in a scene the AI
-            designs around it (the product itself stays exactly as photographed), and posts it to Instagram every day at its time
-            with a caption written by DeepSeek.
-          </p>
-        </div>
-        {accounts.length > 0 && !showForm && (
-          <button className="btn btn-primary" onClick={() => setShowForm(true)}><Plus size={16} /> New job</button>
-        )}
-      </div>
+      <PageHeader
+        title="Product Scheduler"
+        subtitle="Post the next product from your store to Instagram every day, in a fresh AI scene with a caption by DeepSeek."
+        actions={accounts.length > 0 && newJobButton}
+      />
 
-      {!loading && accounts.length === 0 ? (
-        <div className="card" style={{ maxWidth: 900 }}>
-          <div className="card-body">
-            <div className="empty-state">
-              <AlarmClock size={48} />
-              <h3>Connect an Instagram account first</h3>
-              <p><Link to="/instagram">Go to Instagram Accounts</Link> to connect one, then come back to add jobs.</p>
-            </div>
-          </div>
-        </div>
+      {loading ? (
+        <div className="empty-state"><div className="spinner spinner-lg" /></div>
+      ) : accounts.length === 0 ? (
+        <Section>
+          <EmptyState
+            icon={Instagram}
+            title="Connect an Instagram account first"
+            text="Jobs post to a connected Instagram account. Connect one, then come back to add jobs."
+            action={<Link to="/instagram" className="btn btn-primary">Go to Instagram accounts</Link>}
+          />
+        </Section>
+      ) : jobs.length === 0 ? (
+        <Section>
+          <EmptyState
+            icon={AlarmClock}
+            title="No jobs yet"
+            text="A job takes the next product from your store and posts it at the same time every day, for example at 10:00."
+            action={newJobButton}
+          />
+        </Section>
       ) : (
-        <>
-          {/* New job */}
-          {showForm && (
-            <div className="card mb-24" style={{ maxWidth: 900 }}>
-              <div className="card-header">
-                <h2>New job</h2>
-                {jobs.length > 0 && (
-                  <button className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)} title="Close"><X size={14} /></button>
-                )}
-              </div>
-              <div className="card-body">
-                <form onSubmit={handleCreate}>
-                  <div className="form-group">
-                    <label className="form-label">Shopify website URL</label>
-                    <input className="form-input" value={newJob.siteUrl} onChange={e => setNewJob({ ...newJob, siteUrl: e.target.value })}
-                      placeholder="yourstore.com" />
-                    <div className="form-helper">
-                      Read from the store's public catalogue — no Shopify token needed. Out-of-stock products are skipped.
-                      Jobs for the same website and account share one rotation, so they never post the same product twice in a row.
-                    </div>
-                  </div>
-                  <JobFields value={newJob} onChange={setNewJob} accounts={accounts} styles={styles} />
-                  <div className="form-helper mb-16">
-                    Instagram doesn't make links in captions clickable — the product link appears as text, so keep your store link in your bio too.
-                  </div>
-                  <button className="btn btn-primary w-full" type="submit" disabled={busy === 'create'}>
-                    {busy === 'create'
-                      ? <><Loader2 size={16} className="spinning" /> Checking website...</>
-                      : <><Plus size={16} /> Add job</>}
-                  </button>
-                </form>
-              </div>
-            </div>
+        <Section
+          flush
+          title="Jobs"
+          description={(
+            <>
+              {activeJobs.length} active
+              {nextJob && <> · Next post <strong>{fmtNext(nextJob.next_run_at)}</strong>, {siteLabel(nextJob)} to @{nextJob.username}</>}
+            </>
           )}
-
-          {/* Jobs */}
-          <div className="card" style={{ maxWidth: 900 }}>
-            <div className="card-header">
-              <h2>Jobs {jobs.length > 0 && <span style={muted}>({activeJobs.length} active)</span>}</h2>
-              <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /> Refresh</button>
-            </div>
-            <div className="card-body">
-              {nextJob && (
-                <div className="form-helper mb-16">
-                  Next post: <strong>{fmtNext(nextJob.next_run_at)}</strong> — {siteLabel(nextJob)} → @{nextJob.username}
-                </div>
-              )}
-              {loading ? (
-                <div className="empty-state"><div className="spinner spinner-lg" /></div>
-              ) : jobs.length === 0 ? (
-                <div className="empty-state">
-                  <AlarmClock size={48} />
-                  <h3>No jobs yet</h3>
-                  <p>Add one above — e.g. your store at 10:00 every day.</p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {jobs.map(j => (
-                    <div key={j.id} style={{ border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)', padding: 16, opacity: j.status === 'paused' ? 0.7 : 1 }}>
-                      <div className="flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 12 }}>
-                        <div className="flex items-center gap-12" style={{ cursor: 'pointer', minWidth: 0, flex: '1 1 320px' }}
-                          onClick={() => (expanded === j.id ? setExpanded(null) : open(j))}>
-                          {expanded === j.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                          <div style={{ textAlign: 'center', minWidth: 64 }}>
-                            <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.1 }}>{j.post_time}</div>
-                            <div style={{ ...muted, fontSize: 10 }}>daily</div>
-                          </div>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div className="flex items-center gap-8" style={{ flexWrap: 'wrap' }}>
-                              <strong>{siteLabel(j)}</strong>
-                              <span style={{ color: 'var(--text-muted)' }}>→ @{j.username}</span>
-                              <span className={`badge ${j.status === 'active' ? 'badge-success' : 'badge-warning'}`}>{j.status}</span>
-                              {j.images_per_post > 1 && <span className="badge badge-purple">{j.images_per_post} images</span>}
-                            </div>
-                            <div style={muted}>{scheduleText(j)}</div>
-                            <div style={muted}>
-                              {j.timezone} · {j.published_count} posted
-                              {j.status === 'active' && j.next_run_at ? ` · next: ${fmtNext(j.next_run_at)}` : ''}
-                              {j.last_status && <> · last: <span className={`badge ${POST_BADGE[j.last_status]}`}>{j.last_status}</span></>}
-                            </div>
-                            {j.last_status === 'failed' && j.last_error && <div style={danger}>{j.last_error}</div>}
-                          </div>
-                        </div>
-                        <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-                          <button className="btn btn-secondary btn-sm" onClick={() => handlePreview(j)} disabled={!!busy} title="Preview the next post">
-                            {busy === `preview:${j.id}` ? <Loader2 size={14} className="spinning" /> : <Eye size={14} />} Preview
-                          </button>
-                          <button className="btn btn-primary btn-sm" onClick={() => handlePostNow(j)} disabled={!!busy} title="Post the next product now">
-                            {busy === `post:${j.id}` ? <Loader2 size={14} className="spinning" /> : <Send size={14} />} Post now
-                          </button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => handleDuplicate(j)} disabled={!!busy} title="Duplicate (add another time)">
-                            <Copy size={14} />
-                          </button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => handleToggle(j)} disabled={!!busy} title={j.status === 'active' ? 'Pause' : 'Resume'}>
-                            {j.status === 'active' ? <Pause size={14} /> : <Play size={14} />}
-                          </button>
-                          <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(j)} disabled={!!busy} title="Delete">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
+          actions={<button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /> Refresh</button>}
+        >
+          <div className="list">
+            {jobs.map(j => {
+              const isOpen = expanded === j.id;
+              const active = j.status === 'active';
+              const [lastCls, lastText] = LAST_STATUS[j.last_status] || ['status--off', j.last_status];
+              return (
+                <div key={j.id} className={`iga-job${active ? '' : ' is-paused'}`}>
+                  <div className="list-item">
+                    <div className="iga-time" aria-hidden="true"><strong>{j.post_time}</strong><span>daily</span></div>
+                    <div className="list-item__main">
+                      <div className="list-item__title">
+                        {siteLabel(j)}
+                        <span className={`status ${active ? 'status--on' : 'status--off'}`}>{active ? 'Active' : 'Paused'}</span>
+                        {j.images_per_post > 1 && <span className="badge badge-purple">{j.images_per_post} images</span>}
                       </div>
-
-                      {expanded === j.id && (
-                        <div style={{ marginTop: 12, borderTop: '1px solid var(--border-secondary)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                          {previews[j.id] && <PreviewCard preview={previews[j.id]} />}
-
-                          {edits[j.id] && (
-                            <div>
-                              <JobFields value={edits[j.id]} onChange={v => setEdits(e => ({ ...e, [j.id]: v }))} accounts={accounts} styles={styles} />
-                              <button className="btn btn-secondary btn-sm" onClick={() => handleSave(j)} disabled={!!busy}>
-                                {busy === `save:${j.id}` ? <Loader2 size={14} className="spinning" /> : <Save size={14} />} Save job
-                              </button>
-                            </div>
-                          )}
-
-                          <div>
-                            <div className="form-label">Post history</div>
-                            {!posts[j.id] ? (
-                              <div className="form-helper">Loading…</div>
-                            ) : posts[j.id].length === 0 ? (
-                              <div className="form-helper">Nothing posted by this job yet. Use Preview to check the next post, or Post now.</div>
-                            ) : (
-                              <div style={{ overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                                  <tbody>
-                                    {posts[j.id].map(p => (
-                                      <tr key={p.id} style={{ borderTop: '1px solid var(--border-secondary)', verticalAlign: 'top' }}>
-                                        <td style={{ padding: '6px 8px' }}>
-                                          {p.product_url
-                                            ? <a href={p.product_url} target="_blank" rel="noreferrer">{p.product_title}</a>
-                                            : (p.product_title || '—')}
-                                          {p.error && <div style={danger}>{p.error}</div>}
-                                        </td>
-                                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
-                                          <span className={`badge ${POST_BADGE[p.status]}`}>{p.status}</span>
-                                          {p.trigger === 'manual' && <span style={{ ...muted, marginLeft: 6 }}>manual</span>}
-                                          {p.image_source === 'photo' && <span style={{ ...muted, marginLeft: 6 }}>store photo</span>}
-                                        </td>
-                                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
-                                          {p.permalink && <a href={p.permalink} target="_blank" rel="noreferrer">View post</a>}
-                                        </td>
-                                        <td style={{ padding: '6px 8px', ...muted, whiteSpace: 'nowrap' }}>{fmt(p.created_at)}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                      <div className="list-item__meta">
+                        <span>@{j.username}</span>
+                        <span>Every day at {j.post_time} · {j.timezone}</span>
+                        {active && j.next_run_at && <span>Next {fmtNext(j.next_run_at)}</span>}
+                        <span>{j.published_count} posted</span>
+                        {j.last_status && <span>Last post <span className={`status ${lastCls}`}>{lastText}</span></span>}
+                      </div>
+                      <div className="list-item__meta">{scheduleText(j)}</div>
+                      {j.last_status === 'failed' && j.last_error && <div className="iga-error">{j.last_error}</div>}
+                      <button type="button" className="iga-link" aria-expanded={isOpen}
+                        onClick={() => (isOpen ? setExpanded(null) : open(j))}>
+                        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Post history
+                      </button>
                     </div>
-                  ))}
+                    <div className="list-item__actions">
+                      <button className="btn btn-secondary btn-sm" onClick={() => handlePostNow(j)} disabled={!!busy} title="Post the next product now">
+                        {busy === `post:${j.id}` ? <Loader2 size={14} className="spinning" /> : <Send size={14} />} Post now
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => handlePreview(j)} disabled={!!busy} title="Preview the next post">
+                        {busy === `preview:${j.id}` ? <Loader2 size={14} className="spinning" /> : <Eye size={14} />} Preview
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => openEdit(j)}><Pencil size={14} /> Edit</button>
+                      <button className="btn btn-ghost btn-sm iga-icon-btn" onClick={() => handleDuplicate(j)} disabled={!!busy}
+                        title="Duplicate (add another time)" aria-label={`Duplicate the ${j.post_time} job`}>
+                        <Copy size={14} />
+                      </button>
+                      <button className="btn btn-ghost btn-sm iga-icon-btn" onClick={() => handleDelete(j)} disabled={!!busy}
+                        title="Delete" aria-label={`Delete the ${j.post_time} job`}>
+                        {busy === `delete:${j.id}` ? <Loader2 size={14} className="spinning" /> : <Trash2 size={14} />}
+                      </button>
+                      <span title={active ? 'Pause' : 'Resume'}>
+                        <Switch checked={active} onChange={() => handleToggle(j)} disabled={!!busy}
+                          label={`Post daily at ${j.post_time} for ${siteLabel(j)}`} />
+                      </span>
+                    </div>
+                  </div>
+
+                  {isOpen && (
+                    <div className="iga-job__panel">
+                      {previews[j.id] && <PreviewCard preview={previews[j.id]} />}
+                      <div>
+                        <div className="iga-subtitle">Post history</div>
+                        <PostHistory posts={posts[j.id]} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* New job */}
+      <Sheet
+        open={showForm}
+        title="New job"
+        subtitle="Posts one product from your store every day."
+        onClose={closeNew}
+        busy={creating}
+        width={640}
+        footer={(
+          <>
+            <button type="button" className="btn btn-ghost" onClick={closeNew} disabled={creating}>Cancel</button>
+            <button type="submit" form="new-job-form" className="btn btn-primary" disabled={creating}>
+              {creating
+                ? <><Loader2 size={16} className="spinning" /> Checking website…</>
+                : <><Plus size={16} /> Add job</>}
+            </button>
+          </>
+        )}
+      >
+        <form id="new-job-form" onSubmit={handleCreate}>
+          <JobFields
+            value={newJob}
+            onChange={setNewJob}
+            accounts={accounts}
+            styles={styles}
+            siteField={(
+              <div className="form-group span-all">
+                <label className="form-label" htmlFor="new-job-site">Shopify website URL</label>
+                <input id="new-job-site" className="form-input" value={newJob.siteUrl}
+                  onChange={e => setNewJob({ ...newJob, siteUrl: e.target.value })} placeholder="yourstore.com" />
+                <div className="form-helper">
+                  Read from the store's public catalogue, so no Shopify token is needed. Out-of-stock products are skipped, and jobs
+                  for the same website and account share one rotation, so a product never posts twice in a row.
+                </div>
+              </div>
+            )}
+          />
+        </form>
+      </Sheet>
+
+      {/* Edit job */}
+      <Sheet
+        open={!!editJob && !!editForm}
+        title="Edit job"
+        subtitle={editJob ? `${siteLabel(editJob)} · @${editJob.username}` : undefined}
+        onClose={closeEdit}
+        busy={!!saving}
+        width={640}
+        footer={editJob && (
+          <>
+            <button type="button" className="btn btn-ghost" onClick={closeEdit} disabled={!!saving}>Cancel</button>
+            <button type="submit" form="edit-job-form" className="btn btn-primary" disabled={!!busy}>
+              {saving ? <><Loader2 size={16} className="spinning" /> Saving…</> : 'Save changes'}
+            </button>
+          </>
+        )}
+      >
+        {editJob && editForm && (
+          <form id="edit-job-form" onSubmit={(e) => { e.preventDefault(); handleSave(editJob); }}>
+            <JobFields
+              value={editForm}
+              onChange={setEditForm}
+              accounts={accounts}
+              styles={styles}
+              siteField={(
+                <div className="form-group span-all">
+                  <div className="form-label">Website</div>
+                  <div className="iga-readonly">{editJob.site_url}</div>
+                  <div className="form-helper">To post from another website, add a new job.</div>
                 </div>
               )}
-            </div>
-          </div>
-        </>
-      )}
-      <style>{`.spinning { animation: spin 1s linear infinite; }`}</style>
+            />
+          </form>
+        )}
+      </Sheet>
     </div>
   );
 }

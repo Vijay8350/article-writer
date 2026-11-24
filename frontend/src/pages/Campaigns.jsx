@@ -1,14 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { Rocket, Plus, Play, Pause, Trash2, RefreshCw, Loader2, ChevronDown, ChevronRight, Pencil, Save } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { Rocket, Plus, Play, Trash2, RefreshCw, Loader2, ChevronDown, ChevronRight, Pencil, Save, AlertTriangle, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   getCampaigns, createCampaign, updateCampaign, setCampaignStatus, deleteCampaign, runCampaignNow,
   getCampaignArticles, getBusinessDna, getSettings, syncCollections,
 } from '../lib/api';
 import { ScheduleWindow, ImagesPerPost } from '../components/ScheduleFields';
-import { toDateTimeInput, toDateInput, fromDateTimeInput, endOfDay, scheduleText } from '../lib/dates';
+import { PageHeader, Sheet, Segmented, EmptyState, Section, Switch } from '../components/ui';
+import { toDateTimeInput, toDateInput, fromDateTimeInput, endOfDay, scheduleText, fmtDateTime } from '../lib/dates';
+import '../styles/blog.css';
 
-const STATUS_BADGE = { active: 'badge-success', paused: 'badge-warning', done: 'badge-purple' };
+const STATUS = {
+  active: { cls: 'status--on', label: 'Active' },
+  paused: { cls: 'status--warn', label: 'Paused' },
+  done: { cls: 'status--off', label: 'Ended' },
+};
 
 const ARTICLE_BADGE = {
   published: 'badge-success',
@@ -17,6 +24,36 @@ const ARTICLE_BADGE = {
   skipped_duplicate: 'badge-warning',
   limit_reached: 'badge-danger',
 };
+
+const ARTICLE_LABEL = {
+  published: 'Published',
+  draft: 'Draft',
+  failed: 'Failed',
+  skipped_duplicate: 'Skipped: already covered',
+  limit_reached: 'Plan limit reached',
+};
+
+const CADENCE_LABEL = { manual: 'Manual', daily: 'Daily', monthly: 'Monthly' };
+const AI_LABEL = { gemini: 'Gemini', deepseek: 'DeepSeek' };
+
+const CADENCE_OPTIONS = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'monthly', label: 'Monthly' },
+];
+const CADENCE_HELP = {
+  manual: 'Runs only when you click Run now.',
+  daily: 'Runs once a day.',
+  monthly: 'Runs once a month.',
+};
+const AI_OPTIONS = [
+  { value: 'gemini', label: 'Gemini' },
+  { value: 'deepseek', label: 'DeepSeek' },
+];
+const PUBLISH_OPTIONS = [
+  { value: 'draft', label: 'Save as draft' },
+  { value: 'live', label: 'Publish live' },
+];
 
 const BLANK_FORM = {
   name: '', collectionTitle: '', collectionHandle: '', cadence: 'manual', articlesPerRun: 3, wordCount: 1500,
@@ -42,6 +79,7 @@ const toPayload = (form, collections) => ({
 
 function CampaignFields({ value, onChange, collections, blogs }) {
   const set = (key) => (e) => onChange({ ...value, [key]: e.target.value });
+  const pick = (key) => (v) => onChange({ ...value, [key]: v });
   // A category or blog removed from the store stays selectable on campaigns that use it.
   const categories = [...new Set([value.collectionTitle, ...collections.map(c => c.title)].filter(Boolean))];
   const blogOptions = value.blogId && !blogs.some(b => String(b.id) === String(value.blogId))
@@ -56,70 +94,89 @@ function CampaignFields({ value, onChange, collections, blogs }) {
 
   return (
     <>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
-      <div className="form-group">
-        <label className="form-label">Campaign name</label>
-        <input className="form-input" value={value.name} onChange={set('name')} maxLength={120} placeholder="Defaults to the category" />
+      <div className="form-section">
+        <h3 className="form-section__title">Basics</h3>
+        <p className="form-section__desc">The collection the articles are about.</p>
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label" htmlFor="cmp-collection">Collection</label>
+            <select id="cmp-collection" className="form-select" value={value.collectionTitle} onChange={setCategory}>
+              {categories.map(title => <option key={title} value={title}>{title}</option>)}
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="cmp-name">Campaign name</label>
+            <input id="cmp-name" className="form-input" value={value.name} onChange={set('name')} maxLength={120} placeholder="Same as the collection" />
+          </div>
+        </div>
       </div>
-      <div className="form-group">
-        <label className="form-label">Category (collection)</label>
-        <select className="form-select" value={value.collectionTitle} onChange={setCategory}>
-          {categories.map(title => <option key={title} value={title}>{title}</option>)}
-        </select>
+
+      <div className="form-section">
+        <h3 className="form-section__title">Schedule</h3>
+        <p className="form-section__desc">Run it yourself, or let it run daily or monthly.</p>
+        <div className="form-grid">
+          <div className="form-group blog-seg-field">
+            <span className="form-label">Runs</span>
+            <Segmented value={value.cadence} onChange={pick('cadence')} options={CADENCE_OPTIONS} ariaLabel="Runs" />
+            <div className="form-helper">{CADENCE_HELP[value.cadence]}</div>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="cmp-per-run">Articles each run</label>
+            <input id="cmp-per-run" className="form-input" type="number" min={1} max={20} value={value.articlesPerRun} onChange={set('articlesPerRun')} />
+            <div className="form-helper">From 1 to 20.</div>
+          </div>
+          {value.cadence !== 'manual' && (
+            <ScheduleWindow startsAt={value.startsAt} endsAt={value.endsAt} onChange={(change) => onChange({ ...value, ...change })}
+              startHelp={`Leave blank to start one ${value.cadence === 'daily' ? 'day' : 'month'} from now.`} />
+          )}
+        </div>
       </div>
-      <div className="form-group">
-        <label className="form-label">Cadence</label>
-        <select className="form-select" value={value.cadence} onChange={set('cadence')}>
-          <option value="manual">Manual (Run now only)</option>
-          <option value="daily">Daily</option>
-          <option value="monthly">Monthly</option>
-        </select>
+
+      <div className="form-section">
+        <h3 className="form-section__title">Articles</h3>
+        <p className="form-section__desc">Length, images, AI model and anything the writer should know.</p>
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label" htmlFor="cmp-words">Words per article</label>
+            <input id="cmp-words" className="form-input" type="number" min={500} max={5000} step={100} value={value.wordCount} onChange={set('wordCount')} />
+            <div className="form-helper">From 500 to 5,000.</div>
+          </div>
+          <ImagesPerPost value={value.imagesPerPost} onChange={(imagesPerPost) => onChange({ ...value, imagesPerPost })}
+            label="Images in each article" help="The banner, then images through the article." />
+          <div className="form-group blog-seg-field">
+            <span className="form-label">AI model</span>
+            <Segmented value={value.aiModel} onChange={pick('aiModel')} options={AI_OPTIONS} ariaLabel="AI model" />
+          </div>
+          <div className="form-group span-all">
+            <label className="form-label" htmlFor="cmp-instructions">Instructions <span className="blog-optional">(optional)</span></label>
+            <textarea id="cmp-instructions" className="form-textarea" rows={3} value={value.instructions} onChange={set('instructions')} maxLength={2000}
+              placeholder="e.g. Friendly tone, mention free shipping above ₹499, festive gold and red banners" />
+            <div className="form-helper">Followed when writing the articles and designing their banners.</div>
+          </div>
+        </div>
       </div>
-      <div className="form-group">
-        <label className="form-label">Articles / run</label>
-        <input className="form-input" type="number" min={1} max={20} value={value.articlesPerRun} onChange={set('articlesPerRun')} />
+
+      <div className="form-section">
+        <h3 className="form-section__title">Publishing</h3>
+        <p className="form-section__desc">Where the articles go, and whether they go live.</p>
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label" htmlFor="cmp-blog">Blog</label>
+            {blogOptions.length ? (
+              <select id="cmp-blog" className="form-select" value={value.blogId} onChange={set('blogId')}>
+                {blogOptions.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
+              </select>
+            ) : (
+              <input id="cmp-blog" className="form-input" value={value.blogId} onChange={set('blogId')} placeholder="Blog ID" />
+            )}
+          </div>
+          <div className="form-group blog-seg-field">
+            <span className="form-label">When an article is ready</span>
+            <Segmented value={value.publishMode} onChange={pick('publishMode')} options={PUBLISH_OPTIONS} ariaLabel="When an article is ready" />
+            <div className="form-helper">{value.publishMode === 'live' ? 'Goes live on your store straight away.' : 'Waits in Shopify as a draft for you to publish.'}</div>
+          </div>
+        </div>
       </div>
-      <div className="form-group">
-        <label className="form-label">Word count</label>
-        <input className="form-input" type="number" min={500} max={5000} step={100} value={value.wordCount} onChange={set('wordCount')} />
-      </div>
-      <div className="form-group">
-        <label className="form-label">AI Model</label>
-        <select className="form-select" value={value.aiModel} onChange={set('aiModel')}>
-          <option value="gemini">Gemini</option>
-          <option value="deepseek">DeepSeek</option>
-        </select>
-      </div>
-      <div className="form-group">
-        <label className="form-label">Publish mode</label>
-        <select className="form-select" value={value.publishMode} onChange={set('publishMode')}>
-          <option value="draft">Save as draft</option>
-          <option value="live">Publish live</option>
-        </select>
-      </div>
-      <div className="form-group">
-        <label className="form-label">Blog</label>
-        {blogOptions.length ? (
-          <select className="form-select" value={value.blogId} onChange={set('blogId')}>
-            {blogOptions.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
-          </select>
-        ) : (
-          <input className="form-input" value={value.blogId} onChange={set('blogId')} placeholder="Blog ID" />
-        )}
-      </div>
-      <ImagesPerPost value={value.imagesPerPost} onChange={(imagesPerPost) => onChange({ ...value, imagesPerPost })}
-        label="Images in each article" help="The banner, then images through the article." />
-      {value.cadence !== 'manual' && (
-        <ScheduleWindow startsAt={value.startsAt} endsAt={value.endsAt} onChange={(change) => onChange({ ...value, ...change })}
-          startHelp={`Leave blank to start one ${value.cadence === 'daily' ? 'day' : 'month'} from now.`} />
-      )}
-    </div>
-    <div className="form-group">
-      <label className="form-label">Instructions (optional)</label>
-      <textarea className="form-textarea" rows={2} value={value.instructions} onChange={set('instructions')} maxLength={2000}
-        placeholder="e.g. Friendly tone, mention free shipping above ₹499, festive gold and red banners" />
-      <div className="form-helper">Followed when writing the articles and designing their banners.</div>
-    </div>
     </>
   );
 }
@@ -138,6 +195,8 @@ export default function Campaigns() {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [hasDna, setHasDna] = useState(false);
+  const [dnaReady, setDnaReady] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -156,12 +215,17 @@ export default function Campaigns() {
         setBlogs(res.data.blogs);
         setForm(f => ({ ...f, blogId: res.data.blogs[0].id }));
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setDnaReady(true));
     getSettings().then(res => {
       const preferred = res.data?.ai?.providers?.article;
       if (preferred) setForm(f => ({ ...f, aiModel: preferred }));
     }).catch(() => {});
   }, []);
+
+  const openNew = () => { setEditing(null); setNewOpen(true); };
+  const openEdit = (c) => { setNewOpen(false); setEditing({ id: c.id, ...formFrom(c) }); };
+  // Stable, so the sheet doesn't re-focus its first field on every keystroke.
+  const closeSheet = useCallback(() => { setNewOpen(false); setEditing(null); }, []);
 
   // Brings in the store's latest collections. What's already picked stays picked.
   const handleSync = async () => {
@@ -186,6 +250,7 @@ export default function Campaigns() {
       await createCampaign(toPayload(form, collections));
       toast.success('Campaign created');
       setForm(f => ({ ...f, name: '', instructions: '', startsAt: '', endsAt: '' }));
+      setNewOpen(false);
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to create campaign');
@@ -229,6 +294,7 @@ export default function Campaigns() {
   };
 
   const remove = async (c) => {
+    if (!window.confirm(`Delete the campaign "${c.name}"? Articles it already wrote stay on your blog.`)) return;
     setBusyId(c.id);
     try { await deleteCampaign(c.id); toast.success('Deleted'); load(); }
     catch { toast.error('Failed'); }
@@ -244,138 +310,192 @@ export default function Campaigns() {
     } catch { /* ignore */ }
   };
 
+  const isEdit = Boolean(editing);
+  const editingOriginal = isEdit ? list.find(x => x.id === editing.id) : null;
+  const sheetBusy = creating || saving;
+  const showCreateForm = dnaReady && collections.length > 0;
+  const showFooter = isEdit || showCreateForm;
+
   return (
-    <div className="page-container fade-in">
-      <div className="page-header">
-        <h1>Campaigns</h1>
-        <p>Pick a category — the tool finds low-competition keywords, skips topics you already cover, and auto-writes & publishes articles.</p>
-      </div>
-
-      {/* Create */}
-      <div className="card mb-24" style={{ maxWidth: 900 }}>
-        <div className="card-header">
-          <h2>New Campaign</h2>
-          {hasDna && (
-            <button className="btn btn-ghost btn-sm" onClick={handleSync} disabled={syncing} title="Get the latest collections from Shopify">
-              {syncing ? <Loader2 size={14} className="spinning" /> : <RefreshCw size={14} />} Sync collections
-            </button>
-          )}
-        </div>
-        <div className="card-body">
-          {collections.length === 0 ? (
-            <div className="form-helper">
-              {hasDna
-                ? 'No collections found. Add one in Shopify, then use Sync collections.'
-                : <>No collections found. Fetch your <a href="/business-dna">Business DNA</a> first so categories are available.</>}
-            </div>
-          ) : (
-            <form onSubmit={handleCreate}>
-              <CampaignFields value={form} onChange={setForm} collections={collections} blogs={blogs} />
-              <button className="btn btn-primary w-full" type="submit" disabled={creating}>
-                {creating ? <><Loader2 size={16} className="spinning" /> Creating...</> : <><Plus size={16} /> Create Campaign</>}
+    <div className="page-container fade-in blog-page">
+      <PageHeader
+        title="Campaigns"
+        subtitle="Pick a collection and the app finds low-competition keywords, skips topics you already cover, then writes and publishes the articles."
+        actions={(
+          <>
+            {hasDna && (
+              <button className="btn btn-secondary" onClick={handleSync} disabled={syncing} title="Get the latest collections from Shopify">
+                {syncing ? <Loader2 size={16} className="spinning" /> : <RefreshCw size={16} />} Sync collections
               </button>
-            </form>
-          )}
-        </div>
-      </div>
+            )}
+            <button className="btn btn-primary" onClick={openNew}><Plus size={16} /> New campaign</button>
+          </>
+        )}
+      />
 
-      {/* List */}
-      <div className="card">
-        <div className="card-header">
-          <h2>Your Campaigns</h2>
-          <button className="btn btn-ghost btn-sm" onClick={load}><RefreshCw size={14} /> Refresh</button>
-        </div>
-        <div className="card-body">
-          {loading ? (
-            <div className="empty-state"><div className="spinner spinner-lg" /></div>
-          ) : list.length === 0 ? (
-            <div className="empty-state">
-              <Rocket size={48} />
-              <h3>No campaigns yet</h3>
-              <p>Create one above to start automating category-based content.</p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {list.map(c => (
-                <div key={c.id} style={{ border: '1px solid var(--border-primary)', borderRadius: 'var(--radius-md)', padding: 16 }}>
-                  <div className="flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 12 }}>
-                    <div style={{ cursor: 'pointer' }} onClick={() => toggleExpand(c)}>
-                      <div className="flex items-center gap-8">
-                        {expanded === c.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        <strong>{c.name}</strong>
-                        <span className={`badge ${STATUS_BADGE[c.status] || 'badge-warning'}`}>{c.status}</span>
+      <Section
+        title="Your campaigns"
+        flush
+        className="blog-list-card"
+        actions={<button className="btn btn-ghost btn-sm" onClick={load} disabled={loading}><RefreshCw size={14} className={loading ? 'spinning' : ''} /> Refresh</button>}
+      >
+        {loading && list.length === 0 ? (
+          <div className="empty-state"><div className="spinner spinner-lg" /></div>
+        ) : list.length === 0 ? (
+          <EmptyState
+            icon={Rocket}
+            title="No campaigns yet"
+            text="A campaign writes articles about one collection, on a schedule or whenever you run it."
+            action={<button className="btn btn-primary" onClick={openNew}><Plus size={16} /> New campaign</button>}
+          />
+        ) : (
+          <div className="blog-rows">
+            {list.map(c => {
+              const st = STATUS[c.status] || { cls: 'status--warn', label: c.status };
+              const busy = busyId === c.id;
+              const open = expanded === c.id;
+              return (
+                <div className="blog-row" key={c.id}>
+                  <div className="list-item">
+                    <div className="list-item__main">
+                      <div className="list-item__title">
+                        <span className="blog-truncate">{c.name}</span>
+                        <span className={`status ${st.cls}`}>{st.label}</span>
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 24 }}>
-                        {c.cadence} · {c.articles_per_run}/run · {c.images_per_post} images · {c.ai_model} · {c.publish_mode} · {c.published_count}/{c.total_count} done
-                        {c.next_run_at ? ` · next: ${new Date(c.next_run_at).toLocaleString()}` : ''}
+                      <div className="list-item__meta">
+                        {c.collection_title && <span>{c.collection_title}</span>}
+                        <span>
+                          {CADENCE_LABEL[c.cadence] || c.cadence}
+                          {c.next_run_at ? `, next run ${fmtDateTime(c.next_run_at)}` : ''}
+                        </span>
+                        <span>{c.articles_per_run} per run</span>
+                        <span>{c.published_count} of {c.total_count} written</span>
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 24 }}>{scheduleText(c)}</div>
+                      <div className="list-item__meta">
+                        <span>{c.images_per_post} images</span>
+                        <span>{AI_LABEL[c.ai_model] || c.ai_model}</span>
+                        <span>{c.publish_mode === 'live' ? 'Publishes live' : 'Saves drafts'}</span>
+                        <span>{scheduleText(c)}</span>
+                      </div>
                     </div>
-                    <div className="flex gap-8">
-                      <button className="btn btn-secondary btn-sm" onClick={() => runNow(c)} disabled={busyId === c.id} title="Run now">
+                    <div className="list-item__actions">
+                      <span className="blog-switch" title={c.status === 'active' ? 'Pause' : 'Resume'}>
+                        <Switch checked={c.status === 'active'} onChange={() => toggleStatus(c)} disabled={busy} label={`${c.name} active`} />
+                      </span>
+                      <button className="btn btn-secondary btn-sm" onClick={() => runNow(c)} disabled={busy}>
                         <Play size={14} /> Run now
                       </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing(editing?.id === c.id ? null : { id: c.id, ...formFrom(c) })} disabled={busyId === c.id} title="Edit" aria-label="Edit campaign" aria-expanded={editing?.id === c.id}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => toggleExpand(c)} aria-expanded={open}>
+                        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />} Articles
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => openEdit(c)} disabled={busy} title="Edit" aria-label={`Edit ${c.name}`}>
                         <Pencil size={14} />
                       </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => toggleStatus(c)} disabled={busyId === c.id} title={c.status === 'active' ? 'Pause' : 'Resume'}>
-                        {c.status === 'active' ? <Pause size={14} /> : <Play size={14} />}
-                      </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => remove(c)} disabled={busyId === c.id} title="Delete">
+                      <button className="btn btn-ghost btn-sm" onClick={() => remove(c)} disabled={busy} title="Delete" aria-label={`Delete ${c.name}`}>
                         <Trash2 size={14} />
                       </button>
                     </div>
                   </div>
 
-                  {editing?.id === c.id && (
-                    <form onSubmit={handleSave} style={{ marginTop: 12, borderTop: '1px solid var(--border-secondary)', paddingTop: 12 }}>
-                      <CampaignFields value={editing} onChange={setEditing} collections={collections} blogs={blogs} />
-                      <div className="form-helper mb-16">
-                        Changes apply to the next articles. Articles already written stay as they are.
-                        {editing.cadence !== c.cadence && editing.cadence !== 'manual' && ` The next run will be one ${editing.cadence === 'daily' ? 'day' : 'month'} from now.`}
-                        {editing.cadence === 'manual' && c.cadence !== 'manual' && ' Scheduled runs will stop.'}
+                  {open && (
+                    <div className="blog-activity">
+                      <div className="blog-activity__box">
+                        {!articles[c.id] ? (
+                          <div className="blog-activity__note"><Loader2 size={14} className="spinning" /> Loading articles…</div>
+                        ) : articles[c.id].length === 0 ? (
+                          <div className="blog-activity__note">No articles yet. Click Run now to write the first ones.</div>
+                        ) : (
+                          <div className="table-container">
+                            <table className="data-table">
+                              <thead><tr><th>Article</th><th>Status</th><th>When</th></tr></thead>
+                              <tbody>
+                                {articles[c.id].map(a => (
+                                  <tr key={a.id}>
+                                    <td>{a.title || a.keyword || '—'}</td>
+                                    <td>
+                                      <span className={`badge ${ARTICLE_BADGE[a.status] || 'badge-purple'}`} title={a.error || undefined}>
+                                        {ARTICLE_LABEL[a.status] || a.status}
+                                      </span>
+                                    </td>
+                                    <td className="nowrap">{fmtDateTime(a.created_at)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex gap-8">
-                        <button className="btn btn-primary btn-sm" type="submit" disabled={saving}>
-                          {saving ? <Loader2 size={14} className="spinning" /> : <Save size={14} />} Save changes
-                        </button>
-                        <button className="btn btn-ghost btn-sm" type="button" onClick={() => setEditing(null)}>Cancel</button>
-                      </div>
-                    </form>
-                  )}
-
-                  {expanded === c.id && (
-                    <div style={{ marginTop: 12, borderTop: '1px solid var(--border-secondary)', paddingTop: 12 }}>
-                      {!articles[c.id] ? (
-                        <div className="form-helper">Loading activity…</div>
-                      ) : articles[c.id].length === 0 ? (
-                        <div className="form-helper">No articles generated yet. Hit "Run now" to start.</div>
-                      ) : (
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                          <tbody>
-                            {articles[c.id].map(a => (
-                              <tr key={a.id} style={{ borderTop: '1px solid var(--border-secondary)' }}>
-                                <td style={{ padding: '6px 8px' }}>{a.title || a.keyword || '—'}</td>
-                                <td style={{ padding: '6px 8px' }}>
-                                  <span className={`badge ${ARTICLE_BADGE[a.status] || 'badge-purple'}`}>{a.status}</span>
-                                </td>
-                                <td style={{ padding: '6px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                                  {new Date(a.created_at).toLocaleString()}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
                     </div>
                   )}
                 </div>
-              ))}
+              );
+            })}
+          </div>
+        )}
+      </Section>
+
+      <Sheet
+        open={newOpen || isEdit}
+        title={isEdit ? 'Edit campaign' : 'New campaign'}
+        subtitle={isEdit
+          ? (editingOriginal?.name || 'Changes apply to the next articles.')
+          : 'Articles about one collection, written on a schedule or when you run it.'}
+        onClose={closeSheet}
+        busy={sheetBusy}
+        width={640}
+        footer={showFooter && (
+          <>
+            <button type="button" className="btn btn-ghost" onClick={closeSheet} disabled={sheetBusy}>Cancel</button>
+            {isEdit ? (
+              <button className="btn btn-primary" type="submit" form="campaign-form" disabled={saving}>
+                {saving ? <Loader2 size={16} className="spinning" /> : <Save size={16} />} Save changes
+              </button>
+            ) : (
+              <button className="btn btn-primary" type="submit" form="campaign-form" disabled={creating}>
+                {creating ? <><Loader2 size={16} className="spinning" /> Creating…</> : <><Plus size={16} /> Create campaign</>}
+              </button>
+            )}
+          </>
+        )}
+      >
+        {isEdit ? (
+          <form id="campaign-form" onSubmit={handleSave}>
+            <div className="callout callout--info mb-24">
+              <Info size={18} />
+              <div>
+                Changes apply to the next articles. Articles already written stay as they are.
+                {editingOriginal && editing.cadence !== editingOriginal.cadence && editing.cadence !== 'manual' && ` The next run will be one ${editing.cadence === 'daily' ? 'day' : 'month'} from now.`}
+                {editingOriginal && editing.cadence === 'manual' && editingOriginal.cadence !== 'manual' && ' Scheduled runs will stop.'}
+              </div>
             </div>
-          )}
-        </div>
-      </div>
-      <style>{`.spinning { animation: spin 1s linear infinite; }`}</style>
+            <CampaignFields value={editing} onChange={setEditing} collections={collections} blogs={blogs} />
+          </form>
+        ) : !dnaReady ? (
+          <div className="empty-state"><div className="spinner spinner-lg" /></div>
+        ) : collections.length === 0 ? (
+          <>
+            <div className="callout callout--warning">
+              <AlertTriangle size={18} />
+              <div>
+                {hasDna
+                  ? 'No collections found. Add one in Shopify, then sync your collections.'
+                  : <>No collections yet. Fetch your <Link to="/business-dna">Business DNA</Link> first so your collections are available.</>}
+              </div>
+            </div>
+            {hasDna && (
+              <div className="form-actions mt-16">
+                <button type="button" className="btn btn-secondary" onClick={handleSync} disabled={syncing}>
+                  {syncing ? <Loader2 size={16} className="spinning" /> : <RefreshCw size={16} />} Sync collections
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <form id="campaign-form" onSubmit={handleCreate}>
+            <CampaignFields value={form} onChange={setForm} collections={collections} blogs={blogs} />
+          </form>
+        )}
+      </Sheet>
     </div>
   );
 }

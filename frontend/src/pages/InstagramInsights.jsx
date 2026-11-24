@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { BarChart3, RefreshCw, Loader2, ExternalLink, MessageCircle } from 'lucide-react';
+import { BarChart3, RefreshCw, Loader2, MessageCircle, AlertTriangle, Info, ImageIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getInstagramAccounts, getIgInsights } from '../lib/api';
-import { errMsg, fmt, muted, danger } from '../components/studio/shared';
+import { PageHeader, Section, Segmented, EmptyState } from '../components/ui';
+import { errMsg, fmt } from '../components/studio/shared';
 import { ColumnChart, BarList, Kpi, compact } from '../components/insights/Charts';
+import '../styles/ig-studio.css';
 
 const PERIODS = [7, 14, 30];
 const TYPE_LABELS = { POST: 'Posts', REEL: 'Reels', STORY: 'Stories', AD: 'Ads', CAROUSEL_CONTAINER: 'Carousels', IGTV: 'IGTV' };
@@ -36,15 +38,6 @@ function localHours(utc) {
   }).sort((a, b) => a.start - b.start);
 }
 
-function Section({ title, children, right }) {
-  return (
-    <div className="card mb-24">
-      <div className="card-header"><h3>{title}</h3>{right}</div>
-      <div className="card-body">{children}</div>
-    </div>
-  );
-}
-
 function PostsTable({ posts }) {
   const [sort, setSort] = useState({ key: 'timestamp', dir: -1 });
   const rows = useMemo(() => posts
@@ -55,9 +48,10 @@ function PostsTable({ posts }) {
       return (av - bv) * sort.dir;
     }), [posts, sort]);
   const header = (key, label, num = true) => (
-    <th className={`sortable ${num ? 'num' : ''}`} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}
-      aria-sort={sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
-      {label}{sort.key === key ? (sort.dir === 1 ? ' ↑' : ' ↓') : ''}
+    <th className={`sortable ${num ? 'num' : ''}`} aria-sort={sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className="ig-sort" onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}>
+        {label}{sort.key === key ? (sort.dir === 1 ? ' ↑' : ' ↓') : ''}
+      </button>
     </th>
   );
 
@@ -74,14 +68,14 @@ function PostsTable({ posts }) {
         <tbody>
           {rows.map((p) => (
             <tr key={p.id}>
-              <td style={{ whiteSpace: 'normal', minWidth: 240 }}>
-                <a href={p.permalink || '#'} target="_blank" rel="noreferrer" className="flex items-center gap-12" style={{ color: 'inherit' }}>
+              <td className="ig-post-td">
+                <a href={p.permalink || '#'} target="_blank" rel="noreferrer" className="ig-post-cell">
                   {p.imageUrl
-                    ? <img src={p.imageUrl} alt="" width="44" height="44" loading="lazy" style={{ borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
-                    : <span style={{ width: 44, height: 44, borderRadius: 6, background: 'var(--bg-tertiary)', flexShrink: 0 }} />}
-                  <span style={{ minWidth: 0 }}>
-                    <span className="badge badge-purple" style={{ marginRight: 6 }}>{p.kind}</span>
-                    <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{p.caption ? `${p.caption.slice(0, 70)}${p.caption.length > 70 ? '…' : ''}` : 'No caption'}</span>
+                    ? <img className="ig-thumb" src={p.imageUrl} alt="" width="44" height="44" loading="lazy" />
+                    : <span className="ig-thumb" />}
+                  <span className="ig-post-cell__text">
+                    <span className="badge badge-purple">{p.kind}</span>
+                    {p.caption ? `${p.caption.slice(0, 70)}${p.caption.length > 70 ? '…' : ''}` : 'No caption'}
                   </span>
                 </a>
               </td>
@@ -135,122 +129,132 @@ export default function InstagramInsights() {
   const ages = data?.audience?.ages ? [...data.audience.ages].sort((a, b) => parseInt(a.key, 10) - parseInt(b.key, 10)) : null;
 
   return (
-    <div className="page-container fade-in">
-      <div className="page-header">
-        <h1>Instagram Insights</h1>
-        <p>Reach, engagement, followers, audience and every recent post, live from Instagram.</p>
-      </div>
+    <div className="page-container fade-in ig-page">
+      <PageHeader title="Instagram Insights" subtitle="Reach, engagement, followers, audience and every recent post, live from Instagram." />
 
       {accounts === null ? <div className="empty-state"><div className="spinner spinner-lg" /></div> : accounts.length === 0 ? (
-        <div className="card"><div className="card-body"><div className="empty-state">
-          <BarChart3 size={48} /><h3>Connect an Instagram account first</h3><p><Link to="/instagram">Go to Instagram Accounts</Link></p>
-        </div></div></div>
+        <div className="card">
+          <EmptyState
+            icon={BarChart3}
+            title="Connect an Instagram account first"
+            text="Insights are read live from a connected Instagram account."
+            action={<Link to="/instagram" className="btn btn-primary">Go to Instagram accounts</Link>}
+          />
+        </div>
       ) : (
         <>
-          <div className="flex items-center gap-12 mb-24" style={{ flexWrap: 'wrap' }}>
-            <select className="form-select" style={{ width: 'auto' }} value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="Instagram account">
+          <div className="toolbar">
+            <select className="form-select" value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="Instagram account">
               {accounts.map((a) => <option key={a.id} value={a.id}>@{a.username}{a.is_default ? ' (default)' : ''}</option>)}
             </select>
-            <div className="chips">
-              {PERIODS.map((d) => (
-                <button key={d} className={`chip ${days === d ? 'active' : ''}`} aria-pressed={days === d} onClick={() => setDays(d)}>Last {d} days</button>
-              ))}
-            </div>
-            <button className="btn btn-secondary btn-sm" onClick={() => load(true)} disabled={loading}>
+            <Segmented value={days} onChange={setDays} ariaLabel="Period" options={PERIODS.map((d) => ({ value: d, label: `Last ${d} days` }))} />
+            <div className="toolbar__spacer" />
+            {data && <span className="ig-updated">Updated {fmt(data.fetchedAt)}</span>}
+            <button className="btn btn-ghost btn-sm" onClick={() => load(true)} disabled={loading}>
               {loading ? <Loader2 size={14} className="spinning" /> : <RefreshCw size={14} />} Refresh
             </button>
-            {data && <span style={muted}>Updated {fmt(data.fetchedAt)}</span>}
           </div>
 
           {error && (
-            <div className="card mb-24"><div className="card-body">
-              <p style={{ ...danger, fontSize: 14 }}>{error}</p>
-              <p className="form-helper">Check the connection on <Link to="/instagram">Instagram Accounts</Link> (Details → API connection → Read insights).</p>
-            </div></div>
+            <div className="callout callout--danger mb-24" role="alert">
+              <AlertTriangle size={16} aria-hidden="true" />
+              <div>
+                <strong>{error}</strong>
+                <p>Check the connection on <Link to="/instagram">Instagram accounts</Link> (Details → API connection → Read insights).</p>
+              </div>
+            </div>
           )}
-          {!data && loading && <div className="empty-state"><div className="spinner spinner-lg" /><p>Fetching insights from Instagram…</p></div>}
+          {!data && loading && <div className="empty-state"><div className="spinner spinner-lg" /><p>Loading from Instagram…</p></div>}
 
           {data && (
-            <div className={loading ? 'refetching' : ''}>
+            <div className={`stack ${loading ? 'refetching' : ''}`}>
               {p && (
-                <div className="card mb-24"><div className="card-body flex gap-16" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-                  {p.profilePictureUrl && (
-                    <img src={p.profilePictureUrl} alt="" width="64" height="64" style={{ borderRadius: '50%', objectFit: 'cover' }}
-                      onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                  )}
-                  <div style={{ flex: 1, minWidth: 220 }}>
-                    <strong style={{ fontSize: 17 }}>{p.name || `@${p.username}`}</strong>{' '}
-                    <a href={`https://www.instagram.com/${p.username}/`} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>@{p.username}</a>
-                    {p.biography && <p style={{ fontSize: 13, color: 'var(--text-secondary)', whiteSpace: 'pre-line', marginTop: 4 }}>{p.biography}</p>}
+                <section className="card">
+                  <div className="card-body ig-profile">
+                    {p.profilePictureUrl && (
+                      <img className="ig-profile__pic" src={p.profilePictureUrl} alt="" width="64" height="64"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    )}
+                    <div className="ig-profile__main">
+                      <span className="ig-profile__name">{p.name || `@${p.username}`}</span>
+                      <a href={`https://www.instagram.com/${p.username}/`} target="_blank" rel="noreferrer">@{p.username}</a>
+                      {p.biography && <p className="ig-profile__bio">{p.biography}</p>}
+                    </div>
+                    <div className="ig-profile__stats">
+                      {[['Followers', p.followersCount], ['Following', p.followsCount], ['Posts', p.mediaCount]].map(([label, v]) => (
+                        <div key={label}><div className="kpi-value">{compact(v)}</div><div className="kpi-label">{label}</div></div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex gap-24">
-                    {[['Followers', p.followersCount], ['Following', p.followsCount], ['Posts', p.mediaCount]].map(([label, v]) => (
-                      <div key={label}><div className="kpi-value">{compact(v)}</div><div className="kpi-label">{label}</div></div>
-                    ))}
-                  </div>
-                </div></div>
+                </section>
               )}
 
-              <Section title={`Last ${data.days} days`}>
-                <div className="kpi-section-title">Reach &amp; visibility</div>
-                <div className="kpi-grid mb-24">
-                  <Kpi label="Views" value={compact(t.views)} hint="Times your content was played or displayed" />
-                  <Kpi label="Accounts reached" value={compact(t.reach)} hint="Unique accounts that saw your content" />
-                  <Kpi label="Profile visits" value={compact(t.profile_views)} />
-                  <Kpi label="Link taps" value={compact(t.profile_links_taps)} hint="Taps on links and contact buttons on your profile" />
-                  <Kpi label="Website clicks" value={compact(t.website_clicks)} />
+              <Section title={`Last ${data.days} days`} description="Totals for the whole period.">
+                <div className="ig-chart-group">
+                  <div className="kpi-section-title">Reach &amp; visibility</div>
+                  <div className="kpi-grid">
+                    <Kpi label="Views" value={compact(t.views)} hint="Times your content was played or displayed" />
+                    <Kpi label="Accounts reached" value={compact(t.reach)} hint="Unique accounts that saw your content" />
+                    <Kpi label="Profile visits" value={compact(t.profile_views)} />
+                    <Kpi label="Link taps" value={compact(t.profile_links_taps)} hint="Taps on links and contact buttons on your profile" />
+                    <Kpi label="Website clicks" value={compact(t.website_clicks)} />
+                  </div>
                 </div>
-                <div className="kpi-section-title">Engagement</div>
-                <div className="kpi-grid mb-24">
-                  <Kpi label="Interactions" value={compact(t.total_interactions)} hint="Likes, comments, saves, shares and replies" />
-                  <Kpi label="Engagement rate" value={percent(t.total_interactions, t.reach)} sub="interactions ÷ accounts reached" />
-                  <Kpi label="Accounts engaged" value={compact(t.accounts_engaged)} />
-                  <Kpi label="Likes" value={compact(t.likes)} />
-                  <Kpi label="Comments" value={compact(t.comments)} sub={<Link to="/instagram-comments">Open comments →</Link>} />
-                  <Kpi label="Saves (net)" value={compact(t.saves)} hint="Saves minus unsaves, so it can be negative" />
-                  <Kpi label="Shares" value={compact(t.shares)} />
-                  <Kpi label="Story replies" value={compact(t.replies)} />
+                <div className="ig-chart-group">
+                  <div className="kpi-section-title">Engagement</div>
+                  <div className="kpi-grid">
+                    <Kpi label="Interactions" value={compact(t.total_interactions)} hint="Likes, comments, saves, shares and replies" />
+                    <Kpi label="Engagement rate" value={percent(t.total_interactions, t.reach)} sub="interactions ÷ accounts reached" />
+                    <Kpi label="Accounts engaged" value={compact(t.accounts_engaged)} />
+                    <Kpi label="Likes" value={compact(t.likes)} />
+                    <Kpi label="Comments" value={compact(t.comments)} sub={<Link to="/instagram-comments">Open comments →</Link>} />
+                    <Kpi label="Saves (net)" value={compact(t.saves)} hint="Saves minus unsaves, so it can be negative" />
+                    <Kpi label="Shares" value={compact(t.shares)} />
+                    <Kpi label="Story replies" value={compact(t.replies)} />
+                  </div>
                 </div>
-                <div className="kpi-section-title">Followers</div>
-                <div className="kpi-grid">
-                  <Kpi label="New follows" value={data.follows ? compact(data.follows.follows) : '—'} />
-                  <Kpi label="Unfollows" value={data.follows ? compact(data.follows.unfollows) : '—'} />
-                  <Kpi label="Net change" value={data.follows ? `${data.follows.follows - data.follows.unfollows > 0 ? '+' : ''}${compact(data.follows.follows - data.follows.unfollows)}` : '—'} />
+                <div className="ig-chart-group">
+                  <div className="kpi-section-title">Followers</div>
+                  <div className="kpi-grid">
+                    <Kpi label="New follows" value={data.follows ? compact(data.follows.follows) : '—'} />
+                    <Kpi label="Unfollows" value={data.follows ? compact(data.follows.unfollows) : '—'} />
+                    <Kpi label="Net change" value={data.follows ? `${data.follows.follows - data.follows.unfollows > 0 ? '+' : ''}${compact(data.follows.follows - data.follows.unfollows)}` : '—'} />
+                  </div>
                 </div>
               </Section>
 
-              <div className="ig-two-col mb-24">
-                <Section title="Daily reach">
+              <div className="grid-2">
+                <Section title="Daily reach" description="Accounts that saw your content each day.">
                   {data.daily.reach?.length
                     ? <ColumnChart label="Day" valueLabel="Accounts reached" data={data.daily.reach.map((d) => ({ key: d.date, label: shortDate(d.date), value: d.value }))} />
                     : <p className="form-helper">Not available for this account yet.</p>}
                 </Section>
-                <Section title="New followers per day">
+                <Section title="New followers per day" description="Follows gained each day.">
                   {newFollowers.length && sum(newFollowers) > 0
                     ? <ColumnChart label="Day" valueLabel="New followers" data={newFollowers.map((d) => ({ key: d.date, label: shortDate(d.date), value: d.value }))} />
                     : <p className="form-helper">No new followers in this period{newFollowers.length ? '' : ' (Instagram shows this from 100 followers)'}.</p>}
                 </Section>
               </div>
 
-              <div className="ig-two-col mb-24">
-                <Section title="Best time to post">
+              <div className="grid-2">
+                <Section title="Best time to post" description="When your followers are online, in your time zone.">
                   {hours ? (
                     <>
-                      <p style={{ fontSize: 14, marginBottom: 12 }}>
-                        Most of your followers are online around <strong>{hours[peakIndex].title.split(' – ')[0]}</strong> (your time).
+                      <p className="ig-peak">
+                        Most of your followers are online around <strong>{hours[peakIndex].title.split(' – ')[0]}</strong>.
                       </p>
                       <ColumnChart label="Hour" valueLabel="Followers online" highlight={peakIndex} data={hours} height={160} />
                     </>
                   ) : <p className="form-helper">Instagram hasn't shared follower activity for this account yet.</p>}
                 </Section>
-                <Section title="Reach by content type">
+                <Section title="Reach by content type" description="Accounts reached by each format.">
                   <BarList label="Reach by content type" total={sum(data.reachByType)}
                     rows={(data.reachByType || []).map((r) => ({ key: r.key, label: TYPE_LABELS[r.key] || r.key, value: r.value }))} />
                 </Section>
               </div>
 
-              <Section title="Audience (followers)">
-                <div className="ig-two-col">
+              <Section title="Audience" description="Where your followers live, and their age and gender.">
+                <div className="grid-2">
                   <div>
                     <div className="kpi-section-title">Top countries</div>
                     <BarList label="Top countries" total={sum(data.audience.countries)}
@@ -272,20 +276,27 @@ export default function InstagramInsights() {
                 </div>
               </Section>
 
-              <Section title={`Recent posts (${data.posts.length})`}
-                right={<Link to="/instagram-comments" className="btn btn-ghost btn-sm"><MessageCircle size={14} /> Comments</Link>}>
-                {data.posts.length ? <PostsTable posts={data.posts} /> : <p className="form-helper">No posts yet.</p>}
-                <p className="form-helper mt-16">Lifetime numbers per post. Click a column to sort; click a post to open it on Instagram <ExternalLink size={11} />.</p>
+              <Section
+                flush
+                title={`Recent posts (${data.posts.length})`}
+                description="Lifetime numbers per post. Click a column to sort, or a post to open it on Instagram."
+                actions={<Link to="/instagram-comments" className="btn btn-ghost btn-sm"><MessageCircle size={14} /> Comments</Link>}
+              >
+                {data.posts.length
+                  ? <PostsTable posts={data.posts} />
+                  : <EmptyState icon={ImageIcon} title="No posts yet" text="Posts on this account appear here with their numbers." />}
               </Section>
 
               {data.notes?.length > 0 && (
-                <div className="form-helper">{data.notes.map((n) => <p key={n}>{n}</p>)}</div>
+                <div className="callout ig-notes">
+                  <Info size={16} aria-hidden="true" />
+                  <div>{data.notes.map((n) => <p key={n}>{n}</p>)}</div>
+                </div>
               )}
             </div>
           )}
         </>
       )}
-      <style>{'.spinning { animation: spin 1s linear infinite; }'}</style>
     </div>
   );
 }

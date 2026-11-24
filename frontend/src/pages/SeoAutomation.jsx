@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  SearchCheck, Loader2, Play, Sparkles, Power, Undo2, EyeOff, ExternalLink, Wrench, Link2, Unlink, Save, X, RefreshCw, RotateCcw, Star, CheckCheck,
+  SearchCheck, Loader2, Play, Sparkles, Undo2, EyeOff, ExternalLink, Wrench, Link2, Unlink, Save, RefreshCw, RotateCcw, Star, CheckCheck,
+  CalendarClock, AlertTriangle, ListChecks, History, Info,
 } from 'lucide-react';
+import { PageHeader, Sheet, Segmented, EmptyState, Section, Switch, SettingRow } from '../components/ui';
 import toast from 'react-hot-toast';
 import {
   getSeoOverview, saveSeoSettings, runSeoAudit, getSeoIssues, suggestSeoFix, fixSeoIssue, fixAllSeoIssues, ignoreSeoIssue, restoreSeoIssue,
@@ -27,7 +29,6 @@ const CONFIRM = {
 
 const errMsg = (err, fallback = 'Something went wrong') => err.response?.data?.error || fallback;
 const muted = { fontSize: 12, color: 'var(--text-muted)' };
-const twoColumns = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 24 };
 const fmtDate = (d) => new Date(d).toLocaleDateString([], { day: 'numeric', month: 'short' });
 const percent = (n) => `${(n * 100).toFixed(1)}%`;
 
@@ -40,19 +41,18 @@ function change(now, before, { invert = false, format = compact } = {}) {
 
 function SearchSummary({ search }) {
   if (!search) return null;
-  if (search.error) return <p className="form-helper mb-16">{search.error}</p>;
+  if (search.error) return <div className="callout callout--warning"><AlertTriangle size={16} /><span>{search.error}</span></div>;
   const { current, previous, topQueries } = search;
   return (
-    <div className="mb-24">
-      <h3 style={{ fontSize: 14, marginBottom: 12 }}>Google search, last 28 days</h3>
-      <div className="kpi-grid mb-16">
+    <Section title="Google search" description="The last 28 days, from Search Console">
+      <div className="kpi-grid mb-24">
         <Kpi label="Clicks" value={compact(current.clicks)} sub={change(current.clicks, previous.clicks)} />
         <Kpi label="Times shown" value={compact(current.impressions)} sub={change(current.impressions, previous.impressions)} />
         <Kpi label="Click rate" value={percent(current.ctr)} sub={change(current.ctr, previous.ctr, { format: percent })} />
         <Kpi label="Average position" value={current.position || '—'} sub={change(current.position, previous.position, { invert: true })} />
       </div>
       <BarList label="Top searches" rows={topQueries.map((q) => ({ key: q.key, label: q.key, value: q.clicks }))} empty="No searches recorded yet" />
-    </div>
+    </Section>
   );
 }
 
@@ -85,76 +85,92 @@ function StoreFixes({ canManage, settings, onOpenSettings }) {
 
   const facts = settings.store_facts;
   return (
-    <div className="card mb-24">
-      <div className="card-body">
-        <h3 style={{ fontSize: 14, marginBottom: 12 }}>Store-wide fixes</h3>
-        <div className="seo-store-fix">
-          <div style={{ flex: '1 1 320px' }}>
-            <div className="flex gap-8" style={{ alignItems: 'center' }}><Star size={14} /> Review stars in Google</div>
-            <div style={muted}>
+    <Section title="Store-wide fixes" description="Changes that help every page at once" flush>
+      <div className="list">
+        <div className="list-item">
+          <span className="list-item__media"><Star size={18} /></span>
+          <div className="list-item__main">
+            <div className="list-item__title">Review stars in Google</div>
+            <div className="list-item__meta">
               {!rating ? 'Checking your theme…' : rating.state === 'available'
                 ? `${rating.reviewed} products have reviews, but their pages don't give Google the rating, so no stars show in search results.`
                 : rating.message}
             </div>
           </div>
-          {rating?.state === 'installed' && <span className="badge badge-success">On</span>}
-          {canManage && rating?.state === 'available' && (
-            <button className="btn btn-sm btn-primary" disabled={busy} onClick={addStars}>
-              {busy ? <Loader2 size={13} className="spinning" /> : <Star size={13} />} {busy ? 'Adding and checking…' : 'Add review stars'}
-            </button>
+          <div className="list-item__actions">
+            {rating?.state === 'installed' && <span className="status status--on">On</span>}
+            {canManage && rating?.state === 'available' && (
+              <button className="btn btn-sm btn-primary" disabled={busy} onClick={addStars}>
+                {busy ? <Loader2 size={13} className="spinning" /> : <Star size={13} />} {busy ? 'Adding and checking…' : 'Add review stars'}
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="list-item">
+          <span className="list-item__media"><Info size={18} /></span>
+          <div className="list-item__main">
+            <div className="list-item__title">Store facts</div>
+            <div className="list-item__meta">{facts ? describeFacts(facts) : 'Say whether you offer Cash on Delivery and free shipping, so product text that promises otherwise can be caught.'}</div>
+          </div>
+          {canManage && (
+            <div className="list-item__actions">
+              <button className="btn btn-sm btn-secondary" onClick={onOpenSettings}>{facts ? 'Change' : 'Set store facts'}</button>
+            </div>
           )}
         </div>
-        <div className="seo-store-fix">
-          <div style={{ flex: '1 1 320px' }}>
-            <div>Store facts</div>
-            <div style={muted}>{facts ? describeFacts(facts) : 'Tell the checker whether you offer Cash on Delivery and free shipping, so it can catch product text that promises otherwise.'}</div>
-          </div>
-          {canManage && <button className="btn btn-sm btn-secondary" onClick={onOpenSettings}>{facts ? 'Change' : 'Set store facts'}</button>}
-        </div>
       </div>
-    </div>
+    </Section>
   );
 }
 
-function OverviewTab({ data, canManage, onOpenSettings }) {
+function OverviewTab({ data, canManage, onOpenSettings, onRun, busy, onShowProblems }) {
   const { audits, counts, types } = data;
   const done = audits.filter((a) => a.status === 'done');
   const last = done[0];
   const storeFixes = <StoreFixes canManage={canManage} settings={data.settings} onOpenSettings={onOpenSettings} />;
   if (!last) {
     return (
-      <>
-        {storeFixes}
-        <div className="empty-state">
-          <SearchCheck />
-          <h3>No site check yet</h3>
-          <p>Press Check site now to see how your whole store looks to Google.</p>
+      <div className="stack">
+        <div className="card">
+          <EmptyState
+            icon={SearchCheck}
+            title="No site check yet"
+            text="Check your store once to see how every page looks to Google. Nothing is changed by a check."
+            action={canManage && (
+              <button className="btn btn-primary" disabled={busy} onClick={() => onRun(false)}>
+                {busy ? <Loader2 size={15} className="spinning" /> : <Play size={15} />} Check site now
+              </button>
+            )}
+          />
         </div>
-      </>
+        {storeFixes}
+      </div>
     );
   }
   const open = Object.values(counts).reduce((sum, n) => sum + n, 0);
   return (
-    <>
-      <div className="kpi-grid mb-24">
+    <div className="stack">
+      <div className="kpi-grid">
         <Kpi label="SEO health" value={last.score} sub="out of 100" hint="Each page starts at 100 and loses points for its problems." />
-        <Kpi label="Pages checked" value={compact(last.pages_checked)} sub={`Last run ${fmtDate(last.started_at)}`} />
+        <Kpi label="Pages checked" value={compact(last.pages_checked)} sub={`Last check ${fmtDate(last.started_at)}`} />
         <Kpi label="Problems open" value={compact(open)} sub={`${counts.critical || 0} critical, ${counts.high || 0} high`} />
-        <Kpi label="Pages improved" value={compact(last.fixes_applied)} sub="in the last run" />
+        <Kpi label="Pages improved" value={compact(last.fixes_applied)} sub="in the last check" />
+      </div>
+      <div className="grid-2">
+        <Section title="SEO health by day" description="Out of 100, after each daily check">
+          <ColumnChart data={[...done].reverse().map((a) => ({ label: fmtDate(a.started_at), value: a.score }))} highlight={done.length - 1} valueLabel="Score" label="SEO health by day" />
+        </Section>
+        <Section
+          title="What's wrong"
+          description="Open problems by type"
+          actions={open > 0 && <button className="btn btn-sm btn-ghost" onClick={onShowProblems}>See all <ListChecks size={14} /></button>}
+        >
+          <BarList label="Problems by type" rows={types.map((t) => ({ key: t.type, label: t.label, value: t.n }))} limit={10} empty="Nothing open" />
+        </Section>
       </div>
       <SearchSummary search={last.search} />
       {storeFixes}
-      <div className="mb-24" style={twoColumns}>
-        <div>
-          <h3 style={{ fontSize: 14, marginBottom: 12 }}>SEO health by day</h3>
-          <ColumnChart data={[...done].reverse().map((a) => ({ label: fmtDate(a.started_at), value: a.score }))} highlight={done.length - 1} valueLabel="Score" label="SEO health by day" />
-        </div>
-        <div>
-          <h3 style={{ fontSize: 14, marginBottom: 12 }}>What's wrong</h3>
-          <BarList label="Problems by type" rows={types.map((t) => ({ key: t.type, label: t.label, value: t.n }))} limit={10} empty="Nothing open" />
-        </div>
-      </div>
-    </>
+    </div>
   );
 }
 
@@ -189,7 +205,6 @@ function MetaEditor({ issue, onClose, onSaved }) {
     setLoading(false);
   }, [issue.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { suggest(); }, [suggest]);
-  useEscape(onClose, saving);
 
   const save = async () => {
     setSaving(true);
@@ -219,12 +234,21 @@ function MetaEditor({ issue, onClose, onSaved }) {
   );
 
   return (
-    <div className="seo-modal" role="dialog" aria-modal="true" aria-label="Fix title and description" onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
-      <div className="seo-modal__card">
-        <button className="seo-modal__close" onClick={onClose} disabled={saving} aria-label="Close"><X size={18} /></button>
-        <h3 style={{ marginBottom: 4 }}>Google title and description</h3>
-        <a href={issue.url} target="_blank" rel="noreferrer" style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{issue.title} <ExternalLink size={11} /></a>
-        <div style={{ ...muted, margin: '4px 0 16px' }}>{issue.label}: {issue.detail}</div>
+    <Sheet
+      open
+      title="Google title and description"
+      subtitle={`${issue.label}: ${issue.detail}`}
+      onClose={onClose}
+      busy={saving}
+      footer={(
+        <>
+          <button className="btn btn-ghost" disabled={saving} onClick={onClose}>Cancel</button>
+          <button className="btn btn-secondary" disabled={loading || saving} onClick={suggest}><RefreshCw size={15} /> Suggest again</button>
+          <button className="btn btn-primary" disabled={!canSave} onClick={save}>{saving ? <Loader2 size={15} className="spinning" /> : <Save size={15} />} Save to store</button>
+        </>
+      )}
+    >
+        <a href={issue.url} target="_blank" rel="noreferrer" style={{ fontSize: 14, overflowWrap: 'anywhere', display: 'inline-block', marginBottom: 16 }}>{issue.title} <ExternalLink size={12} /></a>
 
         {loading ? (
           <div className="flex gap-8" style={{ alignItems: 'center', padding: '24px 0' }}><Loader2 size={16} className="spinning" /> Writing a suggestion from the page's own details…</div>
@@ -248,31 +272,15 @@ function MetaEditor({ issue, onClose, onSaved }) {
             </div>
           </>
         )}
-
-        <div className="flex gap-8 mt-16" style={{ flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" disabled={!canSave} onClick={save}>{saving ? <Loader2 size={15} className="spinning" /> : <Save size={15} />} Save to store</button>
-          <button className="btn btn-secondary" disabled={loading || saving} onClick={suggest}><RefreshCw size={15} /> Suggest again</button>
-          <button className="btn btn-ghost" disabled={saving} onClick={onClose}>Cancel</button>
-        </div>
-        <p className="form-helper" style={{ marginTop: 8 }}>Saved changes are listed under Changes made, where you can undo them.</p>
-      </div>
-    </div>
+        <p className="form-helper" style={{ marginTop: 16 }}>Saved changes are listed under Changes made, where you can undo them.</p>
+    </Sheet>
   );
-}
-
-function useEscape(onClose, busy) {
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && !busy) onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, busy]);
 }
 
 // A false promise: exactly which lines change, before anything is saved.
 function ClaimsPreview({ issue, onClose, onSaved }) {
   const [plan, setPlan] = useState(null);
   const [saving, setSaving] = useState(false);
-  useEscape(onClose, saving);
 
   useEffect(() => {
     suggestSeoFix(issue.id)
@@ -292,12 +300,20 @@ function ClaimsPreview({ issue, onClose, onSaved }) {
   };
 
   return (
-    <div className="seo-modal" role="dialog" aria-modal="true" aria-label="Remove a false promise" onClick={(e) => { if (e.target === e.currentTarget && !saving) onClose(); }}>
-      <div className="seo-modal__card">
-        <button className="seo-modal__close" onClick={onClose} disabled={saving} aria-label="Close"><X size={18} /></button>
-        <h3 style={{ marginBottom: 4 }}>Remove a promise you don't make</h3>
-        <a href={issue.url} target="_blank" rel="noreferrer" style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{issue.title} <ExternalLink size={11} /></a>
-        <div style={{ ...muted, margin: '4px 0 16px' }}>{issue.detail}</div>
+    <Sheet
+      open
+      title="Remove a promise you don't make"
+      subtitle={issue.detail}
+      onClose={onClose}
+      busy={saving}
+      footer={(
+        <>
+          <button className="btn btn-ghost" disabled={saving} onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!plan || !!plan.note || saving} onClick={save}>{saving ? <Loader2 size={15} className="spinning" /> : <Save size={15} />} Save to store</button>
+        </>
+      )}
+    >
+        <a href={issue.url} target="_blank" rel="noreferrer" style={{ fontSize: 14, overflowWrap: 'anywhere', display: 'inline-block', marginBottom: 16 }}>{issue.title} <ExternalLink size={12} /></a>
         {!plan ? (
           <div className="flex gap-8" style={{ alignItems: 'center', padding: '24px 0' }}><Loader2 size={16} className="spinning" /> Reading this product from Shopify…</div>
         ) : (
@@ -312,13 +328,8 @@ function ClaimsPreview({ issue, onClose, onSaved }) {
             ))}
           </>
         )}
-        <div className="flex gap-8 mt-16" style={{ flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" disabled={!plan || !!plan.note || saving} onClick={save}>{saving ? <Loader2 size={15} className="spinning" /> : <Save size={15} />} Save to store</button>
-          <button className="btn btn-ghost" disabled={saving} onClick={onClose}>Cancel</button>
-        </div>
-        <p className="form-helper" style={{ marginTop: 8 }}>Only the promise is taken out. Every other word stays, and you can undo it under Changes made.</p>
-      </div>
-    </div>
+        <p className="form-helper" style={{ marginTop: 16 }}>Only the promise is taken out. Every other word stays, and you can undo it under Changes made.</p>
+    </Sheet>
   );
 }
 
@@ -375,30 +386,41 @@ function IssuesTab({ canManage, refreshKey, onChanged, googleSite }) {
     setBulk(false);
   };
 
+  const EMPTY_TEXT = {
+    open: 'No open problems. The daily check adds anything new it finds.',
+    fixed: 'Problems you or the daily check fixed show up here.',
+    resolved: 'Problems that went away on their own show up here.',
+    ignored: 'Problems you ignore show up here, and the daily check leaves them alone.',
+  };
+
   return (
     <>
-      <div className="flex gap-8 mb-16" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
-        {ISSUE_VIEWS.map(([key, label]) => (
-          <button key={key} className={`btn btn-sm ${view === key ? 'btn-primary' : 'btn-secondary'}`} onClick={() => switchView(key)}>{label}</button>
-        ))}
+      <div className="toolbar">
+        <Segmented
+          ariaLabel="Which problems"
+          value={view}
+          onChange={switchView}
+          options={ISSUE_VIEWS.map(([key, label]) => ({ value: key, label }))}
+        />
         {types.length > 0 && (
-          <select className="form-select" style={{ width: 'auto', minWidth: 220, padding: '6px 10px', fontSize: 13 }} value={type} onChange={(e) => setType(e.target.value)} aria-label="Problem type">
+          <select className="form-select" style={{ minWidth: 240 }} value={type} onChange={(e) => setType(e.target.value)} aria-label="Problem type">
             <option value="">All problems ({total})</option>
             {types.map((t) => <option key={t.type} value={t.type}>{t.label} ({t.n})</option>)}
           </select>
         )}
+        <span className="toolbar__spacer" />
         {BULK_KINDS.includes(bulkKind) && shownTotal > 0 && (
-          <button className="btn btn-sm btn-primary" disabled={bulk || !!busy} onClick={fixAll} title="Fix every problem of this type now">
-            {bulk ? <Loader2 size={13} className="spinning" /> : <CheckCheck size={13} />} {bulk ? 'Fixing…' : `Fix all ${shownTotal}`}
+          <button className="btn btn-primary" disabled={bulk || !!busy} onClick={fixAll} title="Fix every problem of this type now">
+            {bulk ? <Loader2 size={15} className="spinning" /> : <CheckCheck size={15} />} {bulk ? 'Fixing…' : `Fix all ${shownTotal}`}
           </button>
         )}
       </div>
-      {!issues ? <div className="spinner" /> : issues.length === 0 ? (
-        <p className="form-helper">Nothing here.</p>
+      {!issues ? <div className="card"><div className="empty-state"><div className="spinner spinner-lg" /></div></div> : issues.length === 0 ? (
+        <div className="card"><EmptyState icon={ListChecks} title="Nothing here" text={EMPTY_TEXT[view]} /></div>
       ) : (
         <>
-          {issues.length < shownTotal && <p className="form-helper mb-16">Showing the first {issues.length} of {shownTotal}. Pick a problem type above to see the rest.</p>}
-          <div className="table-container">
+          {issues.length < shownTotal && <div className="callout callout--info mb-16"><Info size={16} /><span>Showing the first {issues.length} of {shownTotal}. Pick a problem type to see the rest.</span></div>}
+          <div className="card table-container">
             <table className="data-table">
               <thead><tr><th>Priority</th><th>Problem</th><th>Page</th>{canManage && (view === 'open' || view === 'ignored') && <th />}</tr></thead>
               <tbody>
@@ -500,10 +522,10 @@ function ChangesTab({ canManage, refreshKey }) {
     setBusy(null);
   };
 
-  if (!changes) return <div className="spinner" />;
-  if (!changes.length) return <p className="form-helper">Nothing has been changed yet. Every change made to your store will be listed here, and each one can be undone.</p>;
+  if (!changes) return <div className="card"><div className="empty-state"><div className="spinner spinner-lg" /></div></div>;
+  if (!changes.length) return <div className="card"><EmptyState icon={History} title="No changes yet" text="Every change made to your store is listed here, and each one can be undone." /></div>;
   return (
-    <div className="table-container">
+    <div className="card table-container">
       <table className="data-table">
         <thead><tr><th>When</th><th>Page</th><th>What changed</th>{canManage && <th />}</tr></thead>
         <tbody>
@@ -558,38 +580,44 @@ function GoogleTab({ data, canManage, onChanged }) {
 
   if (!google.configured) {
     return (
-      <div style={{ maxWidth: 640 }}>
-        <p className="mb-16">Google sign-in needs a one-time setup on the server before this button can work.</p>
-        <ol style={{ paddingLeft: 20, lineHeight: 1.8, fontSize: 14 }}>
-          <li>In Google Cloud Console, create a project and enable the <strong>Google Search Console API</strong>.</li>
-          <li>Set up the OAuth consent screen as External and press <strong>Publish app</strong>. In Testing mode, the connection stops after 7 days.</li>
-          <li>Create an OAuth client of type Web application, with this redirect URI:<br /><code style={{ overflowWrap: 'anywhere' }}>{google.redirectUri}</code></li>
-          <li>Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to the server <code>.env</code>, then restart the app.</li>
+      <Section title="Set up Google sign-in" description="A one-time setup on the server before Search Console can be connected" className="seo-narrow">
+        <ol className="steps-list">
+          <li><span>In Google Cloud Console, create a project and enable the <strong>Google Search Console API</strong>.</span></li>
+          <li><span>Set up the OAuth consent screen as External and press <strong>Publish app</strong>. In Testing mode, the connection stops after 7 days.</span></li>
+          <li><span>Create an OAuth client of type Web application, with this redirect URI:<br /><code style={{ overflowWrap: 'anywhere' }}>{google.redirectUri}</code></span></li>
+          <li><span>Add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to the server <code>.env</code>, then restart the app.</span></li>
         </ol>
-      </div>
+      </Section>
     );
   }
   if (!settings.google_connected) {
     return (
-      <div style={{ maxWidth: 640 }}>
-        <p className="mb-16">Connect the Google account that can see your site in Search Console. The daily check then uses real search data: which pages people see, what they typed, and which pages Google hasn't indexed.</p>
-        {canManage && <button className="btn btn-primary" disabled={busy} onClick={connect}>{busy ? <Loader2 size={15} className="spinning" /> : <Link2 size={15} />} Connect Google</button>}
+      <div className="card seo-narrow">
+        <EmptyState
+          icon={Link2}
+          title="Connect Google Search Console"
+          text="Use real search data in the daily check: which pages people see, what they typed, and which pages Google hasn't indexed."
+          action={canManage && <button className="btn btn-primary" disabled={busy} onClick={connect}>{busy ? <Loader2 size={15} className="spinning" /> : <Link2 size={15} />} Connect Google</button>}
+        />
       </div>
     );
   }
   return (
-    <div style={{ maxWidth: 480 }}>
-      <p className="mb-16">Connected as <strong>{settings.google_email || 'your Google account'}</strong>.</p>
-      <div className="form-group">
-        <label className="form-label">Search Console site</label>
-        <select className="form-select" value={settings.google_site || ''} disabled={!canManage} onChange={(e) => pick(e.target.value)}>
+    <Section
+      title="Search Console"
+      description={<>Connected as <strong>{settings.google_email || 'your Google account'}</strong></>}
+      actions={canManage && <button className="btn btn-ghost btn-sm" onClick={disconnect}><Unlink size={14} /> Disconnect</button>}
+      className="seo-narrow"
+    >
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label className="form-label" htmlFor="gsc-site">Site</label>
+        <select id="gsc-site" className="form-select" value={settings.google_site || ''} disabled={!canManage} onChange={(e) => pick(e.target.value)}>
           {!settings.google_site && <option value="">Choose a site</option>}
           {[...new Set([settings.google_site, ...sites].filter(Boolean))].map((site) => <option key={site} value={site}>{site}</option>)}
         </select>
         {!sites.length && <p className="form-helper">This Google account has no Search Console sites yet.</p>}
       </div>
-      {canManage && <button className="btn btn-danger btn-sm" onClick={disconnect}><Unlink size={13} /> Disconnect</button>}
-    </div>
+    </Section>
   );
 }
 
@@ -628,59 +656,68 @@ function SettingsTab({ settings, canManage, onChanged }) {
   };
 
   return (
-    <div style={{ maxWidth: 560 }}>
-      <div style={twoColumns}>
-        <div className="form-group">
-          <label className="form-label">Run every day at</label>
-          <input type="time" className="form-input" value={form.runTime} disabled={!canManage} onChange={(e) => set('runTime', e.target.value)} />
+    <div className="stack seo-narrow">
+      <Section title="Schedule" description="When the daily check runs, and how much the AI may rewrite in one day">
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label" htmlFor="seo-time">Run every day at</label>
+            <input id="seo-time" type="time" className="form-input" value={form.runTime} disabled={!canManage} onChange={(e) => set('runTime', e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="seo-tz">Time zone</label>
+            <select id="seo-tz" className="form-select" value={form.timezone} disabled={!canManage} onChange={(e) => set('timezone', e.target.value)}>
+              {timezoneOptions(form.timezone).map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+            </select>
+          </div>
+          <div className="form-group span-all">
+            <label className="form-label" htmlFor="seo-max">Pages the AI rewrites each day</label>
+            <input id="seo-max" type="number" min="1" max="50" className="form-input" style={{ maxWidth: 160 }} value={form.maxFixes} disabled={!canManage} onChange={(e) => set('maxFixes', e.target.value)} />
+            <p className="form-helper">The whole site is still checked every day. This only limits AI-written titles, descriptions and articles; alt text and dead links don't count. A changed field then rests for 14 days so Google can react to it.</p>
+          </div>
         </div>
-        <div className="form-group">
-          <label className="form-label">Time zone</label>
-          <select className="form-select" value={form.timezone} disabled={!canManage} onChange={(e) => set('timezone', e.target.value)}>
-            {timezoneOptions(form.timezone).map((tz) => <option key={tz} value={tz}>{tz}</option>)}
-          </select>
+      </Section>
+
+      <Section title="What the daily check may change" description="Turn off anything you'd rather do yourself">
+        {FIX_OPTIONS.map(([key, label, help]) => (
+          <SettingRow key={key} title={label} description={help} htmlFor={key}>
+            <Switch id={key} checked={!!form[key]} disabled={!canManage} onChange={(v) => set(key, v)} />
+          </SettingRow>
+        ))}
+      </Section>
+
+      <Section title="Store facts" description="The truth about your store. Product text that promises otherwise is flagged, and fixed if that option is on.">
+        <div className="form-grid">
+          <div className="form-group">
+            <label className="form-label" htmlFor="cod">Cash on Delivery</label>
+            <select id="cod" className="form-select" value={form.cod} disabled={!canManage} onChange={(e) => set('cod', e.target.value)}>
+              <option value="">Not set</option>
+              <option value="yes">We offer Cash on Delivery</option>
+              <option value="no">Prepaid only, no COD</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="freeShipping">Free shipping</label>
+            <select id="freeShipping" className="form-select" value={form.freeShipping} disabled={!canManage} onChange={(e) => set('freeShipping', e.target.value)}>
+              <option value="">Not set</option>
+              <option value="none">No free shipping</option>
+              <option value="all">Free on every order</option>
+              <option value="over">Free over an amount</option>
+            </select>
+          </div>
+          {form.freeShipping === 'over' && (
+            <div className="form-group">
+              <label className="form-label" htmlFor="freeShippingMin">On orders over (₹)</label>
+              <input id="freeShippingMin" type="number" min="1" className="form-input" value={form.freeShippingMin} disabled={!canManage} onChange={(e) => set('freeShippingMin', e.target.value)} />
+            </div>
+          )}
         </div>
-      </div>
-      <div className="form-group">
-        <label className="form-label">Pages the AI rewrites each day</label>
-        <input type="number" min="1" max="50" className="form-input" value={form.maxFixes} disabled={!canManage} onChange={(e) => set('maxFixes', e.target.value)} />
-        <p className="form-helper">The whole site is checked every day. This limits the AI-written titles, descriptions and articles. Alt text and dead links don't count toward it. A changed field then rests for 14 days, so Google can react to it.</p>
-      </div>
-      <label className="form-label">What the daily run may change</label>
-      {FIX_OPTIONS.map(([key, label, help]) => (
-        <div className="checkbox-group" key={key} style={{ alignItems: 'flex-start' }}>
-          <input id={key} type="checkbox" checked={form[key]} disabled={!canManage} onChange={(e) => set(key, e.target.checked)} />
-          <label htmlFor={key}>{label}<div style={muted}>{help}</div></label>
-        </div>
-      ))}
-      <label className="form-label mt-16" style={{ display: 'block' }}>Store facts</label>
-      <p className="form-helper" style={{ marginTop: 0, marginBottom: 12 }}>The truth about your store. Product text that promises otherwise is flagged, and fixed if the option above is on.</p>
-      <div style={twoColumns}>
-        <div className="form-group">
-          <label className="form-label" htmlFor="cod">Cash on Delivery</label>
-          <select id="cod" className="form-select" value={form.cod} disabled={!canManage} onChange={(e) => set('cod', e.target.value)}>
-            <option value="">Not set</option>
-            <option value="yes">We offer Cash on Delivery</option>
-            <option value="no">Prepaid only, no COD</option>
-          </select>
-        </div>
-        <div className="form-group">
-          <label className="form-label" htmlFor="freeShipping">Free shipping</label>
-          <select id="freeShipping" className="form-select" value={form.freeShipping} disabled={!canManage} onChange={(e) => set('freeShipping', e.target.value)}>
-            <option value="">Not set</option>
-            <option value="none">No free shipping</option>
-            <option value="all">Free on every order</option>
-            <option value="over">Free over an amount</option>
-          </select>
-        </div>
-      </div>
-      {form.freeShipping === 'over' && (
-        <div className="form-group" style={{ maxWidth: 240 }}>
-          <label className="form-label" htmlFor="freeShippingMin">Free shipping on orders over (₹)</label>
-          <input id="freeShippingMin" type="number" min="1" className="form-input" value={form.freeShippingMin} disabled={!canManage} onChange={(e) => set('freeShippingMin', e.target.value)} />
+      </Section>
+
+      {canManage && (
+        <div className="form-actions">
+          <button className="btn btn-primary" disabled={saving} onClick={save}>{saving ? <Loader2 size={15} className="spinning" /> : <Save size={15} />} Save settings</button>
         </div>
       )}
-      {canManage && <button className="btn btn-primary mt-16" disabled={saving} onClick={save}>{saving ? <Loader2 size={15} className="spinning" /> : <Save size={15} />} Save</button>}
     </div>
   );
 }
@@ -732,47 +769,73 @@ export default function SeoAutomation() {
     } catch (err) { toast.error(errMsg(err)); }
   };
 
-  if (!data) return <div className="spinner spinner-lg" />;
+  const header = (actions) => (
+    <PageHeader
+      title="SEO Automation"
+      subtitle="Your whole store, checked every day. Safe fixes are made for you, and every change can be undone."
+      actions={actions}
+    />
+  );
+  if (!data) {
+    return (
+      <div className="page-container fade-in">
+        {header(null)}
+        <div className="card"><div className="empty-state"><div className="spinner spinner-lg" /></div></div>
+      </div>
+    );
+  }
   const { settings, audits, running } = data;
   const latest = audits[0];
   const busy = running || starting;
+  const openCount = Object.values(data.counts || {}).reduce((sum, n) => sum + n, 0);
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>SEO Automation</h1>
-        <p>Checks your whole site every day, fixes what it safely can, and keeps a list of every change so you can undo it.</p>
-      </div>
+    <div className="page-container fade-in">
+      {header(canManage && (
+        <>
+          <button className="btn btn-secondary" disabled={busy} onClick={() => run(false)} title="Finds problems and changes nothing">
+            <Play size={15} /> Check site now
+          </button>
+          <button className="btn btn-primary" disabled={busy} onClick={() => run(true)} title="The same as the daily check: finds problems and fixes what it safely can">
+            {busy ? <Loader2 size={15} className="spinning" /> : <Sparkles size={15} />} {running ? 'Checking…' : 'Check and fix now'}
+          </button>
+        </>
+      ))}
 
       <div className="card mb-24">
-        <div className="card-body flex justify-between gap-12" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
-          <div>
-            <div className="flex gap-8" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-              <span className={`badge ${settings.enabled ? 'badge-success' : 'badge-warning'}`}>{settings.enabled ? 'Daily automation on' : 'Daily automation off'}</span>
+        <div className="status-card">
+          <span className={`status-card__icon ${settings.enabled ? 'is-on' : ''}`}><CalendarClock size={22} /></span>
+          <div className="status-card__main">
+            <div className="status-card__title">
+              Daily automation
+              <span className={`status ${settings.enabled ? 'status--on' : 'status--off'}`}>{settings.enabled ? 'On' : 'Off'}</span>
               {running && <span className="badge badge-info"><Loader2 size={12} className="spinning" /> Checking your site</span>}
             </div>
-            <div style={{ ...muted, marginTop: 8 }}>
-              {settings.enabled && settings.next_run_at ? `Next check ${fmtNext(settings.next_run_at)}` : 'Turn it on and the site is checked and improved every day.'}
+            <div className="status-card__text">
+              {settings.enabled
+                ? (settings.next_run_at ? `Next check ${fmtNext(settings.next_run_at)}.` : 'Your store is checked and improved every day.')
+                : 'Turn it on to have your store checked and improved every day.'}
             </div>
-            {latest?.status === 'failed' && <div style={{ fontSize: 12, color: 'var(--accent-danger)', marginTop: 4 }}>The last check stopped: {latest.error}</div>}
           </div>
-          {canManage && (
-            <div className="flex gap-8" style={{ flexWrap: 'wrap' }}>
-              <button className="btn btn-secondary" disabled={busy} onClick={() => run(false)} title="Finds problems and changes nothing"><Play size={15} /> Check site now</button>
-              <button className="btn btn-secondary" disabled={busy} onClick={() => run(true)} title="Same as the daily run"><Sparkles size={15} /> Check and fix now</button>
-              <button className={`btn ${settings.enabled ? 'btn-danger' : 'btn-primary'}`} onClick={toggle}><Power size={15} /> {settings.enabled ? 'Turn off' : 'Turn on'}</button>
-            </div>
-          )}
+          {canManage && <Switch checked={!!settings.enabled} onChange={toggle} label="Daily automation" />}
         </div>
+        {latest?.status === 'failed' && (
+          <div style={{ padding: '0 24px 20px' }}>
+            <div className="callout callout--danger"><AlertTriangle size={16} /><span>The last check stopped: {latest.error}</span></div>
+          </div>
+        )}
       </div>
 
-      <div className="tabs">
+      <div className="tabs" role="tablist">
         {TABS.map(([key, label]) => (
-          <button key={key} className={`tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>{label}</button>
+          <button key={key} role="tab" aria-selected={tab === key} className={`tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
+            {label}
+            {key === 'issues' && openCount > 0 && <span className="badge badge-purple" style={{ padding: '1px 8px' }}>{openCount}</span>}
+          </button>
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab data={data} canManage={canManage} onOpenSettings={() => setTab('settings')} />}
+      {tab === 'overview' && <OverviewTab data={data} canManage={canManage} onOpenSettings={() => setTab('settings')} onRun={run} busy={busy} onShowProblems={() => setTab('issues')} />}
       {tab === 'issues' && <IssuesTab canManage={canManage} refreshKey={latest?.finished_at} onChanged={load} googleSite={settings.google_site} />}
       {tab === 'changes' && <ChangesTab canManage={canManage} refreshKey={latest?.finished_at} />}
       {tab === 'google' && <GoogleTab data={data} canManage={canManage} onChanged={load} />}

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Loader2, Plus, X, AlertTriangle } from 'lucide-react';
+import { Save, Loader2, Plus, X, AlertTriangle, Bot, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { getAccountDna, saveStudioSchedule, getIgCampaigns } from '../../lib/api';
-import { errMsg, muted, timezoneOptions, browserTimezone, Toggle, LoadingCard } from './shared';
+import { Section, Switch } from '../ui';
+import { errMsg, timezoneOptions, browserTimezone, LoadingCard } from './shared';
 
 // Autopilot: each daily slot runs the whole pipeline — text → image + quality gate → publish.
 export default function ScheduleTab({ accountId, canManage, maxAttempts }) {
@@ -42,75 +43,80 @@ export default function ScheduleTab({ accountId, canManage, maxAttempts }) {
   if (!form) return <LoadingCard />;
 
   return (
-    <form onSubmit={save}>
-      <div className="ig-two-col">
-        <div className="card">
-          <div className="card-header"><h2>Daily posting slots</h2></div>
-          <div className="card-body">
-            <div className="form-group">
-              <label className="form-label">Time zone</label>
-              <select className="form-select" value={form.timezone} disabled={!canManage} onChange={(e) => setForm({ ...form, timezone: e.target.value })}>
-                {timezoneOptions(form.timezone).map((tz) => <option key={tz} value={tz}>{tz}</option>)}
-              </select>
+    <form onSubmit={save} className="stack">
+      {!canManage && (
+        <div className="callout callout--info"><Info size={16} aria-hidden="true" /> Only workspace owners and admins can change the schedule.</div>
+      )}
+
+      <section className="card">
+        <div className="status-card">
+          <div className={`status-card__icon ${form.autopilot ? 'is-on' : ''}`}><Bot size={22} aria-hidden="true" /></div>
+          <div className="status-card__main">
+            <div className="status-card__title">
+              <label htmlFor="ig-autopilot">Post automatically every day</label>
+              <span className={`status ${form.autopilot ? 'status--on' : 'status--off'}`}>{form.autopilot ? 'On' : 'Off'}</span>
             </div>
+            <div className="status-card__text">
+              At each time below: text, image, quality check, publish, with no one in the loop. Changes apply when you save.
+            </div>
+          </div>
+          <Switch id="ig-autopilot" checked={form.autopilot} disabled={!canManage} onChange={(v) => setForm({ ...form, autopilot: v })} />
+        </div>
+      </section>
+
+      <div className="grid-2">
+        <Section title="Posting times" description="Each time publishes one post, up to 5 a day. At most 25 posts per account in 24 hours.">
+          <div className="form-group">
+            <label className="form-label" htmlFor="ig-timezone">Time zone</label>
+            <select id="ig-timezone" className="form-select" value={form.timezone} disabled={!canManage} onChange={(e) => setForm({ ...form, timezone: e.target.value })}>
+              {timezoneOptions(form.timezone).map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+            </select>
+          </div>
+          <span className="form-label">Times</span>
+          <div className="ig-slots">
             {form.slots.map((slot, i) => (
-              <div key={i} className="flex items-center gap-8 mb-16">
-                <input className="form-input" type="time" value={slot} disabled={!canManage} onChange={(e) => setSlot(i, e.target.value)} required />
+              <div key={i} className="ig-slot">
+                <input className="form-input" type="time" value={slot} disabled={!canManage} onChange={(e) => setSlot(i, e.target.value)} required aria-label={`Posting time ${i + 1}`} />
                 {canManage && (
-                  <button type="button" className="btn btn-ghost btn-sm" aria-label="Remove slot" title="Remove"
+                  <button type="button" className="btn btn-ghost btn-sm" aria-label={`Remove posting time ${i + 1}`} title="Remove"
                     onClick={() => setForm({ ...form, slots: form.slots.filter((_, j) => j !== i) })}><X size={14} /></button>
                 )}
               </div>
             ))}
-            {canManage && form.slots.length < 5 && (
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setForm({ ...form, slots: [...form.slots, '18:00'] })}>
-                <Plus size={14} /> Add a time slot
-              </button>
-            )}
-            <p className="form-helper">Each slot publishes one post (up to 5 a day). Capped at 25 posts per account per 24 hours.</p>
+            {form.slots.length === 0 && <p className="form-helper">No posting times yet.</p>}
           </div>
-        </div>
+          {canManage && form.slots.length < 5 && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setForm({ ...form, slots: [...form.slots, '18:00'] })}>
+              <Plus size={14} /> Add a time
+            </button>
+          )}
+        </Section>
 
-        <div className="card">
-          <div className="card-header"><h2>Autopilot</h2></div>
-          <div className="card-body">
-            <Toggle checked={form.autopilot} disabled={!canManage} onChange={(v) => setForm({ ...form, autopilot: v })}
-              label="Post automatically every day" sub="Text → image → quality check → publish, with no one in the loop" />
-            <div className="ig-list-row mt-16" style={{ fontSize: 14 }}>
-              <strong>What each slot posts</strong>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 4 }}>
-                {campaign
-                  ? <>The active campaign <strong>{campaign.name}</strong> ({campaign.posts_done}/{campaign.posts_target} posts), then the quote-idea prompts once it finishes.</>
-                  : <>The next active quote-idea prompt (least recently used). Start a <Link to="/instagram-campaigns">campaign</Link> to theme a run of posts.</>}
-              </p>
-            </div>
-            <div className="ig-list-row" style={{ fontSize: 14 }}>
-              <strong>Quality gate</strong>
-              <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 4 }}>
-                Up to {maxAttempts} image attempts per post. If none passes, the post is skipped — never forced.
-              </p>
-            </div>
-          </div>
-        </div>
+        <Section title="What each slot posts" description="Where the autopilot takes its next post from.">
+          <dl className="kv">
+            <dt>Content</dt>
+            <dd>
+              {campaign
+                ? <>The active campaign <strong>{campaign.name}</strong> ({campaign.posts_done}/{campaign.posts_target} posts), then the quote-idea prompts once it finishes.</>
+                : <>The next active quote-idea prompt (least recently used). Start a <Link to="/instagram-campaigns">campaign</Link> to theme a run of posts.</>}
+            </dd>
+            <dt>Quality check</dt>
+            <dd>Up to {maxAttempts} image attempts per post. If none passes, the post is skipped, never forced.</dd>
+          </dl>
+        </Section>
       </div>
 
       {warnings.length > 0 && (
-        <div className="card mt-24" style={{ borderColor: 'rgba(178,91,0,0.18)', background: 'var(--warning-tint)' }}>
-          <div className="card-body">
-            {warnings.map((w) => (
-              <div key={w} className="flex gap-8" style={{ fontSize: 13, alignItems: 'flex-start', marginBottom: 6 }}>
-                <AlertTriangle size={15} style={{ color: 'var(--accent-warning)', flex: '0 0 auto', marginTop: 2 }} /> <span>{w}</span>
-              </div>
-            ))}
-          </div>
+        <div className="callout callout--warning" role="status">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <div>{warnings.map((w) => <p key={w}>{w}</p>)}</div>
         </div>
       )}
 
-      <div className="flex items-center gap-12 mt-24">
+      <div className="form-actions">
         <button className="btn btn-primary" type="submit" disabled={saving || !canManage}>
           {saving ? <><Loader2 size={16} className="spinning" /> Saving…</> : <><Save size={16} /> Save schedule</>}
         </button>
-        {!canManage && <span style={muted}>Only workspace owners and admins can change the schedule.</span>}
       </div>
     </form>
   );

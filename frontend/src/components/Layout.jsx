@@ -3,11 +3,11 @@ import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import {
   Lock, LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users,
   Building2, Instagram, AlarmClock, MessageCircle, Sparkles, Megaphone, BarChart3, ImagePlus, SearchCheck,
-  ChevronsUpDown, Menu, X,
+  ChevronsUpDown, Menu, X, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { getSettings, getUsage, adminGetUsers, adminGetUpgradeRequests } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { ThemeSwitch } from './ThemeSwitch';
+import { ThemeSwitch, ThemeToggle } from './ThemeSwitch';
 
 // The app menu. `feature` ties an item to a plan feature: when the workspace's plan
 // doesn't include it, the item shows a lock and leads to Plan & usage instead.
@@ -73,6 +73,13 @@ export default function Layout() {
   const [waiting, setWaiting] = useState({ users: 0, upgrades: 0 });
   const [features, setFeatures] = useState({}); // what the workspace's plan includes (missing = included)
   const [menuOpen, setMenuOpen] = useState(false); // phones: the sidebar slides in
+  // desktop: the sidebar can shrink to icons; remembered in this browser
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('aw_sidebar') === 'collapsed'; } catch { return false; } });
+  const toggleCollapsed = () => setCollapsed((v) => {
+    try { localStorage.setItem('aw_sidebar', v ? 'open' : 'collapsed'); } catch { /* ignore */ }
+    return !v;
+  });
+  const tip = (label) => (collapsed ? label : undefined);
   const { pathname } = useLocation();
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
   const activeWs = workspaces.find((w) => w.id === activeWorkspaceId);
@@ -113,14 +120,25 @@ export default function Layout() {
   const waitingCount = waiting.users + waiting.upgrades;
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${collapsed ? 'is-collapsed' : ''}`}>
       <div className={`sidebar-scrim ${menuOpen ? 'is-open' : ''}`} onClick={() => setMenuOpen(false)} aria-hidden="true" />
       <aside className={`sidebar ${menuOpen ? 'is-open' : ''}`} aria-label="Main menu">
-        <Brand />
+        <div className="sidebar-head">
+          <Brand />
+          <button
+            type="button"
+            className="sidebar-collapse"
+            onClick={toggleCollapsed}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          </button>
+        </div>
 
         {workspaces.length > 0 && (
           <div className="ws-switch">
-            <div className="ws-switch__box">
+            <div className="ws-switch__box" title={tip(activeWs?.name)}>
               <span className="ws-switch__avatar" aria-hidden="true">{(activeWs?.name || '?').trim().charAt(0)}</span>
               <span className="ws-switch__text">
                 <span className="ws-switch__name" style={{ display: 'block' }}>{activeWs?.name || 'Choose a workspace'}</span>
@@ -146,10 +164,10 @@ export default function Layout() {
             <React.Fragment key={section.title || i}>
               {section.title && <div className="nav-section-title">{section.title}</div>}
               {section.items.map(item => (item.path && item.feature && features[item.feature] === false ? (
-                <Link key={item.path} to={`/plan?locked=${item.feature}`} className="nav-item nav-item-locked" title="Not included in your plan — see Plan & usage">
+                <Link key={item.path} to={`/plan?locked=${item.feature}`} className="nav-item nav-item-locked" title={`${item.label} — not included in your plan`}>
                   <item.icon />
-                  {item.label}
-                  <Lock size={13} style={{ marginLeft: 'auto' }} aria-label="not in your plan" />
+                  <span className="nav-label">{item.label}</span>
+                  <Lock size={13} className="nav-lock" style={{ marginLeft: 'auto' }} aria-label="not in your plan" />
                 </Link>
               ) : item.path ? (
                 <NavLink
@@ -157,14 +175,16 @@ export default function Layout() {
                   to={item.path}
                   end={item.path === '/dashboard' || item.path === '/instagram'}
                   className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                  title={tip(item.label)}
+                  aria-label={collapsed ? item.label : undefined}
                 >
                   <item.icon />
-                  {item.label}
+                  <span className="nav-label">{item.label}</span>
                 </NavLink>
               ) : (
                 <div key={item.label} className="nav-item nav-item-soon" title={item.hint}>
                   <item.icon />
-                  {item.label}
+                  <span className="nav-label">{item.label}</span>
                   <span className="nav-soon">Soon</span>
                 </div>
               )))}
@@ -172,9 +192,11 @@ export default function Layout() {
                 <NavLink
                   to={waiting.users ? '/admin?tab=pending' : waiting.upgrades ? '/admin?tab=upgrades' : '/admin'}
                   className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                  title={tip('Admin')}
+                  aria-label={collapsed ? 'Admin' : undefined}
                 >
                   <Shield />
-                  Admin
+                  <span className="nav-label">Admin</span>
                   {waitingCount > 0 && (
                     <span className="nav-count" title="Sign-ups and upgrade requests waiting for you">{waitingCount}</span>
                   )}
@@ -190,9 +212,10 @@ export default function Layout() {
             <span>{connected ? (storeName ? storeName.replace(/^https?:\/\//, '') : 'Store connected') : 'No store connected'}</span>
           </div>
           <ThemeSwitch />
+          <ThemeToggle className="sidebar-theme-toggle" />
           {user && (
             <div className="user-row">
-              <span className="user-row__avatar" aria-hidden="true">{(user.email || '?').charAt(0)}</span>
+              <Link to="/account" className="user-row__avatar" title={tip('Account')} aria-label="Account">{(user.email || '?').charAt(0)}</Link>
               <Link to="/account" className="user-row__mail" title="Account & security">{user.email}</Link>
               <button className="user-row__out" onClick={logout} title="Log out" aria-label="Log out">
                 <LogOut size={16} />

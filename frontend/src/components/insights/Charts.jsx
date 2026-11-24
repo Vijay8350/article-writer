@@ -1,7 +1,8 @@
 import React, { useState, useRef, useLayoutEffect } from 'react';
 
-// Small chart kit for the Instagram Insights and Comments pages (dark theme).
-// One series per chart in the accent violet; with `highlight`, every other bar
+// Small chart kit for the Instagram Insights and Comments pages (and the dashboards).
+// Colours come from the theme tokens (.viz-* in index.css), so charts follow light
+// and dark mode. One series per chart in the brand colour; with `highlight`, every other bar
 // goes gray so the one that matters stands out. Thin columns (≤24px) with 4px
 // rounded tops, hairline grid + baseline, a hover/focus tooltip on each bar, and
 // a "View data" table so no value is reachable only by hovering.
