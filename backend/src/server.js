@@ -35,7 +35,9 @@ const app = express();
 // Middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: config.frontendUrl, credentials: true }));
-app.use(morgan('dev'));
+// Log paths without query strings: Shopify puts short-lived session tokens and HMACs in them.
+morgan.token('path', (req) => String(req.originalUrl || req.url).split('?')[0]);
+app.use(morgan(':method :path :status :response-time ms - :res[content-length]'));
 // Shopify webhooks need the raw bytes for their HMAC, so they come before the JSON parser.
 app.use('/api/shopify/webhooks', express.raw({ type: '*/*', limit: '2mb' }), shopifyWebhooksRouter);
 app.use(express.json({ limit: '10mb' }));
