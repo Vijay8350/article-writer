@@ -1,4 +1,5 @@
 import { query } from '../db/index.js';
+import { effectivePlan, featureLabel, limitLabel } from '../lib/planFeatures.js';
 
 // Counting rule: a NEW article generation counts as 1. Enhancement/regeneration does NOT count.
 
@@ -7,14 +8,13 @@ function currentPeriod() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
-// Returns the workspace's plan, defaulting to 'free' lazily.
+// Returns the workspace's plan as it applies to this workspace (the plan's features and
+// limits with the workspace's own changes), defaulting to 'free' lazily.
+const PLAN_SQL = `SELECT s.plan_id, s.overrides, p.name, p.monthly_article_limit, p.monthly_ig_post_limit, p.features
+                    FROM subscriptions s JOIN plans p ON p.id = s.plan_id
+                   WHERE s.workspace_id = $1`;
 async function getPlan(workspaceId) {
-  let { rows } = await query(
-    `SELECT s.plan_id, p.name, p.monthly_article_limit, p.monthly_ig_post_limit
-       FROM subscriptions s JOIN plans p ON p.id = s.plan_id
-      WHERE s.workspace_id = $1`,
-    [workspaceId]
-  );
+  let { rows } = await query(PLAN_SQL, [workspaceId]);
   if (rows.length === 0) {
     await query(
       `INSERT INTO subscriptions (workspace_id, plan_id, current_period_start)
@@ -22,14 +22,35 @@ async function getPlan(workspaceId) {
        ON CONFLICT (workspace_id) DO NOTHING`,
       [workspaceId]
     );
-    ({ rows } = await query(
-      `SELECT s.plan_id, p.name, p.monthly_article_limit, p.monthly_ig_post_limit
-         FROM subscriptions s JOIN plans p ON p.id = s.plan_id
-        WHERE s.workspace_id = $1`,
-      [workspaceId]
-    ));
+    ({ rows } = await query(PLAN_SQL, [workspaceId]));
   }
-  return rows[0];
+  const row = rows[0];
+  const { features, limits } = effectivePlan(row, row.overrides);
+  return { ...row, monthly_article_limit: limits.monthly_article_limit, monthly_ig_post_limit: limits.monthly_ig_post_limit, features, limits };
+}
+
+// The workspace's plan: { planId, planName, features: { key: bool }, limits: { key: n|null } }.
+export async function planFor(workspaceId) {
+  const plan = await getPlan(workspaceId);
+  return { planId: plan.plan_id, planName: plan.name, features: plan.features, limits: plan.limits };
+}
+
+export async function allows(workspaceId, featureKey) {
+  return (await getPlan(workspaceId)).features[featureKey] !== false;
+}
+
+// Throws 403 FEATURE_LOCKED when the workspace's plan doesn't include the feature.
+export async function assertFeature(workspaceId, featureKey) {
+  if (await allows(workspaceId, featureKey)) return;
+  throw Object.assign(new Error(`Your plan doesn't include ${featureLabel(featureKey)}. Upgrade your plan to use it.`), { status: 403, code: 'FEATURE_LOCKED', feature: featureKey });
+}
+
+// Throws 402 LIMIT_REACHED when the workspace already has `count` of something its plan
+// caps (Instagram accounts, team members, daily posting jobs). No cap = unlimited.
+export async function assertBelowLimit(workspaceId, limitKey, count) {
+  const limit = (await getPlan(workspaceId)).limits[limitKey];
+  if (limit === null || limit === undefined || count < limit) return;
+  throw Object.assign(new Error(`Your plan allows ${limit} ${limitLabel(limitKey).toLowerCase()}. Upgrade your plan to add more.`), { status: 402, code: 'LIMIT_REACHED' });
 }
 
 export async function getCurrentUsage(workspaceId) {
@@ -52,6 +73,9 @@ export async function getCurrentUsage(workspaceId) {
     period,
     planId: plan.plan_id,
     planName: plan.name,
+    // what the plan includes, for the app to show or lock
+    features: plan.features,
+    limits: plan.limits,
   };
 }
 
@@ -97,4 +121,27 @@ export async function incrementUsage(workspaceId) {
   );
 }
 
-export default { getCurrentUsage, assertCanGenerate, incrementUsage, assertCanGenerateIgPost, incrementIgUsage };
+export default { getCurrentUsage, assertCanGenerate, incrementUsage, assertCanGenerateIgPost, incrementIgUsage, planFor, allows, assertFeature, assertBelowLimit };
+
+// ─── What a workspace already has, for the plan's count limits ─────────────
+
+// Instagram accounts, not counting one being reconnected (that replaces itself).
+export async function igAccountCount(workspaceId, exceptIgUserId = null) {
+  const { rows } = await query('SELECT COUNT(*)::int AS n FROM instagram_accounts WHERE workspace_id = $1 AND ($2::text IS NULL OR ig_user_id <> $2)', [workspaceId, exceptIgUserId]);
+  return rows[0].n;
+}
+
+// Members plus invitations still waiting (each will become a member).
+export async function seatCount(workspaceId) {
+  const { rows } = await query(
+    `SELECT (SELECT COUNT(*) FROM memberships WHERE workspace_id = $1)
+          + (SELECT COUNT(*) FROM invitations WHERE workspace_id = $1 AND accepted_at IS NULL AND expires_at > now()) AS n`,
+    [workspaceId]
+  );
+  return Number(rows[0].n);
+}
+
+export async function automationCount(workspaceId) {
+  const { rows } = await query('SELECT COUNT(*)::int AS n FROM instagram_automations WHERE workspace_id = $1', [workspaceId]);
+  return rows[0].n;
+}

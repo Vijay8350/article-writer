@@ -11,6 +11,7 @@ import {
   adminSetPassword, adminAddToWorkspace, adminSetWorkspaceRole, adminRemoveFromWorkspace,
   adminGetImageEngine, adminStartCodexLogin, adminCheckCodexLogin, adminTestImageEngine,
   adminGetOverview, adminGetCustomers,
+  adminUpdatePlan, adminCreatePlan, adminGetWorkspacePlan, adminSetWorkspaceOverrides,
 } from '../lib/api';
 import { ColumnChart, BarList, Kpi, compact } from '../components/insights/Charts';
 
@@ -31,7 +32,9 @@ const PLATFORM_PERMISSIONS = [
   ['Set a user\'s password', false, 'Users only', true],
   ['Add users to workspaces, change or remove their workspace role', false, 'Users only', true],
   ['Create user accounts', false, 'Users only', 'Any role'],
-  ['Change plans, suspend workspaces, handle upgrade requests', false, true, true],
+  ["Change a workspace's plan and give one customer their own features and limits", false, true, true],
+  ['Edit what each plan includes, feature by feature; create plans', false, false, true],
+  ['Suspend workspaces, handle upgrade requests', false, true, true],
   ['Change platform roles (user / admin / superadmin)', false, false, true],
   ['Sign the image engine in to ChatGPT and test it', false, false, true],
 ];
@@ -78,7 +81,221 @@ function PermissionTable({ title, columns, rows }) {
 }
 
 // One user: their password and the workspaces they belong to.
-function UserPanel({ userId, workspaces, canManage, onClose, onChanged }) {
+// One workspace's plan in the Manage panel: which plan, and this customer's own changes,
+// feature by feature (anything left on "Plan" follows the plan as it is).
+function WorkspacePlan({ workspaceId, plans, catalogue, canManage, onChanged }) {
+  const [info, setInfo] = useState(null);
+  const [feat, setFeat] = useState({});   // key → 'plan' | 'on' | 'off'
+  const [lim, setLim] = useState({});     // key → { mode: 'plan' | 'custom' | 'unlimited', value }
+  const [saving, setSaving] = useState(false);
+  const load = useCallback(() => adminGetWorkspacePlan(workspaceId).then((r) => {
+    const d = r.data; setInfo(d);
+    const o = d.overrides || {};
+    setFeat(Object.fromEntries(catalogue.features.map((f) => [f.key, o.features && f.key in o.features ? (o.features[f.key] ? 'on' : 'off') : 'plan'])));
+    setLim(Object.fromEntries(catalogue.limits.map((l) => {
+      const has = o.limits && l.key in o.limits;
+      return [l.key, { mode: !has ? 'plan' : o.limits[l.key] === null ? 'unlimited' : 'custom', value: has && o.limits[l.key] !== null ? String(o.limits[l.key]) : '' }];
+    })));
+  }).catch((err) => toast.error(errMsg(err))), [workspaceId, catalogue]);
+  useEffect(() => { load(); }, [load]);
+  if (!info) return <div className="spinner" />;
+
+  const shown = (v) => (v === null || v === undefined ? 'unlimited' : v);
+  const save = async (reset = false) => {
+    const body = { features: {}, limits: {} };
+    if (!reset) {
+      for (const [k, v] of Object.entries(feat)) if (v !== 'plan') body.features[k] = v === 'on';
+      for (const [k, v] of Object.entries(lim)) {
+        if (v.mode === 'unlimited') body.limits[k] = null;
+        else if (v.mode === 'custom') {
+          if (v.value === '' || !/^\d+$/.test(v.value)) return toast.error('Enter a whole number for each custom limit');
+          body.limits[k] = Number(v.value);
+        }
+      }
+    }
+    setSaving(true);
+    try { const r = await adminSetWorkspaceOverrides(workspaceId, body); toast.success(r.message || 'Saved'); await load(); onChanged?.(); }
+    catch (err) { toast.error(errMsg(err)); }
+    setSaving(false);
+    return undefined;
+  };
+  const changePlan = async (planId) => {
+    setSaving(true);
+    try { await adminSetWorkspacePlan(workspaceId, planId); toast.success('Plan changed'); await load(); onChanged?.(); }
+    catch (err) { toast.error(errMsg(err)); }
+    setSaving(false);
+  };
+  const custom = Object.values(feat).some((v) => v !== 'plan') || Object.values(lim).some((v) => v.mode !== 'plan');
+
+  return (
+    <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, padding: 12, marginTop: 8 }}>
+      <div className="flex items-center gap-8 mb-8" style={{ flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13 }}>Plan</span>
+        <select className="form-select" style={{ width: 'auto', padding: '4px 8px', fontSize: 12 }} value={info.planId} disabled={!canManage || saving}
+          onChange={(e) => changePlan(e.target.value)} aria-label="Plan">
+          {plans.map((p) => <option key={p.id} value={p.id}>{p.name} · {rupees(p.price_inr)}/mo{p.is_active === false ? ' (not offered)' : ''}</option>)}
+        </select>
+        {custom && <span className="badge badge-warning">Custom for this customer</span>}
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead><tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}><th style={cell}>Feature</th><th style={cell}>Plan gives</th><th style={cell}>This customer</th></tr></thead>
+        <tbody>
+          {catalogue.features.map((f) => (
+            <tr key={f.key} style={{ borderTop: '1px solid var(--border-color)' }}>
+              <td style={cell} title={f.help}>{f.label}</td>
+              <td style={cell}>{info.plan.features[f.key] ? 'On' : 'Off'}</td>
+              <td style={cell}>
+                <select className="form-select" style={{ padding: '3px 6px', fontSize: 12 }} disabled={!canManage} value={feat[f.key]}
+                  onChange={(e) => setFeat((s) => ({ ...s, [f.key]: e.target.value }))} aria-label={`${f.label} for this customer`}>
+                  <option value="plan">Plan ({info.plan.features[f.key] ? 'on' : 'off'})</option><option value="on">On</option><option value="off">Off</option>
+                </select>
+              </td>
+            </tr>
+          ))}
+          {catalogue.limits.map((l) => (
+            <tr key={l.key} style={{ borderTop: '1px solid var(--border-color)' }}>
+              <td style={cell}>{l.label}</td>
+              <td style={cell}>{shown(info.plan.limits[l.key])}</td>
+              <td style={cell}>
+                <div className="flex gap-8">
+                  <select className="form-select" style={{ padding: '3px 26px 3px 8px', fontSize: 12, width: 'auto', minWidth: 112 }} disabled={!canManage} value={lim[l.key]?.mode}
+                    onChange={(e) => setLim((s) => ({ ...s, [l.key]: { ...s[l.key], mode: e.target.value } }))} aria-label={`${l.label} for this customer`}>
+                    <option value="plan">Plan</option><option value="custom">Custom</option>{!l.metered && <option value="unlimited">Unlimited</option>}
+                  </select>
+                  {lim[l.key]?.mode === 'custom' && (
+                    <input className="form-input" style={{ width: 90, padding: '3px 6px', fontSize: 12 }} inputMode="numeric" value={lim[l.key].value}
+                      onChange={(e) => setLim((s) => ({ ...s, [l.key]: { ...s[l.key], value: e.target.value.replace(/\D/g, '') } }))} aria-label={`${l.label} custom value`} />
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {canManage && (
+        <div className="flex gap-8" style={{ marginTop: 10 }}>
+          <button className="btn btn-primary btn-sm" disabled={saving} onClick={() => save(false)}>{saving ? <Loader2 size={13} className="spinning" /> : <CheckCircle2 size={13} />} Save custom plan</button>
+          {custom && <button className="btn btn-ghost btn-sm" disabled={saving} onClick={() => save(true)}><RotateCcw size={13} /> Back to the plan</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The plans, feature by feature: a column per plan. Superadmins edit and add plans;
+// a change applies to every workspace on that plan (customers' own changes still win).
+function PlansEditor({ plans, catalogue, isSuper, onSaved }) {
+  const [draft, setDraft] = useState({});
+  const [busy, setBusy] = useState(null);
+  const [np, setNp] = useState({ id: '', name: '', price_inr: '' });
+  useEffect(() => {
+    setDraft(Object.fromEntries(plans.map((p) => [p.id, {
+      name: p.name, price_inr: String(p.price_inr ?? 0), description: p.description || '', is_active: p.is_active !== false,
+      features: { ...p.features },
+      limits: Object.fromEntries(catalogue.limits.map((l) => [l.key, p.limits[l.key] === null || p.limits[l.key] === undefined ? '' : String(p.limits[l.key])])),
+    }])));
+  }, [plans, catalogue]);
+  if (!catalogue) return <div className="spinner" />;
+  const set = (id, patch) => setDraft((d) => ({ ...d, [id]: { ...d[id], ...patch } }));
+  const save = async (id) => {
+    const d = draft[id];
+    const limits = {};
+    for (const l of catalogue.limits) {
+      const v = d.limits[l.key];
+      if (v === '' && l.metered) return toast.error(`${l.label} needs a number`);
+      limits[l.key] = v === '' ? null : Number(v);
+    }
+    setBusy(id);
+    try {
+      const r = await adminUpdatePlan(id, { name: d.name, price_inr: Number(d.price_inr || 0), description: d.description, is_active: d.is_active, features: d.features, limits });
+      toast.success(r.message || 'Saved'); onSaved();
+    } catch (err) { toast.error(errMsg(err)); }
+    setBusy(null);
+    return undefined;
+  };
+  const create = async (e) => {
+    e.preventDefault();
+    setBusy('new');
+    try { const r = await adminCreatePlan({ id: np.id, name: np.name, price_inr: Number(np.price_inr || 0) }); toast.success(r.message || 'Plan created'); setNp({ id: '', name: '', price_inr: '' }); onSaved(); }
+    catch (err) { toast.error(errMsg(err)); }
+    setBusy(null);
+  };
+  const th = { ...cell, textAlign: 'left', color: 'var(--text-muted)', fontWeight: 500, whiteSpace: 'nowrap' };
+  const ro = !isSuper;
+  return (
+    <>
+      <p className="form-helper mb-16">
+        What each plan includes, feature by feature. A change applies to every workspace on that plan straight away; switched-off
+        features disappear from the customer's menu and stop their background jobs. To change it for one customer only, use
+        <strong> Manage</strong> on their row in Overview. {ro && 'Only a superadmin can edit plans.'}
+      </p>
+      <div className="card mb-16">
+        <div className="card-body" style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr><th style={th} />{plans.map((p) => (
+                <th key={p.id} style={th}><span className={`badge ${PLAN_BADGE[p.id] || 'badge-info'}`}>{p.id}</span> <span style={muted}>{p.workspaces} workspace{p.workspaces === 1 ? '' : 's'}</span></th>
+              ))}</tr>
+            </thead>
+            <tbody>
+              <tr><td style={th}>Name</td>{plans.map((p) => <td key={p.id} style={cell}><input className="form-input" style={{ minWidth: 120 }} disabled={ro} value={draft[p.id]?.name || ''} onChange={(e) => set(p.id, { name: e.target.value })} aria-label={`${p.id} name`} /></td>)}</tr>
+              <tr><td style={th}>Price (₹ / month)</td>{plans.map((p) => <td key={p.id} style={cell}><input className="form-input" inputMode="numeric" disabled={ro} value={draft[p.id]?.price_inr || ''} onChange={(e) => set(p.id, { price_inr: e.target.value.replace(/\D/g, '') })} aria-label={`${p.id} price`} /></td>)}</tr>
+              <tr><td style={th}>Short description</td>{plans.map((p) => <td key={p.id} style={cell}><input className="form-input" disabled={ro} value={draft[p.id]?.description || ''} maxLength={300} onChange={(e) => set(p.id, { description: e.target.value })} aria-label={`${p.id} description`} /></td>)}</tr>
+              <tr><td style={th}>Offered to customers</td>{plans.map((p) => <td key={p.id} style={cell}><input type="checkbox" disabled={ro || p.id === 'free'} checked={draft[p.id]?.is_active ?? true} onChange={(e) => set(p.id, { is_active: e.target.checked })} aria-label={`${p.id} offered`} /></td>)}</tr>
+              <tr><td style={{ ...th, paddingTop: 16 }} colSpan={plans.length + 1}><strong>Limits</strong> <span style={muted}>(empty = unlimited, except the monthly ones)</span></td></tr>
+              {catalogue.limits.map((l) => (
+                <tr key={l.key} style={{ borderTop: '1px solid var(--border-color)' }}>
+                  <td style={th}>{l.label}</td>
+                  {plans.map((p) => <td key={p.id} style={cell}><input className="form-input" inputMode="numeric" disabled={ro} placeholder={l.metered ? '' : 'unlimited'} value={draft[p.id]?.limits?.[l.key] ?? ''}
+                    onChange={(e) => set(p.id, { limits: { ...draft[p.id].limits, [l.key]: e.target.value.replace(/\D/g, '') } })} aria-label={`${p.id} ${l.label}`} /></td>)}
+                </tr>
+              ))}
+              <tr><td style={{ ...th, paddingTop: 16 }} colSpan={plans.length + 1}><strong>Features</strong></td></tr>
+              {catalogue.features.map((f) => (
+                <tr key={f.key} style={{ borderTop: '1px solid var(--border-color)' }}>
+                  <td style={th} title={f.help}>{f.label}<div style={muted}>{f.help}</div></td>
+                  {plans.map((p) => (
+                    <td key={p.id} style={cell}>
+                      <label className="flex items-center gap-8" style={{ cursor: ro ? 'default' : 'pointer' }}>
+                        <input type="checkbox" disabled={ro} checked={draft[p.id]?.features?.[f.key] !== false}
+                          onChange={(e) => set(p.id, { features: { ...draft[p.id].features, [f.key]: e.target.checked } })} />
+                        <span style={{ fontSize: 12 }}>{draft[p.id]?.features?.[f.key] !== false ? 'Included' : 'Not included'}</span>
+                      </label>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {isSuper && (
+                <tr><td />{plans.map((p) => (
+                  <td key={p.id} style={{ ...cell, paddingTop: 12 }}>
+                    <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => save(p.id)}>{busy === p.id ? <Loader2 size={13} className="spinning" /> : <CheckCircle2 size={13} />} Save {p.name}</button>
+                  </td>
+                ))}</tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {isSuper && (
+        <div className="card">
+          <div className="card-header"><h3><Plus size={15} /> New plan</h3></div>
+          <div className="card-body">
+            <form className="flex gap-8" style={{ flexWrap: 'wrap' }} onSubmit={create}>
+              <input className="form-input" style={{ maxWidth: 160 }} placeholder="id, e.g. starter" value={np.id} onChange={(e) => setNp({ ...np, id: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })} aria-label="New plan id" />
+              <input className="form-input" style={{ maxWidth: 200 }} placeholder="Name, e.g. Starter" value={np.name} onChange={(e) => setNp({ ...np, name: e.target.value })} aria-label="New plan name" />
+              <input className="form-input" style={{ maxWidth: 140 }} placeholder="₹ / month" inputMode="numeric" value={np.price_inr} onChange={(e) => setNp({ ...np, price_inr: e.target.value.replace(/\D/g, '') })} aria-label="New plan price" />
+              <button className="btn btn-primary" disabled={!np.id || !np.name || busy === 'new'}>{busy === 'new' ? <Loader2 size={14} className="spinning" /> : <Plus size={14} />} Add plan</button>
+            </form>
+            <p className="form-helper" style={{ marginTop: 8 }}>A new plan starts with every feature on, 10 articles and 20 AI images a month; then set it up in the table above.</p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function UserPanel({ userId, workspaces, plans, catalogue, canManage, onClose, onChanged }) {
+  const [openPlan, setOpenPlan] = useState(null);
   const [detail, setDetail] = useState(null);
   const [password, setPassword] = useState('');
   const [generated, setGenerated] = useState(null);
@@ -156,8 +373,16 @@ function UserPanel({ userId, workspaces, canManage, onClose, onChanged }) {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }} className="mb-16">
                 <tbody>
                   {detail.workspaces.map((w) => (
-                    <tr key={w.id} style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                      <td style={cell}>{w.name}<div style={muted}>{w.plan_id} plan · {w.status}</div></td>
+                    <React.Fragment key={w.id}>
+                    <tr style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                      <td style={cell}>
+                        {w.name}<div style={muted}>{w.plan_id} plan · {w.status}</div>
+                        {catalogue && (
+                          <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', marginTop: 4 }} onClick={() => setOpenPlan(openPlan === w.id ? null : w.id)}>
+                            <Settings2 size={12} /> {openPlan === w.id ? 'Hide plan & features' : 'Plan & features'}
+                          </button>
+                        )}
+                      </td>
                       <td style={cell}>
                         <select className="form-select" style={{ minWidth: 110, padding: '4px 8px', fontSize: 12 }} value={w.role}
                           disabled={!canManage || !!busy} aria-label={`Role in ${w.name}`}
@@ -172,6 +397,12 @@ function UserPanel({ userId, workspaces, canManage, onClose, onChanged }) {
                         </button>
                       </td>
                     </tr>
+                    {openPlan === w.id && catalogue && (
+                      <tr><td colSpan={3} style={{ padding: '0 0 12px' }}>
+                        <WorkspacePlan workspaceId={w.id} plans={plans} catalogue={catalogue} canManage onChanged={() => { load(); onChanged(); }} />
+                      </td></tr>
+                    )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
@@ -491,6 +722,7 @@ export default function Admin() {
   const [users, setUsers] = useState([]);
   const [workspaces, setWorkspaces] = useState([]);
   const [plans, setPlans] = useState([]);
+  const [catalogue, setCatalogue] = useState(null);
   const [requests, setRequests] = useState([]);
   const [activity, setActivity] = useState([]);
   const [busy, setBusy] = useState(null);
@@ -511,6 +743,7 @@ export default function Admin() {
         setUsers(u.data || []);
         setWorkspaces(w.data || []);
         setPlans(p.data || []);
+        setCatalogue(p.catalogue || null);
         setRequests(r.data || []);
         setActivity(a.data || []);
       })
@@ -562,6 +795,7 @@ export default function Admin() {
 
       <div className="flex gap-8 mb-24" style={{ flexWrap: 'wrap' }}>
         <Tab id="overview" label="Overview" />
+        <Tab id="plans" label="Plans" />
         <Tab id="workspaces" label="Workspaces" count={workspaces.length} />
         <Tab id="users" label="Users" count={users.length} />
         {pendingUsers.length > 0 && <Tab id="pending" label="Pending users" count={pendingUsers.length} />}
@@ -573,6 +807,7 @@ export default function Admin() {
       </div>
 
       {tab === 'overview' && <Overview onManage={(u) => setManaging(u)} />}
+      {tab === 'plans' && <PlansEditor plans={plans} catalogue={catalogue} isSuper={isSuper} onSaved={() => loadAll(true)} />}
       {tab === 'engine' && isSuper && <ImageEngine />}
 
       {/* ROLES & PERMISSIONS */}
@@ -811,7 +1046,7 @@ export default function Admin() {
         </div>
       )}
       {managing && (
-        <UserPanel userId={managing.id} workspaces={workspaces} canManage={canManageUser(managing)} onClose={closePanel} onChanged={() => loadAll(true)} />
+        <UserPanel userId={managing.id} workspaces={workspaces} plans={plans} catalogue={catalogue} canManage={canManageUser(managing)} onClose={closePanel} onChanged={() => loadAll(true)} />
       )}
       <style>{`.spinning { animation: spin 1s linear infinite; }`}</style>
     </div>

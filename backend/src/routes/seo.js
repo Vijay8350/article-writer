@@ -11,6 +11,7 @@ import { runAudit, loadIssuePage, fixAllOfType, canFixAll } from '../services/se
 import { fixOne, undoChange, suggestMeta, cleanManualMeta, planClaims } from '../services/seoFixes.js';
 import { ratingStatus, installRating } from '../services/seoTheme.js';
 import { ISSUE_TYPES } from '../lib/seoRules.js';
+import { requireFeature } from '../middleware/plan.js';
 
 // SEO automation (/api/seo). The Google callback is public, because Google calls it, and
 // authenticates with a signed state. Everything else needs a signed-in workspace member,
@@ -83,6 +84,7 @@ router.get('/google/callback', async (req, res) => {
 });
 
 router.use(requireAuth, requireWorkspace);
+router.use(requireFeature('seo'));
 const manage = requireWorkspaceRole('owner', 'admin');
 
 router.param('id', (req, res, next, id) => (UUID_RE.test(id) ? next() : bad(res, 'Not found', 404)));

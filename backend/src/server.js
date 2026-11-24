@@ -65,11 +65,13 @@ app.use('/api/dashboard', dashboardRouter);
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error('❌ Error:', err.message);
-  console.error(err.stack);
+  const expected = err.status && err.status < 500; // a refusal the user should see (plan limit, locked feature…)
+  if (expected) console.warn(`⚠️ ${req.method} ${req.path}: ${err.message}`);
+  else { console.error('❌ Error:', err.message); console.error(err.stack); }
   res.status(err.status || 500).json({
     success: false,
     error: err.message || 'Internal server error',
+    ...(expected && err.code ? { code: err.code } : {}),
   });
 });
 

@@ -5,9 +5,11 @@ import * as stores from '../repositories/stores.js';
 import { calculateSeoScore, calculateAeoScore, countWords } from '../lib/seo.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireWorkspace } from '../middleware/workspace.js';
+import { requireFeature } from '../middleware/plan.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
+router.use(requireFeature('articles'));
 
 async function getCreds(req, res) {
   const creds = await stores.getDefaultStore(req.workspace.id);

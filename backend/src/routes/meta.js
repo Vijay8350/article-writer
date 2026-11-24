@@ -7,6 +7,7 @@ import { requireWorkspace, requireWorkspaceRole } from '../middleware/workspace.
 import * as fb from '../services/facebookLogin.js';
 import * as igRepo from '../repositories/instagram.js';
 import * as repo from '../repositories/igStudio.js';
+import { assertBelowLimit, igAccountCount } from '../services/usage.js';
 
 // Meta endpoints (/api/meta): "Connect with Facebook" OAuth and the Facebook
 // data-deletion callback. The callback routes are public — Meta calls them —
@@ -67,7 +68,10 @@ router.get('/oauth/callback', async (req, res) => {
     if (!eligible.length) return backToApp(res, { ig_error: 'None of the shared Pages has an Instagram Business or Creator account linked.' });
 
     const names = [];
+    let capped = null;
     for (const page of eligible) {
+      try { await assertBelowLimit(who.workspaceId, 'max_ig_accounts', await igAccountCount(who.workspaceId, page.instagram.id)); }
+      catch (err) { capped = err.message; break; }
       await igRepo.upsertAccount(who.workspaceId, who.userId, {
         igUserId: page.instagram.id,
         username: page.instagram.username,
@@ -79,7 +83,8 @@ router.get('/oauth/callback', async (req, res) => {
       });
       names.push(`@${page.instagram.username}`);
     }
-    backToApp(res, { ig_connected: names.join(', ') });
+    if (capped && !names.length) return backToApp(res, { ig_error: capped });
+    backToApp(res, { ig_connected: names.join(', '), ...(capped ? { ig_error: capped } : {}) });
   } catch (err) {
     console.error('[meta] OAuth callback failed:', err.message);
     backToApp(res, { ig_error: `Facebook Login failed: ${err.message}` });

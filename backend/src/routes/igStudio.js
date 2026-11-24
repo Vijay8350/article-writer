@@ -15,12 +15,22 @@ import { resolveAi } from '../services/ai.js';
 import * as deepseek from '../services/deepseek.js';
 import { isConfigured as facebookLoginConfigured, redirectUri } from '../services/facebookLogin.js';
 import { parseWindow, clampImages } from '../lib/campaignSchedule.js';
+import { requireFeature } from '../middleware/plan.js';
 
 // Instagram Studio API (/api/ig). Everyone in the workspace can view and draft
 // posts; publishing, schedules, settings and comment actions need owner/admin.
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
+// Which plan feature each Studio area belongs to: comment replies, insights, or Studio.
+const studioFeature = (req) => {
+  const p = req.path;
+  if (p === '/status') return null;
+  if (/^\/comments(\/|$)|\/comment-settings$|\/comments\/check$/.test(p)) return 'comments';
+  if (/\/(insights|analytics)$/.test(p)) return 'insights';
+  return 'studio';
+};
+router.use(requireFeature(studioFeature));
 const manage = requireWorkspaceRole('owner', 'admin');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

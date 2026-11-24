@@ -8,7 +8,7 @@ import * as storefront from './storefront.js';
 import { publishPost } from './instagram.js';
 import { buildCaption } from './productCaption.js';
 import { resolveAi } from './ai.js';
-import { assertCanGenerateIgPost, incrementIgUsage } from './usage.js';
+import { assertCanGenerateIgPost, incrementIgUsage, assertFeature } from './usage.js';
 import {
   buildPostPrompt, buildPostGatePrompt, buildScenePrompt, buildSceneGatePrompt, resolveProductStyle, productBannerCopy, bannerCopyLines,
 } from '../lib/igPrompts.js';
@@ -325,6 +325,7 @@ export async function publishProductImage(workspaceId, id, input = {}) {
 // Makes today's post for a leased job. Throws if it can't be used: nothing goes
 // out unoptimized, and the job tries again in an hour with the next product.
 export async function renderForAutomation(automation, product, caption) {
+  await assertFeature(automation.workspace_id, 'product_posts');
   await assertCanGenerateIgPost(automation.workspace_id);
   const row = await repo.create(automation.workspace_id, automation.created_by, {
     accountId: automation.account_id, automationId: automation.id,

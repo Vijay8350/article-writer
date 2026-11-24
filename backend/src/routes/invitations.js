@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireWorkspace, requireWorkspaceRole } from '../middleware/workspace.js';
 import * as invitations from '../repositories/invitations.js';
 import * as memberships from '../repositories/memberships.js';
+import { assertBelowLimit, seatCount } from '../services/usage.js';
 
 const router = Router();
 
@@ -27,6 +28,7 @@ wsRouter.post('/', requireWorkspaceRole('owner', 'admin'), async (req, res, next
     if (r === 'admin' && req.membership.role !== 'owner') {
       return res.status(403).json({ success: false, error: 'Only an owner can invite an admin' });
     }
+    await assertBelowLimit(req.workspace.id, 'max_members', await seatCount(req.workspace.id));
     const { token, row } = await invitations.create({
       workspaceId: req.workspace.id, email, role: r, invitedBy: req.user.id,
     });

@@ -4,9 +4,11 @@ import { requireWorkspace } from '../middleware/workspace.js';
 import * as campaigns from '../repositories/campaigns.js';
 import * as stores from '../repositories/stores.js';
 import { parseWindow, clampImages } from '../lib/campaignSchedule.js';
+import { requireFeature } from '../middleware/plan.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
+router.use(requireFeature('campaigns'));
 
 const CADENCES = ['manual', 'daily', 'monthly'];
 const PUBLISH_MODES = ['live', 'draft'];

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Gauge, Loader2, ArrowUpCircle } from 'lucide-react';
+import { Gauge, Loader2, ArrowUpCircle, Check, Lock } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getUsage, getUpgradePlans, getMyUpgradeRequests, requestUpgrade } from '../lib/api';
 
@@ -9,12 +10,15 @@ export default function PlanUsage() {
   const [plans, setPlans] = useState([]);
   const [myRequests, setMyRequests] = useState([]);
   const [requesting, setRequesting] = useState(null);
+  const [catalogue, setCatalogue] = useState({ features: [], limits: [] });
+  const [params] = useSearchParams();
+  const locked = params.get('locked'); // the feature a locked menu item pointed here for
 
   const loadRequests = () => getMyUpgradeRequests().then(r => setMyRequests(r.data || [])).catch(() => {});
 
   useEffect(() => {
     Promise.all([getUsage(), getUpgradePlans()])
-      .then(([u, p]) => { setUsage(u.data); setPlans(p.data || []); })
+      .then(([u, p]) => { setUsage(u.data); setPlans(p.data || []); if (p.catalogue) setCatalogue(p.catalogue); })
       .catch(() => {})
       .finally(() => setLoading(false));
     loadRequests();
@@ -38,6 +42,18 @@ export default function PlanUsage() {
     return <div className="page-container"><div className="empty-state"><div className="spinner spinner-lg" /></div></div>;
   }
 
+  const features = usage?.features || {};
+  const limits = usage?.limits || {};
+  const extraLimits = catalogue.limits.filter((l) => !l.metered);
+  const lockedLabel = catalogue.features.find((f) => f.key === locked)?.label;
+  const current = plans.find((p) => p.id === usage?.planId);
+  // a plan is an upgrade if it unlocks something this workspace lacks, allows more, or costs more
+  const unlocks = (p) => catalogue.features.filter((f) => features[f.key] === false && p.features?.[f.key]);
+  const better = plans.filter((p) => p.id !== usage?.planId && (
+    unlocks(p).length > 0 || p.monthly_article_limit > (usage?.limit || 0) || p.monthly_ig_post_limit > (usage?.igLimit || 0) ||
+    Number(p.price_inr || 0) > Number(current?.price_inr || 0)))
+    .sort((a, b) => (locked ? Number(Boolean(b.features?.[locked])) - Number(Boolean(a.features?.[locked])) : 0) || Number(a.price_inr || 0) - Number(b.price_inr || 0));
+
   const pct = usage && usage.limit > 0 ? Math.min(100, Math.round((usage.used / usage.limit) * 100)) : 0;
   const barColor = pct >= 100 ? 'var(--accent-danger, #ef4444)' : pct >= 80 ? 'var(--accent-warning, #f59e0b)' : 'var(--accent-success, #10b981)';
   const igPct = usage?.igLimit > 0 ? Math.min(100, Math.round((usage.igUsed / usage.igLimit) * 100)) : 0;
@@ -47,8 +63,14 @@ export default function PlanUsage() {
     <div className="page-container fade-in">
       <div className="page-header">
         <h1>📊 Plan & Usage</h1>
-        <p>Your current plan and this month's article and Instagram post usage</p>
+        <p>Your current plan, what it includes, and this month's usage</p>
       </div>
+
+      {lockedLabel && (
+        <div className="plan-locked-note" role="status">
+          <Lock size={16} /> <span><strong>{lockedLabel}</strong> isn't included in your plan. Choose a plan below that includes it, and an admin will switch you over.</span>
+        </div>
+      )}
 
       <div style={{ maxWidth: 600 }}>
         <div className="card mb-24">
@@ -90,6 +112,32 @@ export default function PlanUsage() {
           </div>
         </div>
 
+        {catalogue.features.length > 0 && (
+          <div className="card mb-24">
+            <div className="card-header"><h3>What your plan includes</h3></div>
+            <div className="card-body">
+              <ul className="plan-includes">
+                {catalogue.features.map((f) => {
+                  const on = features[f.key] !== false;
+                  return (
+                    <li key={f.key} className={`${on ? 'is-on' : 'is-off'}${f.key === locked ? ' is-asked' : ''}`}>
+                      {on ? <Check size={15} aria-label="included" /> : <Lock size={14} aria-label="not included" />}
+                      <span><strong>{f.label}</strong><small>{f.help}</small></span>
+                    </li>
+                  );
+                })}
+              </ul>
+              {extraLimits.length > 0 && (
+                <div className="plan-extra-limits">
+                  {extraLimits.map((l) => (
+                    <div key={l.key}><span>{l.label}</span><strong>{limits[l.key] == null ? 'Unlimited' : limits[l.key]}</strong></div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="card">
           <div className="card-header"><h3><ArrowUpCircle size={16} /> Upgrade your plan</h3></div>
           <div className="card-body">
@@ -104,15 +152,21 @@ export default function PlanUsage() {
             ) : (
               <>
                 <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
-                  Request a higher plan — an admin approves it and your limit increases immediately.
+                  Request a plan — an admin approves it and it applies straight away.
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-                  {plans.filter(p => p.id !== usage?.planId && p.monthly_article_limit > (usage?.limit || 0)).map(p => (
-                    <div key={p.id} style={{ border: '1px solid rgba(139,92,246,0.2)', borderRadius: 'var(--radius-md)', padding: 16, textAlign: 'center' }}>
+                  {better.map(p => (
+                    <div key={p.id} className={`plan-offer${locked && p.features?.[locked] ? ' is-match' : ''}`}>
                       <div style={{ fontWeight: 600, textTransform: 'capitalize' }}>{p.name}</div>
-                      <div style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 12px' }}>
-                        {p.monthly_article_limit} articles/mo{p.price_inr ? ` · ₹${p.price_inr}` : ''}
+                      <div style={{ fontSize: 13, color: 'var(--text-muted)', margin: '4px 0 8px' }}>
+                        {p.price_inr ? `₹${p.price_inr}/mo` : 'Free'} · {p.monthly_article_limit} articles · {p.monthly_ig_post_limit} images
                       </div>
+                      {p.description && <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>{p.description}</div>}
+                      {unlocks(p).length > 0 && (
+                        <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                          Adds {unlocks(p).map((f) => f.label).join(', ')}
+                        </div>
+                      )}
                       <button className="btn btn-primary btn-sm w-full" disabled={requesting === p.id}
                         onClick={() => handleRequest(p.id)}>
                         {requesting === p.id ? <Loader2 size={14} className="spinning" /> : `Request ${p.name}`}
@@ -120,7 +174,7 @@ export default function PlanUsage() {
                     </div>
                   ))}
                 </div>
-                {plans.filter(p => p.monthly_article_limit > (usage?.limit || 0)).length === 0 && (
+                {better.length === 0 && (
                   <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>You're on the highest plan. 🎉</p>
                 )}
               </>

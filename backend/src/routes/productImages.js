@@ -11,12 +11,14 @@ import {
 } from '../services/productImages.js';
 import { PRODUCT_IMAGE_STYLES, isProductStyle } from '../lib/igPrompts.js';
 import { clampImages } from '../lib/campaignSchedule.js';
+import { requireFeature } from '../middleware/plan.js';
 
 // AI product images (/api/product-images). Everyone in the workspace can browse
 // and generate; posting and deleting need owner/admin, like Instagram Studio.
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
+router.use(requireFeature('product_posts'));
 const manage = requireWorkspaceRole('owner', 'admin');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

@@ -11,6 +11,7 @@ import { detectIssues, siteScore, readPage, liveHosts, suspectLinks, ISSUE_TYPES
 import { calculateAeoScore } from '../lib/seo.js';
 import { stripTags } from '../lib/articleStructure.js';
 import { INTERNAL_COLLECTION_RE } from '../lib/articleCatalog.js';
+import { allows } from './usage.js';
 
 // The full-site check: everything published on the store, each live page as Google sees
 // it, and Search Console's numbers when connected. Then the worst problems get fixed.
@@ -217,6 +218,7 @@ export async function runDueSeoAudit() {
   const workspaceId = await repo.claimDue();
   if (!workspaceId) return false;
   try {
+    if (!(await allows(workspaceId, 'seo'))) { console.log(`🔎 SEO audit ${workspaceId} skipped: the plan doesn't include SEO automation`); return true; }
     const result = await runAudit(workspaceId);
     console.log(`🔎 SEO audit ${workspaceId}: ${result.pages} pages, ${result.issues} issues, ${result.fixesApplied} improved, score ${result.score}`);
   } catch (err) {

@@ -9,6 +9,8 @@ import * as memberships from '../repositories/memberships.js';
 import * as activity from '../repositories/activity.js';
 import * as upgrades from '../repositories/upgradeRequests.js';
 import * as adminStats from '../repositories/adminStats.js';
+import * as plansRepo from '../repositories/plans.js';
+import { FEATURES, LIMITS, effectivePlan, planFeaturesFrom, meteredFrom, overridesFrom } from '../lib/planFeatures.js';
 import config from '../config/env.js';
 import * as media from '../services/igMedia.js';
 import * as openaiImages from '../services/openaiImages.js';
@@ -28,6 +30,7 @@ const MIN_PASSWORD = 8;
 const notFound = (res) => res.status(404).json({ success: false, error: 'Not found' });
 router.param('id', (req, res, next, id) => (UUID_RE.test(id) ? next() : notFound(res)));
 router.param('workspaceId', (req, res, next, id) => (UUID_RE.test(id) ? next() : notFound(res)));
+router.param('planId', (req, res, next, id) => (/^[a-z0-9][a-z0-9-]{0,30}$/.test(id) ? next() : notFound(res)));
 
 // 14 characters with no look-alikes (0/O, 1/l), so it can be read out or typed from a screenshot.
 function generatePassword() {
@@ -276,9 +279,104 @@ router.post('/workspaces/:id/reactivate', async (req, res, next) => {
 });
 
 // ─── Plans ──────────────────────────────────────────────────
+// Plans with what each includes (features on/off, limits) and how many workspaces use it,
+// plus the catalogue of features and limits the editor shows.
 router.get('/plans', async (req, res, next) => {
-  try { const { rows } = await query('SELECT * FROM plans ORDER BY monthly_article_limit ASC'); res.json({ success: true, data: rows }); }
-  catch (error) { next(error); }
+  try {
+    const rows = await plansRepo.list();
+    const data = await Promise.all(rows.map(async (p) => ({ ...p, ...effectivePlan(p), workspaces: await plansRepo.workspaceCount(p.id) })));
+    res.json({ success: true, data, catalogue: { features: FEATURES, limits: LIMITS } });
+  } catch (error) { next(error); }
+});
+
+const PLAN_ID_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
+const planError = (res, error) => res.status(error.status || 400).json({ success: false, error: error.message });
+// The plan fields an editor sends → repository fields (throws 400 on a bad value).
+function planFields(body = {}) {
+  const out = {};
+  if (body.name !== undefined) {
+    const name = String(body.name).trim().slice(0, 40);
+    if (!name) throw Object.assign(new Error('The plan needs a name'), { status: 400 });
+    out.name = name;
+  }
+  if (body.price_inr !== undefined) {
+    const price = Number(body.price_inr);
+    if (!Number.isInteger(price) || price < 0 || price > 10_000_000) throw Object.assign(new Error('Price must be a whole number of rupees'), { status: 400 });
+    out.priceInr = price;
+  }
+  if (body.description !== undefined) out.description = String(body.description || '').trim().slice(0, 300) || null;
+  if (body.is_active !== undefined) out.isActive = Boolean(body.is_active);
+  const metered = meteredFrom(body);
+  if (metered.monthly_article_limit !== undefined) out.monthlyArticleLimit = metered.monthly_article_limit;
+  if (metered.monthly_ig_post_limit !== undefined) out.monthlyIgPostLimit = metered.monthly_ig_post_limit;
+  if (body.features !== undefined || body.limits !== undefined) out.features = planFeaturesFrom(body);
+  return out;
+}
+
+// Edit a plan, feature by feature (applies to every workspace on it). Superadmin only.
+router.put('/plans/:planId', requireSuperadmin, async (req, res, next) => {
+  try {
+    const plan = await plansRepo.getById(req.params.planId);
+    if (!plan) return notFound(res);
+    let fields;
+    try { fields = planFields(req.body); } catch (err) { return planError(res, err); }
+    // A part the editor didn't send (switches or extra limits) stays as it was.
+    if (fields.features) {
+      if (req.body.features === undefined) fields.features.features = plan.features?.features || {};
+      if (req.body.limits === undefined) fields.features.limits = plan.features?.limits || {};
+    }
+    if (fields.isActive === false && plan.id === 'free') return res.status(400).json({ success: false, error: 'The Free plan is what new sign-ups get, so it stays on.' });
+    const updated = await plansRepo.update(plan.id, fields);
+    activity.log(req.user.id, 'admin_edit_plan', plan.id);
+    res.json({ success: true, data: { ...updated, ...effectivePlan(updated) }, message: 'Plan saved' });
+  } catch (error) { next(error); }
+});
+
+// A new plan (starts with every feature on; edit it after). Superadmin only.
+router.post('/plans', requireSuperadmin, async (req, res, next) => {
+  try {
+    const id = String(req.body?.id || '').trim().toLowerCase();
+    if (!PLAN_ID_RE.test(id)) return res.status(400).json({ success: false, error: 'Plan id: 2-31 lowercase letters, digits or dashes (e.g. "starter")' });
+    if (await plansRepo.getById(id)) return res.status(409).json({ success: false, error: 'A plan with that id already exists' });
+    let fields;
+    try { fields = planFields({ ...req.body, limits: { monthly_article_limit: 10, monthly_ig_post_limit: 20, ...(req.body?.limits || {}) } }); }
+    catch (err) { return planError(res, err); }
+    if (!fields.name) return res.status(400).json({ success: false, error: 'The plan needs a name' });
+    const created = await plansRepo.create({
+      id, name: fields.name, priceInr: fields.priceInr ?? 0, description: fields.description,
+      monthlyArticleLimit: fields.monthlyArticleLimit, monthlyIgPostLimit: fields.monthlyIgPostLimit, features: fields.features || { features: {}, limits: {} },
+    });
+    activity.log(req.user.id, 'admin_create_plan', id);
+    res.status(201).json({ success: true, data: { ...created, ...effectivePlan(created), workspaces: 0 }, message: 'Plan created' });
+  } catch (error) { next(error); }
+});
+
+// One workspace's plan, its own changes, and what it adds up to.
+router.get('/workspaces/:id/plan', async (req, res, next) => {
+  try {
+    const ws = await workspacesRepo.getById(req.params.id);
+    if (!ws) return notFound(res);
+    const sub = await plansRepo.getSubscription(ws.id);
+    const plan = await plansRepo.getById(sub.plan_id);
+    res.json({ success: true, data: { workspaceId: ws.id, planId: sub.plan_id, planName: plan?.name, overrides: sub.overrides || {}, plan: effectivePlan(plan), effective: effectivePlan(plan, sub.overrides) } });
+  } catch (error) { next(error); }
+});
+
+// Give one workspace its own changes to its plan: features on/off and limits (a key left
+// out follows the plan). Replaces any earlier changes.
+router.put('/workspaces/:id/overrides', async (req, res, next) => {
+  try {
+    const ws = await workspacesRepo.getById(req.params.id);
+    if (!ws) return notFound(res);
+    let overrides;
+    try { overrides = overridesFrom(req.body); } catch (err) { return planError(res, err); }
+    await plansRepo.setOverrides(ws.id, overrides);
+    const sub = await plansRepo.getSubscription(ws.id);
+    const plan = await plansRepo.getById(sub.plan_id);
+    const changed = Object.keys(overrides.features).length + Object.keys(overrides.limits).length;
+    activity.log(req.user.id, 'admin_set_overrides', `${ws.name}: ${changed ? `${changed} change(s)` : 'back to the plan'}`);
+    res.json({ success: true, data: { overrides, effective: effectivePlan(plan, overrides) }, message: changed ? 'Custom plan saved' : 'Back to the plan as it is' });
+  } catch (error) { next(error); }
 });
 
 // ─── Activity ───────────────────────────────────────────────

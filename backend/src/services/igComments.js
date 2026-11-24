@@ -2,6 +2,7 @@ import * as repo from '../repositories/igStudio.js';
 import * as igRepo from '../repositories/instagram.js';
 import { getTextAi } from './igAi.js';
 import { fetchRecentComments, replyToComment, setCommentHidden } from './instagram.js';
+import { allows } from './usage.js';
 
 // Comments engine (ported from the Insta Post Generator) — shared by the
 // scheduler's sweep and the "Check now" button. Pulls new top-level comments,
@@ -149,6 +150,7 @@ export async function runCommentCycle(workspaceId, accountId, settings, { maxRev
 export async function runDueCommentSweep() {
   const settings = await repo.claimCommentSweep();
   if (!settings) return false;
+  if (!(await allows(settings.workspace_id, 'comments'))) return false; // the plan doesn't include comment replies
   const r = await runCommentCycle(settings.workspace_id, settings.account_id, settings);
   if (r.error || r.reviewed) {
     await repo.log({

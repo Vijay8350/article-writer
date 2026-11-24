@@ -240,3 +240,8 @@ export default api;
 // Admin overview: sign-ups, plans, usage, and every account with its plan
 export const adminGetOverview = () => api.get('/admin/overview').then(r => r.data);
 export const adminGetCustomers = () => api.get('/admin/customers').then(r => r.data);
+// Plans, feature by feature (superadmin edits), and one workspace's own changes
+export const adminUpdatePlan = (planId, body) => api.put(`/admin/plans/${planId}`, body).then(r => r.data);
+export const adminCreatePlan = (body) => api.post('/admin/plans', body).then(r => r.data);
+export const adminGetWorkspacePlan = (workspaceId) => api.get(`/admin/workspaces/${workspaceId}/plan`).then(r => r.data);
+export const adminSetWorkspaceOverrides = (workspaceId, body) => api.put(`/admin/workspaces/${workspaceId}/overrides`, body).then(r => r.data);

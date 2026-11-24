@@ -1,17 +1,24 @@
 import { Router } from 'express';
-import { query } from '../db/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireWorkspace, requireWorkspaceRole } from '../middleware/workspace.js';
 import * as upgrades from '../repositories/upgradeRequests.js';
 import * as activity from '../repositories/activity.js';
+import * as plansRepo from '../repositories/plans.js';
+import { FEATURES, LIMITS, effectivePlan } from '../lib/planFeatures.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
 
+// The plans on offer, each with what it includes, and the names of every feature and limit.
 router.get('/plans', async (req, res, next) => {
   try {
-    const { rows } = await query('SELECT id, name, monthly_article_limit, price_inr FROM plans ORDER BY monthly_article_limit ASC');
-    res.json({ success: true, data: rows });
+    const rows = (await plansRepo.list()).filter((p) => p.is_active !== false);
+    const data = rows.map((p) => ({
+      id: p.id, name: p.name, description: p.description, price_inr: p.price_inr,
+      monthly_article_limit: p.monthly_article_limit, monthly_ig_post_limit: p.monthly_ig_post_limit,
+      ...effectivePlan(p),
+    }));
+    res.json({ success: true, data, catalogue: { features: FEATURES, limits: LIMITS } });
   } catch (error) { next(error); }
 });
 
@@ -25,8 +32,8 @@ router.post('/', requireWorkspaceRole('owner', 'admin'), async (req, res, next) 
   try {
     const { requestedPlan, note } = req.body || {};
     if (!requestedPlan) return res.status(400).json({ success: false, error: 'requestedPlan is required' });
-    const plan = await query('SELECT id FROM plans WHERE id = $1', [requestedPlan]);
-    if (plan.rowCount === 0) return res.status(400).json({ success: false, error: 'Unknown plan' });
+    const plan = await plansRepo.getById(String(requestedPlan));
+    if (!plan || plan.is_active === false) return res.status(400).json({ success: false, error: 'That plan is not offered' });
 
     const { row, created } = await upgrades.createOrGetPending(req.workspace.id, req.user.id, requestedPlan, note);
     if (created) activity.log(req.user.id, 'upgrade_request', `${req.workspace.id} → ${requestedPlan}`);

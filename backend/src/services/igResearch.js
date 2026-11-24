@@ -3,6 +3,7 @@ import * as igRepo from '../repositories/instagram.js';
 import { getTextAi } from './igAi.js';
 import { fetchProfile, fetchMedia, fetchRecentComments } from './instagram.js';
 import { crawlWebsite, normalizeWebsiteUrl } from './websiteCrawl.js';
+import { assertFeature } from './usage.js';
 
 // Business DNA deep research (ported from the Insta Post Generator). Research
 // first, then write:
@@ -264,6 +265,7 @@ export async function runDueResearch() {
   const log = [...first];
   let status = 'researching';
   try {
+    await assertFeature(row.workspace_id, 'studio');
     const req = row.research_request || {};
     const ai = await getTextAi(row.workspace_id);
     const account = req.include_instagram ? await igRepo.getAccountWithToken(accountId) : null;

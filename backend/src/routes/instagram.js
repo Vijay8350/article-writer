@@ -9,9 +9,13 @@ import { identifyAccount, checkAccountStatus } from '../services/instagram.js';
 import { previewAutomation, runAutomation } from '../services/instagramAutopost.js';
 import { isProductStyle } from '../lib/igPrompts.js';
 import { parseWindow, clampImages } from '../lib/campaignSchedule.js';
+import { requireFeature } from '../middleware/plan.js';
+import { assertBelowLimit, igAccountCount, automationCount } from '../services/usage.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
+// Daily posting jobs belong to AI product posts; connecting accounts is open to every plan.
+router.use('/automations', requireFeature('product_posts'));
 const manage = requireWorkspaceRole('owner', 'admin');
 
 const bad = (res, error, status = 400) => res.status(status).json({ success: false, error });
@@ -57,6 +61,7 @@ router.post('/accounts', manage, async (req, res, next) => {
     catch (err) { return bad(res, err.message); }
     // Instagram Login tokens generated in the Meta dashboard are long-lived (60 days).
     const tokenExpiresAt = identity.tokenType === 'instagram' ? new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) : null;
+    await assertBelowLimit(req.workspace.id, 'max_ig_accounts', await igAccountCount(req.workspace.id, identity.igUserId));
     const account = await repo.upsertAccount(req.workspace.id, req.user.id, { ...identity, accessToken, tokenExpiresAt });
     res.status(201).json({ success: true, message: `Connected @${account.username}`, data: account });
   } catch (error) { next(error); }
@@ -104,6 +109,7 @@ router.post('/automations', manage, async (req, res, next) => {
   try {
     const { siteUrl, accountId, postTime = '10:00', timezone = 'Asia/Kolkata', captionInstructions, hashtags } = req.body || {};
     if (!siteUrl) return bad(res, 'Website URL is required');
+    await assertBelowLimit(req.workspace.id, 'max_automations', await automationCount(req.workspace.id));
     const extras = jobExtras(req.body);
     if (!accountId || !(await repo.getAccountMeta(req.workspace.id, accountId))) return bad(res, 'Pick a connected Instagram account');
     if (!TIME_RE.test(postTime)) return bad(res, 'Post time must be HH:MM (24-hour)');

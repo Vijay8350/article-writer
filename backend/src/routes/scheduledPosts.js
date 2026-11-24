@@ -3,9 +3,11 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireWorkspace } from '../middleware/workspace.js';
 import * as scheduled from '../repositories/scheduledPosts.js';
 import * as stores from '../repositories/stores.js';
+import { requireFeature } from '../middleware/plan.js';
 
 const router = Router();
 router.use(requireAuth, requireWorkspace);
+router.use(requireFeature('scheduled_posts'));
 
 router.get('/', async (req, res, next) => {
   try {

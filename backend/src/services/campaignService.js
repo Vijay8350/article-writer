@@ -3,6 +3,7 @@ import { getKeywordIdeas, isDuplicate } from './keywordIdeas.js';
 import { resolveAi } from './ai.js';
 import { loadWorkspaceContext, generateArticleForWorkspace, publishArticleForWorkspace } from './articleService.js';
 import { nextOccurrence } from '../lib/campaignSchedule.js';
+import { allows } from './usage.js';
 
 function relevantProductTitles(dna, collectionTitle) {
   const products = dna.products || [];
@@ -85,6 +86,10 @@ export async function runOneArticleForCampaign(campaign) {
 export async function runDueCampaignArticle() {
   const campaign = await campaigns.findDue();
   if (!campaign) return false;
+  if (!(await allows(campaign.workspace_id, 'campaigns'))) { // the plan doesn't include campaigns: skip this run
+    await campaigns.updateRunState(campaign.id, { runRemaining: 0, nextRunAt: nextOccurrence(campaign.cadence, campaign.starts_at || campaign.next_run_at) });
+    return true;
+  }
   let runRemaining = campaign.run_remaining > 0 ? campaign.run_remaining : campaign.articles_per_run;
   const result = await runOneArticleForCampaign(campaign);
   runRemaining = result.stopRun ? 0 : runRemaining - 1;

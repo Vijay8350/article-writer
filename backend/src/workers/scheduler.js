@@ -13,6 +13,7 @@ import { finishExpired as finishExpiredBlogCampaigns } from '../repositories/cam
 import { finishExpiredAutomations } from '../repositories/instagram.js';
 import { runDueSeoAudit } from '../services/seoAudit.js';
 import { releaseStale as releaseStaleSeoAudits } from '../repositories/seo.js';
+import { assertFeature } from '../services/usage.js';
 
 // Runs inside the SINGLE PM2 fork process. This is the ONLY reason it's safe
 // from double-firing — do NOT enable PM2 cluster mode / instances>1 without
@@ -31,6 +32,7 @@ async function tick() {
     if (job) {
       console.log(`⏰ Processing scheduled post ${job.id} (workspace ${job.workspace_id}): "${job.topic}"`);
       try {
+        await assertFeature(job.workspace_id, 'scheduled_posts');
         const { created } = await generateAndPublishForWorkspace(job.workspace_id, {
           topic: job.topic,
           wordCount: job.word_count,
@@ -43,6 +45,7 @@ async function tick() {
         // A LIMIT_REACHED error lands here and marks the job failed rather than over-publishing.
         const msg = err.code === 'LIMIT_REACHED'
           ? 'Monthly article limit reached'
+          : err.code === 'FEATURE_LOCKED' ? err.message
           : (err.response?.data ? JSON.stringify(err.response.data) : err.message);
         await scheduled.markFailed(job.id, msg);
         console.error(`❌ Scheduled post ${job.id} failed: ${msg}`);

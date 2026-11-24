@@ -10,7 +10,7 @@ import * as media from './igMedia.js';
 import { publishPost } from './instagram.js';
 import { buildImagePrompt, buildVisionPrompt, splitSlides, campaignBrief } from '../lib/igPrompts.js';
 import { normalizeHash } from '../lib/igSchemas.js';
-import { assertCanGenerateIgPost, incrementIgUsage } from './usage.js';
+import { assertCanGenerateIgPost, incrementIgUsage, allows } from './usage.js';
 
 // The Instagram Studio pipeline (ported from the Insta Post Generator):
 //   1 idea (DeepSeek, de-duplicated) → 2 post text (DeepSeek, strict JSON)
@@ -276,6 +276,7 @@ export async function runDueAutopilot() {
       const start = toMinutes(slot);
       if (start == null || local.minutes < start || local.minutes >= start + SLOT_WINDOW_MIN) continue;
       if (!(await repo.claimSlot(account.account_id, local.date, slot))) continue;
+      if (!(await allows(account.workspace_id, 'studio'))) continue; // the plan doesn't include Studio
       console.log(`📸 Instagram autopilot: account ${account.account_id} slot ${slot}`);
       await runSlot(account, slot);
       return true;

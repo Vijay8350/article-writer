@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2, Instagram, AlarmClock, MessageCircle, Sparkles, Megaphone, BarChart3, ImagePlus, SearchCheck } from 'lucide-react';
-import { getSettings, adminGetUsers, adminGetUpgradeRequests } from '../lib/api';
+import { Lock, LayoutDashboard, Dna, PenLine, FileText, CalendarClock, Rocket, Gauge, Shield, Settings, LogOut, Users, Building2, Instagram, AlarmClock, MessageCircle, Sparkles, Megaphone, BarChart3, ImagePlus, SearchCheck } from 'lucide-react';
+import { getSettings, getUsage, adminGetUsers, adminGetUpgradeRequests } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 
 // Items without a `path` are planned features, shown greyed out with a "Soon" tag.
@@ -15,28 +15,28 @@ const navSections = [
   {
     title: 'Blog',
     items: [
-      { path: '/generate', icon: PenLine, label: 'Generate Article' },
-      { path: '/campaigns', icon: Rocket, label: 'Campaigns' },
-      { path: '/articles', icon: FileText, label: 'Existing Articles' },
-      { path: '/scheduled', icon: CalendarClock, label: 'Scheduled Posts' },
+      { path: '/generate', icon: PenLine, label: 'Generate Article', feature: 'articles' },
+      { path: '/campaigns', icon: Rocket, label: 'Campaigns', feature: 'campaigns' },
+      { path: '/articles', icon: FileText, label: 'Existing Articles', feature: 'articles' },
+      { path: '/scheduled', icon: CalendarClock, label: 'Scheduled Posts', feature: 'scheduled_posts' },
     ],
   },
   {
     title: 'SEO',
     items: [
-      { path: '/seo', icon: SearchCheck, label: 'SEO Automation' },
+      { path: '/seo', icon: SearchCheck, label: 'SEO Automation', feature: 'seo' },
     ],
   },
   {
     title: 'Instagram',
     items: [
       { path: '/instagram', icon: Instagram, label: 'Accounts' },
-      { path: '/instagram-insights', icon: BarChart3, label: 'Insights' },
-      { path: '/instagram-studio', icon: Sparkles, label: 'Studio' },
-      { path: '/instagram-campaigns', icon: Megaphone, label: 'Campaigns' },
-      { path: '/instagram-comments', icon: MessageCircle, label: 'Comments' },
-      { path: '/instagram-product-images', icon: ImagePlus, label: 'AI Product Posts' },
-      { path: '/instagram-scheduler', icon: AlarmClock, label: 'Product Scheduler' },
+      { path: '/instagram-insights', icon: BarChart3, label: 'Insights', feature: 'insights' },
+      { path: '/instagram-studio', icon: Sparkles, label: 'Studio', feature: 'studio' },
+      { path: '/instagram-campaigns', icon: Megaphone, label: 'Campaigns', feature: 'studio' },
+      { path: '/instagram-comments', icon: MessageCircle, label: 'Comments', feature: 'comments' },
+      { path: '/instagram-product-images', icon: ImagePlus, label: 'AI Product Posts', feature: 'product_posts' },
+      { path: '/instagram-scheduler', icon: AlarmClock, label: 'Product Scheduler', feature: 'product_posts' },
     ],
   },
   {
@@ -55,6 +55,7 @@ export default function Layout() {
   const [connected, setConnected] = useState(false);
   const [storeName, setStoreName] = useState('');
   const [waiting, setWaiting] = useState({ users: 0, upgrades: 0 });
+  const [features, setFeatures] = useState({}); // what the workspace's plan includes (missing = included)
   const { pathname } = useLocation();
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
 
@@ -65,6 +66,12 @@ export default function Layout() {
       .then(([u, r]) => setWaiting({ users: (u.data || []).filter(x => x.status === 'pending').length, upgrades: (r.data || []).length }))
       .catch(() => {});
   }, [isAdmin, pathname]);
+
+  // The plan decides which features this workspace has; the rest show a lock.
+  useEffect(() => {
+    if (!activeWorkspaceId) { setFeatures({}); return; }
+    getUsage().then((res) => setFeatures(res.data?.features || {})).catch(() => setFeatures({}));
+  }, [activeWorkspaceId, pathname === '/plan']);
 
   useEffect(() => {
     if (!activeWorkspaceId) return;
@@ -110,7 +117,13 @@ export default function Layout() {
           {navSections.map((section, i) => (
             <React.Fragment key={section.title || i}>
               {section.title && <div className="nav-section-title">{section.title}</div>}
-              {section.items.map(item => (item.path ? (
+              {section.items.map(item => (item.path && item.feature && features[item.feature] === false ? (
+                <Link key={item.path} to={`/plan?locked=${item.feature}`} className="nav-item nav-item-locked" title="Not included in your plan — see Plan & Usage">
+                  <item.icon />
+                  {item.label}
+                  <Lock size={13} style={{ marginLeft: 'auto', opacity: 0.7 }} aria-label="not in your plan" />
+                </Link>
+              ) : item.path ? (
                 <NavLink
                   key={item.path}
                   to={item.path}
