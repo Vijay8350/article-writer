@@ -271,7 +271,7 @@ export default function GenerateArticle() {
                     <div className="form-group blog-seg-field">
                       <span className="form-label">AI model</span>
                       <Segmented value={aiModel} onChange={setAiModel} options={AI_OPTIONS} ariaLabel="AI model" />
-                      <div className="form-helper">Gemini is recommended.</div>
+                      <div className="form-helper">Both write from your Business DNA. Your default is set in Settings.</div>
                     </div>
                     <div className="form-group">
                       <label className="form-label" htmlFor="ga-images">Article images</label>

@@ -40,7 +40,7 @@ router.get('/', async (req, res, next) => {
         needsReconnect: !!meta?.needs_reconnect,
         shopifyApp: isShopifyAppConfigured(),
         aiKeys: keys,
-        ai: ai.withDefaults(aiSettings),
+        ai: ai.withDefaults(aiSettings, keys),
         // Whether a shared platform key exists to fall back on (never the key itself).
         platformKeys: { gemini: !!config.gemini.apiKey, deepseek: !!config.deepseek.apiKey },
       },
@@ -114,7 +114,7 @@ router.put('/ai-preferences', requireWorkspaceRole('owner', 'admin'), async (req
   try {
     const settings = ai.normalizeSettings(req.body || {});
     await aiKeys.saveSettings(req.workspace.id, settings);
-    res.json({ success: true, message: 'AI preferences saved', data: ai.withDefaults(settings) });
+    res.json({ success: true, message: 'AI preferences saved', data: ai.withDefaults(settings, await aiKeys.getKeyPresence(req.workspace.id)) });
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ success: false, error: error.message });
     next(error);

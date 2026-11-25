@@ -29,6 +29,7 @@ import { MEDIA_DIR } from './services/igMedia.js';
 import { startScheduler } from './workers/scheduler.js';
 import * as gemini from './services/gemini.js';
 import * as deepseek from './services/deepseek.js';
+import { setPlatformKeyHealth } from './services/ai.js';
 
 const app = express();
 
@@ -121,7 +122,12 @@ app.listen(config.port, () => {
 
   // Surface a dead platform AI key at boot instead of on the first generation.
   for (const [name, svc, key] of [['Gemini', gemini, config.gemini.apiKey], ['DeepSeek', deepseek, config.deepseek.apiKey]]) {
-    if (key) svc.verifyKey().then(() => console.log(`✅ Platform ${name} key OK`), err => console.warn(`⚠️  Platform ${name} key: ${err.message}`));
+    if (!key) { setPlatformKeyHealth(name.toLowerCase(), false); continue; }
+    // The result also steers defaults: a refused shared Gemini key makes DeepSeek the default.
+    svc.verifyKey().then(
+      () => { setPlatformKeyHealth(name.toLowerCase(), true); console.log(`✅ Platform ${name} key OK`); },
+      (err) => { setPlatformKeyHealth(name.toLowerCase(), false); console.warn(`⚠️  Platform ${name} key: ${err.message}`); },
+    );
   }
 });
 
