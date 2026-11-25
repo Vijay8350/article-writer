@@ -6,7 +6,13 @@ import { getUsage, getUpgradePlans, getMyUpgradeRequests, requestUpgrade } from 
 import { PageHeader, Section } from '../components/ui';
 import '../styles/workspace.css';
 import ShopifyBilling from '../components/ShopifyBilling';
-import { isEmbedded } from '../lib/embedded';
+import { isEmbedded, showInstagram, INSTAGRAM_FEATURES, INSTAGRAM_LIMITS } from '../lib/embedded';
+
+// Inside the Shopify admin Instagram's features and limits stay hidden with its pages.
+const visibleCatalogue = (c) => (showInstagram() ? c : {
+  features: (c.features || []).filter((f) => !INSTAGRAM_FEATURES.has(f.key)),
+  limits: (c.limits || []).filter((l) => !INSTAGRAM_LIMITS.has(l.key)),
+});
 
 // Used vs limit, green until it gets close to the limit.
 function UsageMeter({ label, used, limit, unit, note, full, ariaLabel }) {
@@ -34,13 +40,14 @@ export default function PlanUsage() {
   const [requesting, setRequesting] = useState(null);
   const [catalogue, setCatalogue] = useState({ features: [], limits: [] });
   const [params] = useSearchParams();
-  const locked = params.get('locked'); // the feature a locked menu item pointed here for
+  const asked = params.get('locked'); // the feature a locked menu item pointed here for
+  const locked = showInstagram() || !INSTAGRAM_FEATURES.has(asked) ? asked : null;
 
   const loadRequests = () => getMyUpgradeRequests().then(r => setMyRequests(r.data || [])).catch(() => {});
 
   useEffect(() => {
     Promise.all([getUsage(), getUpgradePlans()])
-      .then(([u, p]) => { setUsage(u.data); setPlans(p.data || []); if (p.catalogue) setCatalogue(p.catalogue); })
+      .then(([u, p]) => { setUsage(u.data); setPlans(p.data || []); if (p.catalogue) setCatalogue(visibleCatalogue(p.catalogue)); })
       .catch(() => {})
       .finally(() => setLoading(false));
     loadRequests();
@@ -104,7 +111,7 @@ export default function PlanUsage() {
               ? `${usage.remaining} article${usage.remaining === 1 ? '' : 's'} remaining this month.`
               : 'You have reached your monthly limit. Request a bigger plan below to write more.'}
           />
-          {usage?.igLimit != null && (
+          {usage?.igLimit != null && showInstagram() && (
             <UsageMeter
               label="Instagram Studio posts"
               used={usage.igUsed}

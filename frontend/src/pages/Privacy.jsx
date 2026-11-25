@@ -9,12 +9,13 @@ export default function Privacy() {
     <div className="legal-page">
       <Seo
         title="Privacy Policy"
-        description="How Article Writer collects, stores, and uses your data."
+        description="How Glowquill Article Writer collects, stores, and uses your data."
         path="/privacy"
       />
       <article className="legal-doc">
         <h1>Privacy Policy</h1>
         <p className="legal-muted">Last updated: {new Date().toLocaleDateString()}</p>
+        <p>This policy covers Glowquill Article Writer (the "Service"), on the web and as an app in your Shopify admin.</p>
 
         <h2>What we collect</h2>
         <p>Account info (email, name, password hash), Shopify store URL and access token (encrypted at rest), and the Business DNA we generate from your Shopify store's public catalog data. Activity logs of generation, publishing, and admin actions.</p>

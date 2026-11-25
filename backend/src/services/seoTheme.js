@@ -16,7 +16,7 @@ const VERIFY_ATTEMPTS = 4;
 const VERIFY_PAUSE_MS = 4000;
 
 const SNIPPET_BODY = `{%- comment -%}
-  Added by Article Writer SEO: this product's structured data plus its review rating, from
+  Added by Glowquill SEO: this product's structured data plus its review rating, from
   Shopify's reviews.rating and reviews.rating_count (review apps such as Judge.me keep
   these up to date), so Google can show stars. Undo it under SEO → Changes made.
 {%- endcomment -%}

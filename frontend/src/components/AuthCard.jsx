@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
+import { BrandMark } from './BrandLogo';
 
 // Shared shell for Login + Signup: a photo panel with what the product does on the
 // left (desktop), the form on the right. Photo: Unsplash (free licence).
@@ -13,7 +14,7 @@ export default function AuthCard({ title, subtitle, children, footer, badge }) {
         <img src={PHOTO} alt="" className="auth-side__img" />
         <div className="auth-side__shade" />
         <div className="auth-side__copy">
-          <p className="auth-side__eyebrow">Article Writer for Shopify</p>
+          <p className="auth-side__eyebrow">Glowquill Article Writer for Shopify</p>
           <h2>Blog posts, SEO and Instagram — done while you run your store.</h2>
           <ul>
             <li>Articles with your real product photos</li>
@@ -28,8 +29,8 @@ export default function AuthCard({ title, subtitle, children, footer, badge }) {
           <Link to="/" className="auth-back"><ChevronLeft size={16} /> Home</Link>
         </div>
         <div className="auth-card">
-          <Link to="/" className="auth-logo" aria-label="Article Writer — home">
-            <img src="/favicon.svg" alt="" width="44" height="44" />
+          <Link to="/" className="auth-logo" aria-label="Glowquill — home">
+            <BrandMark size={44} />
           </Link>
           {badge && <div className="auth-badge">{badge}</div>}
           <div className="auth-head">
@@ -59,7 +60,7 @@ export default function AuthCard({ title, subtitle, children, footer, badge }) {
         .auth-back:hover { color: var(--text-primary); }
         .auth-card { width: 100%; max-width: 400px; margin: auto 0; padding: 32px 0; }
         .auth-logo { display: inline-block; margin-bottom: 24px; }
-        .auth-logo img { display: block; border-radius: 11px; }
+        .auth-logo svg { display: block; }
         .auth-badge { display: inline-block; padding: 4px 12px; border-radius: var(--radius-pill); background: var(--brand-tint); color: var(--brand); font-size: 12.5px; font-weight: 600; margin-bottom: 14px; }
         .auth-head { margin-bottom: 28px; }
         .auth-head h1 { font-size: 32px; letter-spacing: -0.03em; margin-bottom: 6px; }

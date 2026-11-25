@@ -232,8 +232,6 @@ svg.lucide { stroke-width: 1.75; }
   color: var(--text-primary);
 }
 .sidebar-logo:hover { color: var(--text-primary); }
-.sidebar-logo img { width: 28px; height: 28px; display: block; }
-.sidebar-logo strong { font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
 
 /* Workspace switcher */
 .ws-switch { padding: 4px 12px 12px; }
@@ -889,9 +887,6 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--brand); }
 /* The Google result preview stays light, as Google shows it */
 :root[data-theme='dark'] .seo-preview { border-color: transparent; }
 
-/* The logo flips to a light tile in dark mode */
-:root[data-theme='dark'] img[src='/favicon.svg'] { filter: invert(1) hue-rotate(180deg); }
-
 /* ═══════════════════════════════════════════════════════════════
    UI building blocks (components/ui.jsx) and page layout helpers
    ═══════════════════════════════════════════════════════════════ */
@@ -1017,7 +1012,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--brand); }
   .app-layout.is-collapsed { --sidebar-width: 72px; }
   .is-collapsed .sidebar-head { flex-direction: column; padding: 14px 0 8px; gap: 8px; }
   .is-collapsed .sidebar-logo { padding: 0; justify-content: center; flex: none; }
-  .is-collapsed .sidebar-logo strong,
+  .is-collapsed .sidebar-logo .brand-logo__name,
   .is-collapsed .nav-label,
   .is-collapsed .nav-lock,
   .is-collapsed .ws-switch__text,

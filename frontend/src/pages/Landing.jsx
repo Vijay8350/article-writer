@@ -6,6 +6,7 @@ import {
 import Seo, { APP_URL } from '../components/Seo';
 import { getPublicPlans } from '../lib/api';
 import { ThemeToggle } from '../components/ThemeSwitch';
+import { BrandLogo, BrandMark } from '../components/BrandLogo';
 
 // ─── Photography (Unsplash, free licence; served by Unsplash's image CDN) ───
 const P = {
@@ -37,7 +38,7 @@ function Photo({ id, w, h, alt = '', className, eager }) {
 }
 
 const FAQS = [
-  { q: 'Do I need to know any code?', a: 'No. Connect your Shopify store from Settings (we walk you through it), let Article Writer learn your catalogue, and start writing. Everything else happens in the app.' },
+  { q: 'Do I need to know any code?', a: 'No. Connect your Shopify store from Settings (we walk you through it), let Glowquill learn your catalogue, and start writing. Everything else happens in the app.' },
   { q: 'Does it publish straight to my Shopify blog?', a: 'Yes. Articles go to the blog you choose, with the featured image, tags, summary, SEO title and description already in place. You can also save a draft and review it first.' },
   { q: 'Are the product photos really mine?', a: 'Yes. Articles use the photos already in your Shopify store. For Instagram posts the AI only designs the scene around your product — your real product pixels are laid back on top, so its colour, shape and details never change.' },
   { q: 'What does SEO automation change in my store?', a: 'Search titles and descriptions, image alt text and links to pages that no longer exist. Every change is recorded with its old value, so you can undo any of it in one click.' },
@@ -78,9 +79,8 @@ export function GlobalNav({ home = true }) {
   return (
     <header className={`gn ${open ? 'is-open' : ''}`}>
       <nav className="gn__bar lp-wrap" aria-label="Main">
-        <Link to="/" className="gn__brand" aria-label="Article Writer — home">
-          <img src="/favicon.svg" alt="" width="22" height="22" />
-          <span>Article Writer</span>
+        <Link to="/" className="gn__brand" aria-label="Glowquill — home">
+          <BrandLogo size={24} />
         </Link>
         <ul className="gn__links">
           {NAV.map((n) => <li key={n.href}><a href={to(n.href)}>{n.label}</a></li>)}
@@ -112,7 +112,7 @@ function Hero() {
   return (
     <section className="hero">
       <div className="lp-wrap hero__copy">
-        <p className="eyebrow">For Shopify stores</p>
+        <p className="eyebrow">Glowquill Article Writer for Shopify</p>
         <h1 className="h-hero">Content that sells.<br />Written for you.</h1>
         <p className="hero__lead">
           Blog articles, store SEO and Instagram posts — made from your own catalogue, with your real product photos.
@@ -452,7 +452,7 @@ function FinalCTA() {
   return (
     <section className="final">
       <div className="lp-wrap final__inner reveal">
-        <img src="/favicon.svg" alt="" width="56" height="56" className="final__mark" />
+        <BrandMark size={56} className="final__mark" />
         <h2 className="h-section">Your next article is<br />one click away.</h2>
         <div className="cta-row cta-row--center">
           <Link to="/signup" className="btn btn-primary btn-lg">Start free</Link>
@@ -469,7 +469,7 @@ export function Footer({ home = true }) {
     <footer className="foot">
       <div className="lp-wrap">
         <p className="foot__note">
-          Product photos on this page are illustrative. Article Writer works with any Shopify store and uses your own catalogue and photos.
+          Product photos on this page are illustrative. Glowquill Article Writer works with any Shopify store and uses your own catalogue and photos.
         </p>
         <div className="foot__cols">
           <div>
@@ -492,8 +492,8 @@ export function Footer({ home = true }) {
           </div>
         </div>
         <div className="foot__bottom">
-          <span>Copyright © {new Date().getFullYear()} Article Writer. All rights reserved.</span>
-          <span className="foot__brand"><img src="/favicon.svg" alt="" width="16" height="16" /> Made for Shopify merchants</span>
+          <span>Copyright © {new Date().getFullYear()} Glowquill. All rights reserved.</span>
+          <span className="foot__brand"><BrandMark size={16} /> Made for Shopify merchants</span>
         </div>
       </div>
     </footer>
@@ -523,7 +523,7 @@ export default function Landing() {
     {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
-      name: 'Article Writer',
+      name: 'Glowquill Article Writer',
       applicationCategory: 'BusinessApplication',
       operatingSystem: 'Web',
       description: 'Blog articles, store SEO and Instagram posts for Shopify stores, made from your own catalogue with your real product photos.',
@@ -603,7 +603,6 @@ export const LANDING_CSS = `
   .gn__bar { height: 52px; display: flex; align-items: center; gap: 24px; }
   .gn__brand { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 600; font-size: 15px; letter-spacing: -0.02em; flex-shrink: 0; }
   .gn__brand:hover { color: var(--ink); }
-  .gn__brand img { border-radius: 6px; }
   .gn__links { list-style: none; display: flex; gap: 30px; margin: 0 auto; }
   .gn__links a { font-size: 13px; color: var(--lp-nav-link); letter-spacing: -0.01em; }
   .gn__links a:hover { color: var(--ink); }
@@ -825,7 +824,7 @@ export const LANDING_CSS = `
 
   /* ── final ── */
   .final { padding: 140px 0; background: var(--lp-hero-top); text-align: center; border-top: 1px solid var(--lp-line); }
-  .final__mark { border-radius: 14px; margin-bottom: 28px; }
+  .final__mark { margin-bottom: 28px; }
   @media (max-width: 860px) { .final { padding: 88px 0; } }
 
   /* ── footer ── */
@@ -837,6 +836,5 @@ export const LANDING_CSS = `
   .foot__cols a:hover { color: var(--ink); text-decoration: underline; }
   .foot__bottom { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-top: 16px; border-top: 1px solid var(--lp-line-strong); }
   .foot__brand { display: inline-flex; align-items: center; gap: 6px; }
-  .foot__brand img { border-radius: 4px; }
   @media (max-width: 600px) { .foot__cols { grid-template-columns: 1fr 1fr; } }
 `;

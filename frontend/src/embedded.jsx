@@ -24,7 +24,7 @@ function Centered({ children }) {
 }
 
 async function boot() {
-  root.render(<Centered><div className="spinner spinner-lg" style={{ margin: '0 auto 16px' }} /><p style={{ color: 'var(--text-muted)' }}>Opening Article Writer…</p></Centered>);
+  root.render(<Centered><div className="spinner spinner-lg" style={{ margin: '0 auto 16px' }} /><p style={{ color: 'var(--text-muted)' }}>Opening Glowquill…</p></Centered>);
   try {
     const session = await startShopifySession();
     setToken(session.token);
@@ -45,7 +45,7 @@ async function boot() {
   } catch (err) {
     root.render(
       <Centered>
-        <h1 style={{ fontSize: 22, marginBottom: 8 }}>Article Writer couldn't open</h1>
+        <h1 style={{ fontSize: 22, marginBottom: 8 }}>Glowquill couldn't open</h1>
         <p style={{ color: 'var(--text-muted)', maxWidth: 420, margin: '0 auto 20px' }}>{err.message}</p>
         <button className="btn btn-primary" onClick={() => window.location.reload()}>Try again</button>
       </Centered>

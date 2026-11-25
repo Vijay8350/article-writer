@@ -37,6 +37,9 @@ const config = {
     appHandle: process.env.SHOPIFY_APP_HANDLE || 'article-writer-seo',
     // Shopify Billing test charges (no real money) — keep true until the app is approved.
     billingTest: (process.env.SHOPIFY_BILLING_TEST || 'true') !== 'false',
+    // Instagram pages inside the Shopify admin. Off until Meta approves the app (Facebook
+    // Login fails for anyone without a role on it); the website always shows them.
+    appInstagram: ['1', 'true', 'yes', 'on'].includes(String(process.env.SHOPIFY_APP_INSTAGRAM || '').trim().toLowerCase()),
     // Legacy single-tenant creds — kept only so the Phase 2 migration can move them
     // into the admin user's DB row. New code must use per-user credentials.
     legacyStoreUrl: process.env.SHOPIFY_STORE_URL || '',

@@ -14,7 +14,7 @@ given and resubmit.
 The current app, "Socia Media Manager" (2442335116241650), is shared with SocialNexus. Its
 privacy policy and website point to social.apanjob.com. Reviewers check one product's flow
 against one privacy policy, so a shared app is likely to be rejected or approved for the
-wrong use. Create a new app for Article Writer:
+wrong use. Create a new app for Glowquill Article Writer:
 
 1. https://developers.facebook.com/apps → **Create app**. Choose the use cases **Manage
    messaging & content on Instagram** and **Manage everything on your Page**. Choose the
@@ -24,7 +24,7 @@ wrong use. Create a new app for Article Writer:
    then reconnect their Instagram accounts once.
 
 To keep the shared app instead, change its Basic settings below to the app.jsyxi.com
-values. SocialNexus would then show Article Writer's policy.
+values. SocialNexus would then show Glowquill's policy.
 
 ## 1. App settings → Basic
 
@@ -60,15 +60,15 @@ New sign-ups wait for approval, so create the reviewer's account first:
 
 Request only these seven. Every one of them is used by a feature the reviewer can see.
 
-**instagram_basic.** Article Writer reads the connected Instagram professional account's
+**instagram_basic.** Glowquill reads the connected Instagram professional account's
 username, profile picture, follower count and recent posts. It shows them under Instagram →
 Accounts, and uses them to pick which account a post or reply belongs to. Without it, the
 store owner can't see or choose the account they connected.
 
-**instagram_content_publish.** The store owner creates Instagram posts in Article Writer.
+**instagram_content_publish.** The store owner creates Instagram posts in Glowquill.
 These are AI-designed posts built around their real product photos, and quote posts from
 Instagram Studio. They publish them to their own account with "Post now", or at times they
-schedule. Article Writer only publishes posts the owner created or approved in the app.
+schedule. Glowquill only publishes posts the owner created or approved in the app.
 
 **instagram_manage_comments.** Instagram → Comments lists the comments on the owner's
 posts. It lets them reply from the app ("Send"), and lets them set auto-reply rules that
@@ -78,11 +78,11 @@ answer common questions. Replies always go out under the owner's own account.
 followers' demographics and the hours they're online, and each post's reach and saves.
 Owners use this to see which posts work and when to post next.
 
-**pages_show_list.** When the owner clicks "Connect with Facebook", Article Writer lists
+**pages_show_list.** When the owner clicks "Connect with Facebook", Glowquill lists
 the Facebook Pages they manage. They can then choose the Page whose linked Instagram
 professional account they want to connect.
 
-**pages_read_engagement.** Article Writer reads the chosen Page's linked Instagram
+**pages_read_engagement.** Glowquill reads the chosen Page's linked Instagram
 professional account (`instagram_business_account`) and the Page's name. It needs these to
 find and connect the right Instagram account.
 

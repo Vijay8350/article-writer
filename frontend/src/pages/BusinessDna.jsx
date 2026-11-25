@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Dna, RefreshCw, Loader2, Store, Instagram, Package, FolderOpen, FileText, AlertTriangle, Heart, MessageCircle, Trash2,
+  Dna, RefreshCw, Loader2, Store, Instagram, Package, FolderOpen, FileText, AlertTriangle, Heart, MessageCircle, Trash2, Globe,
 } from 'lucide-react';
 import {
   getBusinessDna, fetchBusinessDna, fetchSocialBusinessDna, clearBusinessDna, getInstagramAccounts, syncCollections,
 } from '../lib/api';
 import toast from 'react-hot-toast';
 import { PageHeader, Section, Segmented, EmptyState, SettingRow } from '../components/ui';
+import { showInstagram } from '../lib/embedded';
 import '../styles/workspace.css';
 
 const SOURCES = {
@@ -27,6 +28,19 @@ const SOURCES = {
   },
 };
 
+// Inside the Shopify admin, until the server turns Instagram on: the same build from the
+// public website alone (it never needed an Instagram account), and no Instagram data shown.
+const WEBSITE_ONLY = {
+  label: 'Website',
+  icon: Globe,
+  hint: 'Reads your public website (and its products, if it runs on Shopify). AI then writes a brand profile: voice, audience, content pillars and keywords.',
+  loadingSub: 'Reading your website, then analysing with AI',
+};
+const visibleSources = () => (showInstagram() ? SOURCES : { ...SOURCES, social: { ...SOURCES.social, ...WEBSITE_ONLY } });
+const withoutInstagram = (d) => (d && !showInstagram()
+  ? { ...d, instagram: null, warnings: d.warnings?.filter((w) => !/instagram/i.test(w)) }
+  : d);
+
 const fmt = (n) => (n == null ? '—' : Number(n).toLocaleString());
 
 export default function BusinessDna() {
@@ -39,20 +53,21 @@ export default function BusinessDna() {
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [igAccounts, setIgAccounts] = useState([]);
   const [igAccountId, setIgAccountId] = useState('');
+  const igOn = showInstagram();
 
   useEffect(() => {
     Promise.all([
       getBusinessDna().catch(() => ({ data: null })),
-      getInstagramAccounts().catch(() => ({ data: [] })),
+      igOn ? getInstagramAccounts().catch(() => ({ data: [] })) : { data: [] },
     ]).then(([dnaRes, igRes]) => {
-      const current = dnaRes.data;
+      const current = withoutInstagram(dnaRes.data);
       const accounts = igRes.data || [];
       setDna(current);
       setIgAccounts(accounts);
       // Pre-fill the builder from the last build so "Refresh" is one click.
       setSource(current?.source || 'shopify');
       setWebsiteUrl(current?.inputs?.websiteUrl || current?.website?.url || '');
-      setIgAccountId(current?.inputs?.instagramAccountId || accounts[0]?.id || '');
+      setIgAccountId(igOn ? current?.inputs?.instagramAccountId || accounts[0]?.id || '' : '');
       setLoading(false);
     });
   }, []);
@@ -72,14 +87,14 @@ export default function BusinessDna() {
 
   const handleFetch = async () => {
     if (source === 'social' && !websiteUrl.trim() && !igAccountId) {
-      return toast.error('Enter your website URL or pick an Instagram account');
+      return toast.error(igOn ? 'Enter your website URL or pick an Instagram account' : 'Enter your website URL');
     }
     setFetching(true);
     try {
       const res = source === 'social'
         ? await fetchSocialBusinessDna({ websiteUrl: websiteUrl.trim() || undefined, instagramAccountId: igAccountId || undefined })
         : await fetchBusinessDna();
-      setDna(res.data);
+      setDna(withoutInstagram(res.data));
       toast.success('Business DNA ready');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to build Business DNA');
@@ -105,10 +120,11 @@ export default function BusinessDna() {
     return <div className="page-container fade-in"><div className="empty-state"><div className="spinner spinner-lg" /></div></div>;
   }
 
-  const sourceInfo = SOURCES[source];
+  const sources = visibleSources();
+  const sourceInfo = sources[source];
   const selectedAccount = igAccounts.find(a => a.id === igAccountId);
   const isRefresh = dna && (dna.source || 'shopify') === source;
-  const builtFrom = dna ? SOURCES[dna.source || 'shopify'].label : null;
+  const builtFrom = dna ? sources[dna.source || 'shopify'].label : null;
   const buildLabel = isRefresh ? 'Refresh Business DNA' : 'Build Business DNA';
 
   const buildButton = (
@@ -148,30 +164,32 @@ export default function BusinessDna() {
             value={source}
             onChange={setSource}
             ariaLabel="Build from"
-            options={Object.entries(SOURCES).map(([value, s]) => ({ value, label: s.label, icon: s.icon }))}
+            options={Object.entries(sources).map(([value, s]) => ({ value, label: s.label, icon: s.icon }))}
           />
           <p className="form-helper bdna-source__hint">{sourceInfo.hint}</p>
 
           {source === 'social' && (
             <div className="form-grid bdna-source__fields">
-              <div className="form-group">
-                {igAccounts.length > 0 ? (
-                  <>
-                    <label className="form-label" htmlFor="dna-ig-account">Instagram account</label>
-                    <select id="dna-ig-account" className="form-select" value={igAccountId} onChange={e => setIgAccountId(e.target.value)}>
-                      <option value="">None (website only)</option>
-                      {igAccounts.map(a => <option key={a.id} value={a.id}>@{a.username || a.ig_user_id}</option>)}
-                    </select>
-                  </>
-                ) : (
-                  <>
-                    <div className="form-label">Instagram account</div>
-                    <div className="form-helper">
-                      No Instagram account connected yet. <Link to="/instagram">Connect one</Link>, or build from your website only.
-                    </div>
-                  </>
-                )}
-              </div>
+              {igOn && (
+                <div className="form-group">
+                  {igAccounts.length > 0 ? (
+                    <>
+                      <label className="form-label" htmlFor="dna-ig-account">Instagram account</label>
+                      <select id="dna-ig-account" className="form-select" value={igAccountId} onChange={e => setIgAccountId(e.target.value)}>
+                        <option value="">None (website only)</option>
+                        {igAccounts.map(a => <option key={a.id} value={a.id}>@{a.username || a.ig_user_id}</option>)}
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <div className="form-label">Instagram account</div>
+                      <div className="form-helper">
+                        No Instagram account connected yet. <Link to="/instagram">Connect one</Link>, or build from your website only.
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
 
               <div className="form-group">
                 <label className="form-label" htmlFor="dna-website">Website URL</label>
@@ -182,7 +200,7 @@ export default function BusinessDna() {
                   onChange={e => setWebsiteUrl(e.target.value)}
                   placeholder="yourbrand.com"
                 />
-                <div className="form-helper">Leave blank to use the website in your Instagram bio.</div>
+                <div className="form-helper">{igOn ? 'Leave blank to use the website in your Instagram bio.' : 'Your public website or storefront address.'}</div>
               </div>
 
               {selectedAccount?.token_error && (

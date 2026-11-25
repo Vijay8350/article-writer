@@ -1,12 +1,14 @@
 {
-  "name": "Article Writer",
-  "short_name": "Article Writer",
-  "description": "AI blog writer for Shopify stores. Generates SEO articles with your real product images and publishes them automatically.",
+  "name": "Glowquill Article Writer",
+  "short_name": "Glowquill",
+  "description": "Glowquill — AI article writer and SEO for Shopify stores. Generates SEO articles with your real product images and publishes them automatically.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fbfbfd",
   "theme_color": "#fbfbfd",
   "icons": [
-    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ]
 }

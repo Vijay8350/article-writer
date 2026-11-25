@@ -8,7 +8,8 @@ import {
 import { getSettings, getUsage, adminGetUsers, adminGetUpgradeRequests } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { ThemeSwitch, ThemeToggle } from './ThemeSwitch';
-import { isEmbedded, EMBEDDED_BASE } from '../lib/embedded';
+import { BrandLogo } from './BrandLogo';
+import { isEmbedded, EMBEDDED_BASE, showInstagram, isInstagramPath } from '../lib/embedded';
 
 // The app menu. `feature` ties an item to a plan feature: when the workspace's plan
 // doesn't include it, the item shows a lock and leads to Plan & usage instead.
@@ -60,9 +61,8 @@ const navSections = [
 
 function Brand() {
   return (
-    <Link to="/dashboard" className="sidebar-logo" aria-label="Article Writer — dashboard">
-      <img src="/favicon.svg" alt="" width="28" height="28" />
-      <strong>Article Writer</strong>
+    <Link to="/dashboard" className="sidebar-logo" aria-label="Glowquill — dashboard">
+      <BrandLogo size={28} />
     </Link>
   );
 }
@@ -123,7 +123,9 @@ export default function Layout() {
   // Inside the Shopify admin: the admin draws the menu from <ui-nav-menu>; no sidebar of our own.
   if (isEmbedded()) {
     const hidden = new Set(['/workspaces', '/members']);
-    const items = navSections.flatMap((s) => s.items).filter((i) => i.path && !hidden.has(i.path));
+    // Instagram items too, until the server turns them on (showInstagram in lib/embedded.js).
+    const items = navSections.flatMap((s) => s.items)
+      .filter((i) => i.path && !hidden.has(i.path) && (showInstagram() || !isInstagramPath(i.path)));
     const label = (i) => (i.path === '/instagram-campaigns' ? 'Instagram campaigns' : i.path === '/instagram' ? 'Instagram accounts' : i.path === '/plan' ? 'Plan & billing' : i.label);
     return (
       <div className="app-layout app-layout--embedded">
@@ -252,7 +254,7 @@ export default function Layout() {
           <button onClick={() => setMenuOpen((v) => !v)} aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen}>
             {menuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
-          <Link to="/dashboard"><img src="/favicon.svg" alt="" width="24" height="24" /> Article Writer</Link>
+          <Link to="/dashboard"><BrandLogo size={24} /></Link>
         </div>
         <Outlet context={{ connected, setConnected, storeName, setStoreName }} />
       </main>

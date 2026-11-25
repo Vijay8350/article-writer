@@ -18,7 +18,7 @@ export default function Pricing() {
   return (
     <>
       <Seo
-        title="Pricing"                    // becomes "Pricing — Article Writer"
+        title="Pricing"                    // becomes "Pricing — Glowquill Article Writer"
         description="Plans from ₹0 to ₹4,999/mo. Pick the article quota and seats you need."
         path="/pricing"                    // → canonical https://tools.apanjob.com/pricing
         // image="https://.../share.png"   // optional, falls back to /favicon.svg
@@ -51,9 +51,11 @@ per page.
 
 ## Logo / favicons
 
-- `public/favicon.svg` — the single source of truth. Rendered as favicon, apple-touch-icon,
-  manifest icon, and the inline nav logo.
-- `public/logo.svg` — horizontal lockup (icon + wordmark) for share images / docs.
+- `public/favicon.svg` — the Glowquill mark (browser tab + manifest icon). In the app the
+  mark and wordmark are `BrandMark` / `BrandLogo` in `src/components/BrandLogo.jsx` (same
+  geometry, inline SVG). `public/apple-touch-icon.png` (180) and `public/icon-192.png` /
+  `icon-512.png` are rendered from it; the App Store icon and source are in `deploy/brand/`.
+- `public/logo.svg` — horizontal lockup (mark + wordmark, text as outlines) for share images / docs.
 - `public/manifest.webmanifest` — PWA-lite metadata (theme color, icons).
 
 If a designer ships a richer logo (PNG share image, dark/light variants), drop them under

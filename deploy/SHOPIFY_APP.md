@@ -1,4 +1,4 @@
-# Article Writer on the Shopify App Store — setup
+# Glowquill Article Writer on the Shopify App Store — setup
 
 The same site serves two kinds of customer:
 
@@ -10,7 +10,7 @@ Both use **one public Shopify app**. These steps create it. Everything in the co
 ## 1. Create the app (once)
 
 1. Sign in to the **Shopify Dev Dashboard** with your Partner account (create a free Partner account at partners.shopify.com if you don't have one).
-2. **Apps → Create app → Start from Dev Dashboard.** Name it **Article Writer**.
+2. **Apps → Create app → Start from Dev Dashboard.** Name it **Glowquill Article Writer** (an app that already exists: rename it under the app's settings, or `shopify app deploy` with `shopify.app.toml`; the handle `article-writer-seo` stays).
 3. Open the app's configuration (create a new **version**) and set:
 
 | Setting | Value |
@@ -36,8 +36,9 @@ SSH to the server and add to `/home/ubuntu/Article_Writer/.env`:
 ```
 SHOPIFY_CLIENT_ID=<Client ID>
 SHOPIFY_CLIENT_SECRET=<Client secret>
-SHOPIFY_APP_HANDLE=article-writer          # the part after /apps/ in your app's admin URL
+SHOPIFY_APP_HANDLE=article-writer-seo      # the part after /apps/ in your app's admin URL
 SHOPIFY_BILLING_TEST=true                  # test charges until Shopify approves the app
+SHOPIFY_APP_INSTAGRAM=false                # Instagram pages inside the Shopify admin; true once Meta approves the app
 ```
 
 Then: `pm2 reload article-writer-backend --update-env`
@@ -52,7 +53,7 @@ Check: `https://app.jsyxi.com/api/shopify/status` should say `"configured": true
 
 1. Dev Dashboard → **Stores → Create a development store**.
 2. On the app's page, **Install** it on that store.
-3. In the store's admin, open **Apps → Article Writer**: the app opens with its menu in Shopify's sidebar. Settings shows "Connected with: The Article Writer app in Shopify".
+3. In the store's admin, open **Apps → Glowquill Article Writer**: the app opens with its menu in Shopify's sidebar. Settings shows "Connected with: The Glowquill app in Shopify".
 4. Build Business DNA, write an article, publish it.
 5. **Plan & billing → Choose Pro**, approve the (test) charge: you come back on Pro.
 
@@ -70,4 +71,5 @@ Before the App Store approves the app, Shopify only lets it install on developme
 
 - Tokens: the app gets expiring tokens (an hour) with refresh tokens, as Shopify requires for public apps; the server renews them by itself.
 - Review stars (an SEO fix that edits the theme) stays available for stores connected with a pasted token only. The App Store app doesn't ask for theme-editing access; it needs a theme app extension first.
+- Charges are named after the plan ("Glowquill Pro", "Glowquill Business"). Charges made before the rename ("Article Writer Pro") are still matched to their plan.
 - Uninstalling the app removes its access at once; 48 hours later Shopify asks us to delete the shop's data and we do (`shop/redact`).

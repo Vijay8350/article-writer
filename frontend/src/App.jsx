@@ -29,6 +29,7 @@ import Signup from './pages/Signup';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import { useAuth } from './context/AuthContext';
+import { showInstagram } from './lib/embedded';
 
 function FullPageSpinner() {
   return (
@@ -62,6 +63,12 @@ function PublicOnly({ children }) {
   return children;
 }
 
+// Instagram pages: hidden inside the Shopify admin until the server turns them on, so a
+// deep link lands on the dashboard (showInstagram in lib/embedded.js).
+function InstagramOnly({ children }) {
+  return showInstagram() ? children : <Navigate to="/dashboard" replace />;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -82,16 +89,16 @@ export default function App() {
         <Route path="/articles" element={<ExistingArticles />} />
         <Route path="/scheduled" element={<ScheduledPosts />} />
         <Route path="/campaigns" element={<Campaigns />} />
-        <Route path="/instagram" element={<InstagramAccounts />} />
-        <Route path="/instagram-scheduler" element={<InstagramScheduler />} />
-        <Route path="/instagram-product-images" element={<InstagramProductImages />} />
+        <Route path="/instagram" element={<InstagramOnly><InstagramAccounts /></InstagramOnly>} />
+        <Route path="/instagram-scheduler" element={<InstagramOnly><InstagramScheduler /></InstagramOnly>} />
+        <Route path="/instagram-product-images" element={<InstagramOnly><InstagramProductImages /></InstagramOnly>} />
         <Route path="/seo" element={<SeoAutomation />} />
-        <Route path="/instagram-studio" element={<InstagramStudio />} />
-        <Route path="/instagram-studio/:accountId" element={<InstagramStudio />} />
-        <Route path="/instagram-studio/:accountId/:tab" element={<InstagramStudio />} />
-        <Route path="/instagram-campaigns" element={<InstagramCampaigns />} />
-        <Route path="/instagram-comments" element={<InstagramComments />} />
-        <Route path="/instagram-insights" element={<InstagramInsights />} />
+        <Route path="/instagram-studio" element={<InstagramOnly><InstagramStudio /></InstagramOnly>} />
+        <Route path="/instagram-studio/:accountId" element={<InstagramOnly><InstagramStudio /></InstagramOnly>} />
+        <Route path="/instagram-studio/:accountId/:tab" element={<InstagramOnly><InstagramStudio /></InstagramOnly>} />
+        <Route path="/instagram-campaigns" element={<InstagramOnly><InstagramCampaigns /></InstagramOnly>} />
+        <Route path="/instagram-comments" element={<InstagramOnly><InstagramComments /></InstagramOnly>} />
+        <Route path="/instagram-insights" element={<InstagramOnly><InstagramInsights /></InstagramOnly>} />
         <Route path="/plan" element={<PlanUsage />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/settings" element={<Settings />} />

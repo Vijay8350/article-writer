@@ -37,12 +37,12 @@ export default function Login() {
   return (
     <AuthCard
       title="Sign in"
-      subtitle="Welcome back. Pick up where you left off."
+      subtitle="Welcome back to Glowquill. Pick up where you left off."
       footer={<>Don't have an account? <Link to="/signup">Sign up free</Link></>}
     >
       <Seo
         title="Sign in"
-        description="Sign in to your Article Writer account to generate and publish SEO articles to your Shopify blog."
+        description="Sign in to your Glowquill Article Writer account to generate and publish SEO articles to your Shopify blog."
         path="/login"
       />
       <form onSubmit={handleSubmit} noValidate>

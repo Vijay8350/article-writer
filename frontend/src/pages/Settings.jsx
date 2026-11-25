@@ -4,7 +4,7 @@ import { Link2, Unlink, CheckCircle2, XCircle, Loader2, Save, Trash2, PlugZap, I
 import {
   getSettings, connectShopify, disconnectShopify, saveAiKeys, removeAiKey, saveAiPreferences, getDeepseekModels, startShopifyConnect,
 } from '../lib/api';
-import { isEmbedded } from '../lib/embedded';
+import { isEmbedded, showInstagram } from '../lib/embedded';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { PageHeader, Section, SettingRow } from '../components/ui';
@@ -15,7 +15,7 @@ const PROVIDER_LABELS = { gemini: 'Google Gemini', deepseek: 'DeepSeek' };
 const TASKS = [
   { key: 'article', label: 'Article writing', help: 'Default for Generate Article, Scheduled Posts and Campaigns (campaign keyword ideas too).' },
   { key: 'enhance', label: 'Article enhancement', help: 'Default for "Enhance" on Existing Articles.' },
-  { key: 'businessDna', label: 'Business DNA analysis', help: 'Turns your Instagram and website into a brand profile.' },
+  { key: 'businessDna', label: 'Business DNA analysis', help: 'Turns your Instagram and website into a brand profile.', helpWithoutInstagram: 'Turns your website into a brand profile.' },
 ];
 
 const DEEPSEEK_MODEL_HINTS = {
@@ -267,7 +267,7 @@ export default function Settings() {
               <dl className="kv">
                 <dt>Store URL</dt><dd>{storeUrl || '—'}</dd>
                 <dt>Connected with</dt>
-                <dd>{connectedVia === 'token' ? 'An Admin API access token' : connectedVia === 'app' ? 'The Article Writer app in Shopify' : 'Connect with Shopify'}</dd>
+                <dd>{connectedVia === 'token' ? 'An Admin API access token' : connectedVia === 'app' ? 'The Glowquill app in Shopify' : 'Connect with Shopify'}</dd>
                 {shopInfo && (
                   <>
                     <dt>Store name</dt><dd>{shopInfo.name}</dd>
@@ -278,7 +278,7 @@ export default function Settings() {
                 )}
               </dl>
               {embedded ? (
-                <p className="form-helper" style={{ marginTop: 16 }}>To disconnect, uninstall Article Writer from your Shopify admin (Settings → Apps).</p>
+                <p className="form-helper" style={{ marginTop: 16 }}>To disconnect, uninstall Glowquill from your Shopify admin (Settings → Apps).</p>
               ) : (
                 <div className="form-actions wk-actions">
                   {canManage && shopifyAppReady && (connectedVia === 'token' || needsReconnect) && (
@@ -427,7 +427,7 @@ export default function Settings() {
                     htmlFor={`ai-task-${task.key}`}
                     description={(
                       <>
-                        {task.help}
+                        {(!showInstagram() && task.helpWithoutInstagram) || task.help}
                         {!hasKey(provider) && (
                           <span className="wk-note-warn">No {provider === 'gemini' ? 'Gemini' : 'DeepSeek'} key yet. Add one under AI keys.</span>
                         )}

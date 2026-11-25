@@ -43,7 +43,7 @@ export default function ShopifyBilling({ locked, onChanged }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const choose = async (plan) => {
-    if (plan.id === 'free' && !window.confirm('Switch to the Free plan? The Article Writer charge on your Shopify bill stops.')) return;
+    if (plan.id === 'free' && !window.confirm('Switch to the Free plan? The Glowquill charge on your Shopify bill stops.')) return;
     setBusy(plan.id);
     try {
       const r = await shopifySubscribe(plan.id);

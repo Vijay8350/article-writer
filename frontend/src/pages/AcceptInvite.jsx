@@ -41,7 +41,7 @@ export default function AcceptInvite() {
         badge="Workspace invitation"
         title="You're invited"
         subtitle="Sign in or create an account to join the workspace."
-        footer={<>New to Article Writer? <Link to="/signup">Create an account</Link></>}
+        footer={<>New to Glowquill? <Link to="/signup">Create an account</Link></>}
       >
         <Link to="/login" state={{ from: `/accept-invite/${token}` }} className="btn btn-primary w-full">Sign in to accept</Link>
       </AuthCard>
@@ -75,7 +75,7 @@ export default function AcceptInvite() {
     <AuthCard
       badge="Workspace invitation"
       title="Join the workspace"
-      subtitle="You've been invited to a workspace on Article Writer. Accept to join it."
+      subtitle="You've been invited to a workspace on Glowquill. Accept to join it."
     >
       <button className="btn btn-primary w-full" onClick={handleAccept} disabled={state === 'accepting'}>
         {state === 'accepting' ? <><Loader2 size={16} className="spinning" /> Accepting…</> : 'Accept invitation'}

@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { getDashboard } from '../lib/api';
 import { ColumnChart, BarList, Kpi, compact } from '../components/insights/Charts';
 import { PageHeader, Section, EmptyState } from '../components/ui';
+import { showInstagram, isInstagramPath } from '../lib/embedded';
 import '../styles/workspace.css';
 
 // Analytics overview for the active workspace: blog articles + Instagram, last 30 days.
@@ -102,6 +103,11 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Inside the Shopify admin Instagram stays hidden until the server turns it on: blog only.
+  const igOn = showInstagram();
+  const subtitle = igOn
+    ? 'What your workspace made in the last 30 days: blog articles and Instagram posts.'
+    : 'What your workspace made in the last 30 days: blog articles.';
 
   const load = () => {
     setLoading(true);
@@ -124,7 +130,7 @@ export default function Dashboard() {
   if (!data) {
     return (
       <div className="page-container fade-in">
-        <PageHeader title="Dashboard" subtitle="What your workspace made in the last 30 days: blog articles and Instagram posts." />
+        <PageHeader title="Dashboard" subtitle={subtitle} />
         <Section>
           <EmptyState
             icon={LayoutDashboard}
@@ -137,12 +143,14 @@ export default function Dashboard() {
     );
   }
 
-  const { setup, usage, articles, instagram, activity } = data;
+  const { setup, usage, articles, instagram } = data;
+  const activity = igOn ? data.activity : data.activity.filter((a) => a.area !== 'instagram');
   const setupDone = setup.storeConnected && setup.dnaReady;
-  const setupCount = [setup.storeConnected, setup.dnaReady, setup.instagramAccounts > 0].filter(Boolean).length;
+  const setupSteps = igOn ? [setup.storeConnected, setup.dnaReady, setup.instagramAccounts > 0] : [setup.storeConnected, setup.dnaReady];
+  const setupCount = setupSteps.filter(Boolean).length;
   const articleDaily = articles.daily.map((d) => ({ key: d.day, label: shortDate(d.day), title: shortDate(d.day), value: d.generated, extra: d.published ? `${d.published} published` : null }));
   const igDaily = instagram.daily.map((d) => ({ key: d.day, label: shortDate(d.day), title: shortDate(d.day), value: d.published, extra: d.failed ? `${d.failed} failed` : null }));
-  const monthly = articles.byMonth.map((m) => ({ key: m.period, label: monthLabel(m.period), title: monthLabel(m.period), value: m.articles, extra: m.ig_posts ? `${m.ig_posts} Instagram posts` : null }));
+  const monthly = articles.byMonth.map((m) => ({ key: m.period, label: monthLabel(m.period), title: monthLabel(m.period), value: m.articles, extra: igOn && m.ig_posts ? `${m.ig_posts} Instagram posts` : null }));
   const igTotal = instagram.product_posts + instagram.studio_posts;
   const campaignArticles = Object.fromEntries(articles.campaigns.articles.map((r) => [r.status, r.n]));
   const scheduled = Object.fromEntries(articles.scheduled.map((r) => [r.status, r.n]));
@@ -163,19 +171,27 @@ export default function Dashboard() {
     <div className="page-container fade-in">
       <PageHeader
         title="Dashboard"
-        subtitle="What your workspace made in the last 30 days: blog articles and Instagram posts."
+        subtitle={subtitle}
         actions={refreshButton}
       />
 
       <div className="stack">
         {/* Headline numbers: 3 across (two even rows), 6 across on wide screens */}
-        <div className="stat-row dash-kpis">
+        <div className="stat-row dash-kpis" style={igOn ? undefined : { '--cols': 3 }}>
           <Stat icon={PenLine} label="Articles written (30 days)" value={compact(articles.generated_30d)} sub={`${compact(articles.generated)} all time`} />
           <Stat icon={Send} label="Articles published (30 days)" value={compact(articles.published_30d)} sub={`${compact(articles.drafts)} drafts all time`} />
-          <Stat icon={Instagram} label="Instagram posts" value={compact(igTotal)} sub={`${compact(sumBy(instagram.daily, 'published'))} in the last 30 days`} />
-          <Stat icon={BadgeCheck} label="Image quality pass rate" value={q.checked ? pct(q.passed, q.checked) : '—'} sub={q.checked ? `${q.checked} images checked · average score ${q.avg_score}` : 'No Studio images yet'} />
-          <Stat icon={MessageCircle} label="Comment replies (30 days)" value={compact(instagram.replies_30d)} sub={instagram.comments_waiting ? `${instagram.comments_waiting} waiting for you` : 'Nothing waiting'} />
-          <Stat icon={Workflow} label="Active automations" value={compact(instagram.active_jobs + activeCampaigns)} sub={`${instagram.active_jobs} Instagram jobs · ${activeCampaigns} blog campaigns`} />
+          {igOn && (
+            <>
+              <Stat icon={Instagram} label="Instagram posts" value={compact(igTotal)} sub={`${compact(sumBy(instagram.daily, 'published'))} in the last 30 days`} />
+              <Stat icon={BadgeCheck} label="Image quality pass rate" value={q.checked ? pct(q.passed, q.checked) : '—'} sub={q.checked ? `${q.checked} images checked · average score ${q.avg_score}` : 'No Studio images yet'} />
+              <Stat icon={MessageCircle} label="Comment replies (30 days)" value={compact(instagram.replies_30d)} sub={instagram.comments_waiting ? `${instagram.comments_waiting} waiting for you` : 'Nothing waiting'} />
+            </>
+          )}
+          {igOn ? (
+            <Stat icon={Workflow} label="Active automations" value={compact(instagram.active_jobs + activeCampaigns)} sub={`${instagram.active_jobs} Instagram jobs · ${activeCampaigns} blog campaigns`} />
+          ) : (
+            <Stat icon={Workflow} label="Active blog campaigns" value={compact(activeCampaigns)} sub={`${scheduled.pending || 0} scheduled post${scheduled.pending === 1 ? '' : 's'} waiting`} />
+          )}
         </div>
 
         {/* Setup: only until the store and Business DNA are ready */}
@@ -185,7 +201,7 @@ export default function Dashboard() {
             className="dash-setup"
             title="Get set up"
             description="Finish these steps so articles can link to your real products."
-            actions={<span className="badge badge-purple">{setupCount} of 3 done</span>}
+            actions={<span className="badge badge-purple">{setupCount} of {setupSteps.length} done</span>}
           >
             <ul className="list">
               <SetupItem
@@ -202,29 +218,33 @@ export default function Dashboard() {
                 to="/business-dna"
                 cta="Build DNA"
               />
-              <SetupItem
-                ok={setup.instagramAccounts > 0}
-                optional
-                title={setup.instagramAccounts > 0 ? `${setup.instagramAccounts} Instagram account${setup.instagramAccounts === 1 ? '' : 's'} connected` : 'Connect an Instagram account'}
-                meta={setup.instagramAccounts > 0 ? null : 'For daily product posts and AI quote posts.'}
-                to="/instagram"
-                cta="Connect Instagram"
-              />
+              {igOn && (
+                <SetupItem
+                  ok={setup.instagramAccounts > 0}
+                  optional
+                  title={setup.instagramAccounts > 0 ? `${setup.instagramAccounts} Instagram account${setup.instagramAccounts === 1 ? '' : 's'} connected` : 'Connect an Instagram account'}
+                  meta={setup.instagramAccounts > 0 ? null : 'For daily product posts and AI quote posts.'}
+                  to="/instagram"
+                  cta="Connect Instagram"
+                />
+              )}
             </ul>
           </Section>
         )}
 
-        <div className="two-col-even">
+        <div className={igOn ? 'two-col-even' : undefined}>
           <Section title="Articles written per day" description="Last 30 days">
             {sumBy(articles.daily, 'generated') === 0
               ? <ChartEmpty>No articles in the last 30 days. <Link to="/generate">Write one</Link> or start a <Link to="/campaigns">campaign</Link>.</ChartEmpty>
               : <ColumnChart data={articleDaily} label="Day" valueLabel="Articles written" />}
           </Section>
-          <Section title="Instagram posts per day" description="Last 30 days">
-            {sumBy(instagram.daily, 'published') === 0 && sumBy(instagram.daily, 'failed') === 0
-              ? <ChartEmpty>No Instagram posts yet. Add a job in the <Link to="/instagram-scheduler">Product Scheduler</Link> or make one in the <Link to="/instagram-studio">Studio</Link>.</ChartEmpty>
-              : <ColumnChart data={igDaily} label="Day" valueLabel="Posts published" />}
-          </Section>
+          {igOn && (
+            <Section title="Instagram posts per day" description="Last 30 days">
+              {sumBy(instagram.daily, 'published') === 0 && sumBy(instagram.daily, 'failed') === 0
+                ? <ChartEmpty>No Instagram posts yet. Add a job in the <Link to="/instagram-scheduler">Product Scheduler</Link> or make one in the <Link to="/instagram-studio">Studio</Link>.</ChartEmpty>
+                : <ColumnChart data={igDaily} label="Day" valueLabel="Posts published" />}
+            </Section>
+          )}
         </div>
 
         <div className="two-col-even">
@@ -234,7 +254,7 @@ export default function Dashboard() {
             actions={<Link to="/plan" className="btn btn-ghost btn-sm">Plan &amp; usage <ChevronRight size={14} /></Link>}
           >
             <Meter label="Articles this month" used={usage.used} limit={usage.limit} to="/plan" />
-            <Meter label="Instagram Studio posts this month" used={usage.igUsed} limit={usage.igLimit} to="/plan" />
+            {igOn && <Meter label="Instagram Studio posts this month" used={usage.igUsed} limit={usage.igLimit} to="/plan" />}
             <div className="dash-subhead">
               <div className="kpi-section-title">Articles by month</div>
               {sumBy(articles.byMonth, 'articles') === 0
@@ -243,15 +263,19 @@ export default function Dashboard() {
             </div>
           </Section>
 
-          <Section title="Quality and outcomes">
-            <div className="kpi-section-title">Instagram Studio quality check</div>
-            {q.checked ? (
-              <div className="kpi-grid dash-mini-kpis">
-                <Kpi label="Passed" value={pct(q.passed, q.checked)} sub={`${q.passed} of ${q.checked}`} />
-                <Kpi label="Average score" value={q.avg_score ?? '—'} sub="out of 100" />
-                <Kpi label="Average attempts" value={q.avg_attempts ?? '—'} sub="images per post" />
-              </div>
-            ) : <p className="form-helper mb-16">No images checked yet.</p>}
+          <Section title={igOn ? 'Quality and outcomes' : 'Campaign outcomes'}>
+            {igOn && (
+              <>
+                <div className="kpi-section-title">Instagram Studio quality check</div>
+                {q.checked ? (
+                  <div className="kpi-grid dash-mini-kpis">
+                    <Kpi label="Passed" value={pct(q.passed, q.checked)} sub={`${q.passed} of ${q.checked}`} />
+                    <Kpi label="Average score" value={q.avg_score ?? '—'} sub="out of 100" />
+                    <Kpi label="Average attempts" value={q.avg_attempts ?? '—'} sub="images per post" />
+                  </div>
+                ) : <p className="form-helper mb-16">No images checked yet.</p>}
+              </>
+            )}
             <div className="kpi-section-title">Blog campaign articles</div>
             <BarList rows={campaignRows} total={campaignRows.reduce((s, r) => s + r.value, 0)} label="Campaign article outcomes" empty="No campaign articles yet." />
             {(scheduled.pending || scheduled.failed) ? (
@@ -262,37 +286,39 @@ export default function Dashboard() {
           </Section>
         </div>
 
-        <div className="two-col-even">
-          <Section
-            title="Instagram overview"
-            actions={<Link to="/instagram-insights" className="btn btn-ghost btn-sm">Insights <ChevronRight size={14} /></Link>}
-          >
-            {setup.instagramAccounts === 0 ? (
-              <ChartEmpty>No Instagram account connected. <Link to="/instagram">Connect one</Link> to post products and AI quote images automatically.</ChartEmpty>
-            ) : (
-              <>
-                <div className="kpi-section-title">Posts by source</div>
-                <BarList rows={igMix} total={igTotal} label="Posts by source" empty="Nothing published yet." />
-                <div className="kpi-section-title dash-subhead">Comments</div>
-                <div className="dash-badges">
-                  <span className={`badge ${instagram.comments_waiting ? 'badge-warning' : 'badge-purple'}`}>{instagram.comments_waiting} waiting for reply</span>
-                  <span className={`badge ${instagram.comments_flagged ? 'badge-danger' : 'badge-purple'}`}>{instagram.comments_flagged} flagged</span>
-                  <span className="badge badge-success">{instagram.replies_30d} replied (30 days)</span>
-                </div>
-                {instagram.topPosts.length > 0 && (
-                  <>
-                    <div className="kpi-section-title dash-subhead">Top Studio posts by likes</div>
-                    <BarList rows={instagram.topPosts.map((p) => ({ key: p.id, label: p.headline, value: p.likes || 0 }))} label="Top posts" />
-                  </>
-                )}
-                {instagram.studio_ready > 0 && (
-                  <p className="form-helper dash-foot-note">
-                    {instagram.studio_ready} Studio post{instagram.studio_ready === 1 ? '' : 's'} passed the quality check and {instagram.studio_ready === 1 ? 'is' : 'are'} ready to publish. <Link to="/instagram-studio">Open Studio</Link>
-                  </p>
-                )}
-              </>
-            )}
-          </Section>
+        <div className={igOn ? 'two-col-even' : undefined}>
+          {igOn && (
+            <Section
+              title="Instagram overview"
+              actions={<Link to="/instagram-insights" className="btn btn-ghost btn-sm">Insights <ChevronRight size={14} /></Link>}
+            >
+              {setup.instagramAccounts === 0 ? (
+                <ChartEmpty>No Instagram account connected. <Link to="/instagram">Connect one</Link> to post products and AI quote images automatically.</ChartEmpty>
+              ) : (
+                <>
+                  <div className="kpi-section-title">Posts by source</div>
+                  <BarList rows={igMix} total={igTotal} label="Posts by source" empty="Nothing published yet." />
+                  <div className="kpi-section-title dash-subhead">Comments</div>
+                  <div className="dash-badges">
+                    <span className={`badge ${instagram.comments_waiting ? 'badge-warning' : 'badge-purple'}`}>{instagram.comments_waiting} waiting for reply</span>
+                    <span className={`badge ${instagram.comments_flagged ? 'badge-danger' : 'badge-purple'}`}>{instagram.comments_flagged} flagged</span>
+                    <span className="badge badge-success">{instagram.replies_30d} replied (30 days)</span>
+                  </div>
+                  {instagram.topPosts.length > 0 && (
+                    <>
+                      <div className="kpi-section-title dash-subhead">Top Studio posts by likes</div>
+                      <BarList rows={instagram.topPosts.map((p) => ({ key: p.id, label: p.headline, value: p.likes || 0 }))} label="Top posts" />
+                    </>
+                  )}
+                  {instagram.studio_ready > 0 && (
+                    <p className="form-helper dash-foot-note">
+                      {instagram.studio_ready} Studio post{instagram.studio_ready === 1 ? '' : 's'} passed the quality check and {instagram.studio_ready === 1 ? 'is' : 'are'} ready to publish. <Link to="/instagram-studio">Open Studio</Link>
+                    </p>
+                  )}
+                </>
+              )}
+            </Section>
+          )}
 
           <Section title="Recent activity" flush className="dash-activity">
             {activity.length === 0 ? (
@@ -330,7 +356,7 @@ export default function Dashboard() {
               [CalendarClock, 'Product Scheduler', 'Post products daily', '/instagram-scheduler', setup.instagramAccounts > 0],
               [MessageCircle, 'Comments', 'Review AI-drafted replies', '/instagram-comments', setup.instagramAccounts > 0],
               [Dna, 'Business DNA', 'Refresh store knowledge', '/business-dna', setup.storeConnected],
-            ].map(([Icon, title, desc, to, enabled]) => (
+            ].filter(([, , , to]) => igOn || !isInstagramPath(to)).map(([Icon, title, desc, to, enabled]) => (
               <button key={to} type="button" onClick={() => navigate(to)} className={`dash-action${enabled ? '' : ' is-dim'}`}>
                 <Icon size={20} className="dash-action__icon" aria-hidden="true" />
                 <span className="dash-action__text">

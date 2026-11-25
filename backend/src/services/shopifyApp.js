@@ -41,7 +41,7 @@ export async function connectUrl({ workspaceId, userId, shopInput }) {
   if (!shop) throw fail(400, "Enter your store's Shopify address, like mystore.myshopify.com.");
   const existing = await stores.findAppStoreByShop(shop);
   if (existing && existing.workspaceId !== workspaceId) {
-    throw fail(409, 'This store is already connected to another Article Writer workspace. Open Article Writer from your Shopify admin instead.');
+    throw fail(409, 'This store is already connected to another Glowquill workspace. Open Glowquill from your Shopify admin instead.');
   }
   const state = signState({ w: workspaceId, u: userId, s: shop }, config.jwt.secret);
   const params = new URLSearchParams({ client_id: config.shopify.clientId, scope: config.shopify.scopes, redirect_uri: callbackUrl(), state });
@@ -60,7 +60,7 @@ export async function handleCallback(q) {
   const member = await memberships.get(state.w, state.u);
   if (!member || !['owner', 'admin'].includes(member.role)) throw fail(403, 'Only workspace owners and admins can connect a store.');
   const existing = await stores.findAppStoreByShop(shop);
-  if (existing && existing.workspaceId !== state.w) throw fail(409, 'This store is already connected to another Article Writer workspace.');
+  if (existing && existing.workspaceId !== state.w) throw fail(409, 'This store is already connected to another Glowquill workspace.');
 
   const answer = await postToken(shop, { code: String(q.code || ''), expiring: '1' });
   if (!answer.ok || !answer.json?.access_token) throw fail(502, "Shopify didn't hand over access to the store. Try connecting again.");
@@ -109,12 +109,15 @@ export async function embeddedSession(idToken) {
     : await repo.ensureShopUserIn(workspaceId, shop);
 
   const session = await buildSession({ ...user, kind: 'shopify' }, { expiresIn: '12h' });
-  return { ...session, workspaceId, shop };
+  // appFeatures: what the app shows inside the admin (SHOPIFY_APP_INSTAGRAM; read on every open).
+  return { ...session, workspaceId, shop, appFeatures: { instagram: config.shopify.appInstagram } };
 }
 
 // ── Shopify Billing ──────────────────────────────────────────────────────────────
 
-const SUB_NAME = (plan) => `Article Writer ${plan.name}`;
+const SUB_NAME = (plan) => `Glowquill ${plan.name}`;
+// Subscriptions created before the rename were called "Article Writer <plan>"; still recognise them.
+const SUB_NAMES = (plan) => [SUB_NAME(plan), `Article Writer ${plan.name}`];
 
 async function appCreds(workspaceId) {
   const creds = await stores.getDefaultStore(workspaceId);
@@ -210,7 +213,7 @@ export async function syncBilling(workspaceId) {
   let planId = null;
   if (sub?.shopify_pending_id && sub.shopify_pending_id === active.id) planId = sub.shopify_pending_plan;
   else if (sub?.shopify_subscription_id === active.id) planId = sub.plan_id;
-  else planId = (await plansRepo.list()).find((p) => SUB_NAME(p) === active.name)?.id || null;
+  else planId = (await plansRepo.list()).find((p) => SUB_NAMES(p).includes(active.name))?.id || null;
   if (!planId) return { planId: sub?.plan_id || 'free', status: active.status };
   await repo.setShopifyPlan(workspaceId, { planId, subscriptionId: active.id, status: active.status });
   return { planId, status: active.status };

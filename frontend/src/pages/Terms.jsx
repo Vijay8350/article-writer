@@ -8,7 +8,7 @@ export default function Terms() {
     <div className="legal-page">
       <Seo
         title="Terms of Service"
-        description="The terms governing your use of Article Writer."
+        description="The terms governing your use of Glowquill Article Writer."
         path="/terms"
       />
       <article className="legal-doc">
@@ -16,10 +16,10 @@ export default function Terms() {
         <p className="legal-muted">Last updated: {new Date().toLocaleDateString()}</p>
 
         <h2>1. Acceptance</h2>
-        <p>By creating an account or using Article Writer (the "Service"), you agree to these Terms. If you do not agree, do not use the Service.</p>
+        <p>By creating an account or using Glowquill Article Writer (the "Service"), you agree to these Terms. If you do not agree, do not use the Service.</p>
 
         <h2>2. The Service</h2>
-        <p>Article Writer generates SEO-optimized blog content for Shopify stores and can publish that content to your connected Shopify blog at your direction. You are responsible for reviewing content before it goes live unless you have explicitly enabled auto-publish.</p>
+        <p>Glowquill generates SEO-optimized blog content for Shopify stores and can publish that content to your connected Shopify blog at your direction. You are responsible for reviewing content before it goes live unless you have explicitly enabled auto-publish.</p>
 
         <h2>3. Your account</h2>
         <p>You are responsible for keeping your login credentials and Shopify access tokens secure. You must not share your account with people outside your organization, except via the workspace team-invite feature.</p>

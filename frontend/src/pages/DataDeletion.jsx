@@ -19,7 +19,7 @@ export default function DataDeletion() {
   return (
     <SiteChrome>
     <div className="legal-page">
-      <Seo title="Data Deletion" description="How to delete the Instagram and Facebook data Article Writer stores." path="/data-deletion" />
+      <Seo title="Data Deletion" description="How to delete the Instagram and Facebook data Glowquill Article Writer stores." path="/data-deletion" />
       <article className="legal-doc">
         <h1>Data Deletion</h1>
 
@@ -48,7 +48,7 @@ export default function DataDeletion() {
 
         <h2>Removed the app from Facebook?</h2>
         <p>
-          When you remove Article Writer in your Facebook settings (Settings &amp; privacy → Apps and websites), Facebook notifies us and you
+          When you remove our app in your Facebook settings (Settings &amp; privacy → Apps and websites), Facebook notifies us and you
           get a confirmation code to check here. We delete the associated Instagram data within 30 days.
         </p>
 

@@ -5,7 +5,7 @@ import { Helmet } from 'react-helmet-async';
 // Pass `noindex` for any page you don't want in Google.
 // Pass `jsonLd` (object or array) for page-level structured data.
 const APP_URL = (import.meta.env.VITE_APP_URL || 'https://tools.apanjob.com').replace(/\/$/, '');
-const DEFAULT_IMAGE = `${APP_URL}/favicon.svg`;
+const DEFAULT_IMAGE = `${APP_URL}/icon-512.png`;
 
 export default function Seo({
   title,
@@ -16,7 +16,7 @@ export default function Seo({
   jsonLd,
 }) {
   const canonical = `${APP_URL}${path.startsWith('/') ? path : '/' + path}`;
-  const fullTitle = title?.endsWith('Article Writer') ? title : `${title} — Article Writer`;
+  const fullTitle = title?.endsWith('Glowquill Article Writer') ? title : `${title} — Glowquill Article Writer`;
   const robotsContent = noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large';
 
   const ld = Array.isArray(jsonLd) ? jsonLd : (jsonLd ? [jsonLd] : []);

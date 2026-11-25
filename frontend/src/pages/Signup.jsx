@@ -57,7 +57,7 @@ export default function Signup() {
     >
       <Seo
         title="Sign up free"
-        description="Create your Article Writer account and connect your Shopify store. Generate SEO articles with your real product images — 5 free articles to start."
+        description="Create your Glowquill Article Writer account and connect your Shopify store. Generate SEO articles with your real product images — 5 free articles to start."
         path="/signup"
       />
       <form onSubmit={handleSubmit} noValidate>
