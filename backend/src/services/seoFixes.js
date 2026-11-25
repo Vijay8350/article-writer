@@ -49,9 +49,14 @@ function wholeSentences(text, max) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim();
   if (clean.length <= max) return clean;
   const ending = [...clean.slice(0, max + 1).matchAll(/[.!?](?=\s|$)/g)].pop();
-  if (!ending) throw new Error('The AI wrote a description too long to use.');
+  if (!ending) throw editable('The AI wrote a description too long to use.');
   return clean.slice(0, ending.index + 1);
 }
+
+// A rejection the owner can put right by editing (too long, too short), as opposed to one
+// whose draft shouldn't be shown at all (an invented claim).
+const editable = (message) => Object.assign(new Error(message), { editable: true });
+const tidyText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 
 function parseMeta(raw) {
   const match = String(raw || '').match(/\{[\s\S]*\}/);
@@ -61,15 +66,15 @@ function parseMeta(raw) {
 
 // Nothing is cut to fit: a title cut off mid-phrase reads worse than the one it replaces.
 function checkMeta(parsed, page, storeName) {
-  const seoTitle = String(parsed.seoTitle || '').replace(/\s+/g, ' ').trim();
-  const seoDescription = wholeSentences(parsed.seoDescription, MAX_SEO_DESCRIPTION);
-  if (!seoTitle) throw new Error('The AI left the title empty.');
-  if (seoTitle.length > MAX_SEO_TITLE) throw new Error(`The title was ${seoTitle.length} characters, over the ${MAX_SEO_TITLE} Google shows.`);
-  if (seoDescription.length < MIN_SEO_DESCRIPTION) throw new Error('The description was too short to use.');
-  const claim = inventedClaim(`${seoTitle} ${seoDescription}`, page);
+  const seoTitle = tidyText(parsed.seoTitle);
+  const claim = inventedClaim(`${seoTitle} ${tidyText(parsed.seoDescription)}`, page);
   if (claim) throw new Error(`The AI added a claim the page doesn't make: "${claim}".`);
+  const seoDescription = wholeSentences(parsed.seoDescription, MAX_SEO_DESCRIPTION);
+  if (!seoTitle) throw editable('The AI left the title empty.');
+  if (seoTitle.length > MAX_SEO_TITLE) throw editable(`The title was ${seoTitle.length} characters, over the ${MAX_SEO_TITLE} Google shows.`);
+  if (seoDescription.length < MIN_SEO_DESCRIPTION) throw editable('The description was too short to use.');
   const brand = storeName?.toLowerCase();
-  if (brand && seoTitle.toLowerCase().split(brand).length > 2) throw new Error('The AI repeated the store name in the title.');
+  if (brand && seoTitle.toLowerCase().split(brand).length > 2) throw editable('The AI repeated the store name in the title.');
   return { seoTitle, seoDescription };
 }
 
@@ -106,10 +111,16 @@ async function writeMeta(workspaceId, page, context) {
       const status = err.response?.status;
       throw new Error(status ? `DeepSeek refused the request (error ${status}). Check the DeepSeek key and balance in Settings.` : 'DeepSeek did not answer. Please try again.');
     }
+    let parsed = null;
     try {
-      return checkMeta(parseMeta(raw), page, context.storeName);
+      parsed = parseMeta(raw);
+      return checkMeta(parsed, page, context.storeName);
     } catch (err) {
-      if (attempt >= META_ATTEMPTS) throw err;
+      if (attempt >= META_ATTEMPTS) {
+        // Never saved from here: the editor shows it so the owner can fix it by hand.
+        if (err.editable && parsed) err.draft = { seoTitle: tidyText(parsed.seoTitle), seoDescription: tidyText(parsed.seoDescription) };
+        throw err;
+      }
       feedback = `\n\nYour last answer could not be used: ${err.message} Write a new one that follows every rule, with fewer words in the title if it was too long.`;
     }
   }
@@ -143,13 +154,15 @@ export function cleanManualMeta(input) {
 }
 
 // What the editor opens with: the page's current title and description, and the AI's
-// suggestion, or the reason there isn't one.
+// suggestion, or the reason there isn't one. A draft that only missed a length rule is
+// still shown, with the reason, for the owner to edit.
 export async function suggestMeta({ workspaceId, creds, page, storeName }) {
   const current = await shopify.getResourceSeo(creds, page.type, page.id);
   try {
     const suggestion = await writeMeta(workspaceId, { ...page, facts: await pageFacts(creds, page) }, { storeName });
     return { current, suggestion, note: null };
   } catch (err) {
+    if (err.draft) return { current, suggestion: err.draft, note: `${err.message} Edit the draft below before saving.` };
     return { current, suggestion: null, note: err.message };
   }
 }
