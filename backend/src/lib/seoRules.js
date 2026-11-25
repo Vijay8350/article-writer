@@ -34,6 +34,14 @@ export const ISSUE_TYPES = {
   striking_distance: { label: 'Close to page one', severity: 'low', advice: 'Already near the top of Google. Add a little more helpful text and link to it from your articles to push it up.' },
 };
 
+// Problems only the public page can show: whether it loads, its tags and headings, the
+// title and description it prints, where its links go. A run that couldn't read the live
+// pages (a password-protected store) neither confirms nor clears these.
+export const CRAWL_TYPES = [
+  'broken_page', 'noindex', 'h1_missing', 'broken_link',
+  'title_missing', 'title_duplicate', 'title_long', 'title_short', 'meta_missing', 'meta_duplicate', 'meta_long', 'meta_short',
+];
+
 const PENALTY = { critical: 100, high: 25, medium: 10, low: 3 };
 export const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 
@@ -72,6 +80,82 @@ export function readPage(html) {
   };
 }
 
+// ─── A password-protected storefront ─────────────────────────────────────────
+// While a store's password is on (every development store, and many stores before launch),
+// Shopify sends every URL to /password, so a crawl only ever sees that one page.
+
+const PASSWORD_PATH_RE = /^(?:\/[a-z]{2}(?:-[a-z]{2,4})?)?\/password\/?$/i; // also under a language folder, /fr/password
+const PASSWORD_FORM_RE = /<form\b[^>]*\baction=["'](?:https?:\/\/[^"'/]+)?(?:\/[a-z]{2}(?:-[a-z]{2,4})?)?\/password\/?["']/i;
+
+// Whether a response is Shopify's password page: by where the request ended up after its
+// redirects, or by the password form in the HTML (Shopify's own page or a theme's password template).
+export function isPasswordPage(finalUrl, html = '') {
+  let path = '';
+  try { path = new URL(finalUrl).pathname; } catch { /* not a full URL */ }
+  if (PASSWORD_PATH_RE.test(path)) return true;
+  const text = String(html || '');
+  return /<input\b[^>]*\bvalue=["']storefront_password["']/i.test(text)
+    || (PASSWORD_FORM_RE.test(text) && /<input\b[^>]*\btype=["']password["']/i.test(text));
+}
+
+const plainText = (html) => decodeEntities(String(html || '').replace(/<[^>]+>/g, ' '));
+
+// What Google is shown for a page, worked out from Shopify's own fields for when the live
+// page can't be read. `page.seo` is the page's Google title and description in Shopify
+// (empty when never set). A theme prints Shopify's page_title: the Google title, or else the
+// page's name, and Shopify's themes add " – Store name" unless the title already has it (an
+// article's may add its blog's name too). The description is the Google description, or else
+// the page's own text, which Shopify or the theme may shorten. So only what holds for every
+// theme is judged: a title is too long only on its own, too short only with everything added,
+// and a page's own text is never called too long or (when it could be one of two) a duplicate.
+export function shopifyMeta(page, storeName = '') {
+  const title = decodeEntities(String(page.seo?.title || '')) || decodeEntities(String(page.name || ''));
+  const added = [page.type === 'article' ? page.blogTitle : null, storeName && !title.includes(storeName) ? storeName : null].filter(Boolean);
+  const set = decodeEntities(String(page.seo?.description || ''));
+  const sources = page.type === 'article' ? [page.summary, page.body] : page.type === 'product' ? [page.body] : [page.ownText];
+  const texts = [...new Set(sources.map(plainText).filter(Boolean))];
+  const description = set || texts[0] || '';
+  return {
+    title,
+    longestTitle: [title, ...added].join(' – '),
+    added: added.length > 0,
+    // Articles of different blogs may print different titles, so they're only compared within a blog.
+    titleKey: page.type === 'article' ? `${title}\u0000${page.blogId}` : title,
+    description,
+    descriptionSet: Boolean(set),
+    descriptionLength: set ? set.length : Math.max(0, ...texts.map((t) => t.length)),
+    descriptionKey: set || (texts.length === 1 ? texts[0] : ''),
+  };
+}
+
+// Title and description problems from Shopify's fields (`shopifyMeta`), for a run that couldn't read the live page.
+function shopifyMetaIssues(page, meta, seen) {
+  const found = [];
+  if (!meta.title) found.push(issue(page, 'title_missing', 'This page has no title in Shopify.'));
+  else {
+    const others = seen.titles.get(normalize(meta.titleKey));
+    if (others > 1) found.push(issue(page, 'title_duplicate', `${others} pages share this title: "${meta.title}"`));
+    if (meta.title.length > LIMITS.titleMax) found.push(issue(page, 'title_long', `${meta.title.length} characters, so Google will cut it off.`));
+    if (meta.longestTitle.length < LIMITS.titleMin) {
+      const what = page.type === 'article' && page.blogTitle ? 'the blog and store names' : 'your store name';
+      found.push(issue(page, 'title_short', meta.added ? `Only ${meta.longestTitle.length} characters, even with ${what} added.` : `Only ${meta.title.length} characters.`));
+    }
+  }
+
+  if (!meta.description) found.push(issue(page, 'meta_missing', 'No Google description is set in Shopify, and the page has no text of its own to use instead.'));
+  else {
+    const others = meta.descriptionKey ? seen.descriptions.get(normalize(meta.descriptionKey)) : 0;
+    if (others > 1) found.push(issue(page, 'meta_duplicate', `${others} pages share this description.`));
+    if (meta.descriptionSet && meta.description.length > LIMITS.descriptionMax) found.push(issue(page, 'meta_long', `${meta.description.length} characters, so Google will cut it off.`));
+    if (meta.descriptionLength < LIMITS.descriptionMin) {
+      found.push(issue(page, 'meta_short', meta.descriptionSet
+        ? `Only ${meta.descriptionLength} characters.`
+        : `Only ${meta.descriptionLength} characters. No Google description is set in Shopify, so the page's own text is used.`));
+    }
+  }
+  return found;
+}
+
 const BUILT_IN_COLLECTIONS = new Set(['all', 'vendors', 'types']); // Shopify's own, not in the API
 const bareHost = (host) => host.toLowerCase().replace(/^www\./, '');
 
@@ -103,20 +187,9 @@ export const deadLinks = (html, live) => suspectLinks(html, live).filter((href) 
 
 export const liveHosts = (...domains) => new Set(domains.filter(Boolean).map(bareHost));
 
-function pageIssues(page, seen, search, live, aeoScore, facts) {
+// The live page's title and description, as the crawl read them.
+function liveMetaIssues(page, http, seen) {
   const found = [];
-  const { http } = page;
-  if (!http?.status || http.status >= 400) return [issue(page, 'broken_page', http?.status ? `The page returned ${http.status}.` : 'The page did not respond.')];
-  // Nothing on it to describe, so its title and description don't matter until it has products.
-  if (page.type === 'collection' && page.productCount === 0) return [issue(page, 'empty_collection', 'This collection has no products, so shoppers and Google see an empty page.')];
-
-  if (page.type === 'product') {
-    const claims = [...new Set([...findClaims(page.seoDescription, facts), ...findClaims(page.body, facts)])];
-    if (claims.length) found.push(issue(page, 'false_claim', `Promises ${claims.map((c) => `"${c}"`).join(', ')}, which your store facts say you don't offer.`));
-  }
-
-  if (http.noindex) found.push(issue(page, 'noindex', 'A noindex tag keeps this page out of Google.'));
-
   if (!http.title) found.push(issue(page, 'title_missing', 'This page has no title.'));
   else {
     const others = seen.titles.get(normalize(http.title));
@@ -132,8 +205,29 @@ function pageIssues(page, seen, search, live, aeoScore, facts) {
     if (http.description.length > LIMITS.descriptionMax) found.push(issue(page, 'meta_long', `${http.description.length} characters, so Google will cut it off.`));
     if (http.description.length < LIMITS.descriptionMin) found.push(issue(page, 'meta_short', `Only ${http.description.length} characters.`));
   }
+  return found;
+}
 
-  if (http.h1Count === 0) found.push(issue(page, 'h1_missing', 'The page has no H1 heading. This usually comes from the theme.'));
+// `locked`: the storefront is password-protected, so nothing from the live page is known.
+// Titles and descriptions are then judged from Shopify's fields when they could be read
+// (`meta`), and whatever only the live page can show is left out.
+function pageIssues(page, { seen, search, live, aeoScore, facts, locked, meta }) {
+  const found = [];
+  const { http } = page;
+  if (!locked && (!http?.status || http.status >= 400)) return [issue(page, 'broken_page', http?.status ? `The page returned ${http.status}.` : 'The page did not respond.')];
+  // Nothing on it to describe, so its title and description don't matter until it has products.
+  if (page.type === 'collection' && page.productCount === 0) return [issue(page, 'empty_collection', 'This collection has no products, so shoppers and Google see an empty page.')];
+
+  if (page.type === 'product') {
+    const claims = [...new Set([...findClaims(page.seoDescription, facts), ...findClaims(page.body, facts)])];
+    if (claims.length) found.push(issue(page, 'false_claim', `Promises ${claims.map((c) => `"${c}"`).join(', ')}, which your store facts say you don't offer.`));
+  }
+
+  if (!locked) {
+    if (http.noindex) found.push(issue(page, 'noindex', 'A noindex tag keeps this page out of Google.'));
+    found.push(...liveMetaIssues(page, http, seen));
+    if (http.h1Count === 0) found.push(issue(page, 'h1_missing', 'The page has no H1 heading. This usually comes from the theme.'));
+  } else if (meta) found.push(...shopifyMetaIssues(page, meta, seen));
 
   const noAlt = (page.images || []).filter((i) => !String(i.alt || '').trim());
   if (noAlt.length) found.push(issue(page, 'alt_missing', `${noAlt.length} of ${page.images.length} images have no alt text.`));
@@ -143,7 +237,7 @@ function pageIssues(page, seen, search, live, aeoScore, facts) {
   if (page.type === 'article' && bodyWords < LIMITS.thinArticleWords) found.push(issue(page, 'thin_content', `The article is only ${bodyWords} words.`));
 
   if (page.type === 'article') {
-    const dead = deadLinks(page.body, live);
+    const dead = locked ? [] : deadLinks(page.body, live);
     if (dead.length) found.push(issue(page, 'broken_link', `${dead.length} link(s) lead nowhere: ${dead.slice(0, 3).join(', ')}`));
     const aeo = aeoScore?.(page);
     if (aeo != null && aeo < LIMITS.lowAeo) found.push(issue(page, 'aeo_low', `AEO score ${aeo} of 100.`));
@@ -163,8 +257,11 @@ function pageIssues(page, seen, search, live, aeoScore, facts) {
 }
 
 // Pages the crawl was refused (`skipped`) say nothing about the site, so they're left out.
-export function detectIssues(pages, { search = null, live, aeoScore = null, facts = null } = {}) {
+// `locked`: the storefront is password-protected (see pageIssues); `storeName` is what
+// themes add to titles, for judging them from Shopify's fields.
+export function detectIssues(pages, { search = null, live, aeoScore = null, facts = null, locked = false, storeName = '' } = {}) {
   const checked = pages.filter((p) => !p.skipped);
+  const metas = new Map(locked ? checked.filter((p) => p.seo).map((p) => [p, shopifyMeta(p, storeName)]) : []);
   const tally = (read) => {
     const map = new Map();
     for (const p of checked) {
@@ -173,8 +270,10 @@ export function detectIssues(pages, { search = null, live, aeoScore = null, fact
     }
     return map;
   };
-  const seen = { titles: tally((p) => p.http?.title), descriptions: tally((p) => p.http?.description) };
-  return checked.flatMap((page) => pageIssues(page, seen, search, live, aeoScore, facts));
+  const seen = locked
+    ? { titles: tally((p) => metas.get(p)?.titleKey), descriptions: tally((p) => metas.get(p)?.descriptionKey) }
+    : { titles: tally((p) => p.http?.title), descriptions: tally((p) => p.http?.description) };
+  return checked.flatMap((page) => pageIssues(page, { seen, search, live, aeoScore, facts, locked, meta: metas.get(page) }));
 }
 
 // The site's score: the average page, where each problem takes points off that page.

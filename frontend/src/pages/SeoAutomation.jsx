@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   SearchCheck, Loader2, Play, Sparkles, Undo2, EyeOff, ExternalLink, Wrench, Link2, Unlink, Save, RefreshCw, RotateCcw, Star, CheckCheck,
-  CalendarClock, AlertTriangle, ListChecks, History, Info,
+  CalendarClock, AlertTriangle, ListChecks, History, Info, Lock,
 } from 'lucide-react';
 import { PageHeader, Sheet, Segmented, EmptyState, Section, Switch, SettingRow } from '../components/ui';
 import toast from 'react-hot-toast';
@@ -148,10 +148,25 @@ function OverviewTab({ data, canManage, onOpenSettings, onRun, busy, onShowProbl
     );
   }
   const open = Object.values(counts).reduce((sum, n) => sum + n, 0);
+  const locked = Boolean(last.password_protected);
   return (
     <div className="stack">
+      {locked && (
+        <div className="callout callout--warning" role="status">
+          <Lock size={16} />
+          <span>
+            Your online store is password-protected, so Google can't see it yet. Titles and descriptions were checked from your Shopify data.
+            Headings, dead links and whether each page loads are checked once you remove the password (Online Store → Preferences).
+          </span>
+        </div>
+      )}
       <div className="kpi-grid">
-        <Kpi label="SEO health" value={last.score} sub="out of 100" hint="Each page starts at 100 and loses points for its problems." />
+        <Kpi
+          label="SEO health"
+          value={last.score}
+          sub="out of 100"
+          hint={`Each page starts at 100 and loses points for its problems.${locked ? ' Checks that need your live store are left out until the password is removed.' : ''}`}
+        />
         <Kpi label="Pages checked" value={compact(last.pages_checked)} sub={`Last check ${fmtDate(last.started_at)}`} />
         <Kpi label="Problems open" value={compact(open)} sub={`${counts.critical || 0} critical, ${counts.high || 0} high`} />
         <Kpi label="Pages improved" value={compact(last.fixes_applied)} sub="in the last check" />

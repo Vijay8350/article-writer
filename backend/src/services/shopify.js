@@ -446,6 +446,35 @@ export async function getResourceSeo(creds, type, id) {
 
 export const getArticleSeo = (creds, articleId) => getResourceSeo(creds, 'article', articleId);
 
+// The Google title and description of many pages ({ type, id }) at once, empty when never set,
+// plus a collection's own description, which Shopify shows Google when no description is set.
+// One request per 100 pages. Returns "type:id" → { seoTitle, seoDescription, description }.
+const SEO_BATCH = 100;
+export async function getResourceSeoMany(creds, refs) {
+  const found = new Map();
+  let size = SEO_BATCH;
+  for (let i = 0; i < refs.length;) {
+    const chunk = refs.slice(i, i + size);
+    let data;
+    try {
+      data = await graphql(creds, `query ResourceSeoMany($ids: [ID!]!) { nodes(ids: $ids) {
+        ... on HasMetafields {
+          seoTitle: metafield(namespace: "global", key: "title_tag") { value }
+          seoDescription: metafield(namespace: "global", key: "description_tag") { value } }
+        ... on Collection { description } } }`, { ids: chunk.map((r) => seoOwner(r.type, r.id)) });
+    } catch (err) {
+      if (err.code === 'MAX_COST_EXCEEDED' && size > 1) { size = Math.max(1, Math.floor(size / 2)); continue; }
+      throw err;
+    }
+    chunk.forEach((r, n) => { // nodes come back in the order asked, null for any that's gone
+      const node = data?.nodes?.[n];
+      if (node) found.set(`${r.type}:${r.id}`, { seoTitle: node.seoTitle?.value || '', seoDescription: node.seoDescription?.value || '', description: node.description ?? null });
+    });
+    i += chunk.length;
+  }
+  return found;
+}
+
 // Creates each field given or replaces its value; fields left empty aren't touched.
 export async function setResourceSeo(creds, type, id, seo) {
   const metafields = seoEntries(seoOwner(type, id), seo);

@@ -95,9 +95,11 @@ export async function createAudit(workspaceId, trigger) {
 
 export async function finishAudit(id, a) {
   await query(
-    `UPDATE seo_audits SET status = $2, pages_checked = $3, issues_found = $4, fixes_applied = $5, score = $6, search = $7, error = $8, finished_at = now()
+    `UPDATE seo_audits SET status = $2, pages_checked = $3, issues_found = $4, fixes_applied = $5, score = $6, search = $7, error = $8,
+            password_protected = $9, finished_at = now()
       WHERE id = $1`,
-    [id, a.status, a.pagesChecked || 0, a.issuesFound || 0, a.fixesApplied || 0, a.score ?? null, a.search ? JSON.stringify(a.search) : null, a.error || null]
+    [id, a.status, a.pagesChecked || 0, a.issuesFound || 0, a.fixesApplied || 0, a.score ?? null, a.search ? JSON.stringify(a.search) : null, a.error || null,
+     Boolean(a.passwordProtected)]
   );
 }
 
@@ -114,8 +116,11 @@ export const releaseStale = () => query(
 
 // ─── Issues ──────────────────────────────────────────────────────────────────
 
-// Records this audit's findings. Anything open that it no longer found has been resolved.
-export async function syncIssues(workspaceId, auditId, issues) {
+// Records this audit's findings. Anything open that it no longer found has been resolved,
+// except the types in `unchecked`, which this audit couldn't look at (a password-protected
+// store): those become 'unchecked', off the open list and never counted as fixed or gone,
+// and open again the first time a check finds them.
+export async function syncIssues(workspaceId, auditId, issues, { unchecked = [] } = {}) {
   await query(
     `INSERT INTO seo_issues (workspace_id, audit_id, resource_type, resource_id, blog_id, url, title, type, severity, detail)
      SELECT $1, $2, x.resource_type, x.resource_id, x.blog_id, x.url, x.title, x.type, x.severity, x.detail
@@ -127,9 +132,10 @@ export async function syncIssues(workspaceId, auditId, issues) {
     [workspaceId, auditId, JSON.stringify(issues)]
   );
   await query(
-    `UPDATE seo_issues SET status = 'resolved', resolved_at = now()
+    `UPDATE seo_issues SET status = CASE WHEN type = ANY($3::text[]) THEN 'unchecked' ELSE 'resolved' END,
+            resolved_at = CASE WHEN type = ANY($3::text[]) THEN NULL ELSE now() END
       WHERE workspace_id = $1 AND status = 'open' AND audit_id IS DISTINCT FROM $2`,
-    [workspaceId, auditId]
+    [workspaceId, auditId, unchecked]
   );
 }
 

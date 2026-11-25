@@ -1,4 +1,3 @@
-import axios from 'axios';
 import * as repo from '../repositories/seo.js';
 import * as stores from '../repositories/stores.js';
 import * as dnaRepo from '../repositories/dna.js';
@@ -6,8 +5,8 @@ import * as shopify from './shopify.js';
 import * as gsc from './searchConsole.js';
 import { applyFixes, fixOne } from './seoFixes.js';
 import { mapLimit } from './igMedia.js';
-import { safeAxiosConfig } from '../lib/safeHttp.js';
-import { detectIssues, siteScore, readPage, liveHosts, suspectLinks, ISSUE_TYPES } from '../lib/seoRules.js';
+import { fetchPage, showsPasswordPage, passwordProtected } from './seoCrawl.js';
+import { detectIssues, siteScore, readPage, liveHosts, suspectLinks, ISSUE_TYPES, CRAWL_TYPES } from '../lib/seoRules.js';
 import { calculateAeoScore } from '../lib/seo.js';
 import { stripTags } from '../lib/articleStructure.js';
 import { INTERNAL_COLLECTION_RE } from '../lib/articleCatalog.js';
@@ -15,17 +14,13 @@ import { allows } from './usage.js';
 
 // The full-site check: everything published on the store, each live page as Google sees
 // it, and Search Console's numbers when connected. Then the worst problems get fixed.
+// A password-protected store shows only its password page, so then the live pages aren't
+// read at all: titles and descriptions are judged from Shopify's own fields instead.
 
 const CRAWL_PARALLEL = 2;
 const CRAWL_PAUSE_MS = 250; // about three pages a second, so the crawl doesn't slow the store
-const CRAWL_ATTEMPTS = 3;
-const RETRY_PAUSE_MS = 4000;
 const MAX_SKIPPED_SHARE = 0.2;
 const MAX_PAGES = 2000;
-const http = axios.create({
-  ...safeAxiosConfig, timeout: 20000, maxContentLength: 6 * 1024 * 1024, responseType: 'text', validateStatus: () => true,
-  headers: { 'User-Agent': 'ArticleWriter-SeoAudit/1.0' },
-});
 
 const isPublished = (item) => Boolean(item.published_at);
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -45,7 +40,7 @@ async function loadInventory(creds, domain, { confirmLinks = true } = {}) {
     optional('product descriptions and reviews', shopify.getProductSeoAndReviews(creds)),
   ]);
   const articles = (await Promise.all(blogs.map(async (blog) => (await shopify.getArticles(creds, blog.id))
-    .filter(isPublished).map((a) => ({ ...a, blogId: blog.id, blogHandle: blog.handle }))))).flat();
+    .filter(isPublished).map((a) => ({ ...a, blogId: blog.id, blogHandle: blog.handle, blogTitle: blog.title }))))).flat();
 
   const liveProducts = products.filter((p) => p.status === 'active' && isPublished(p));
   const liveCollections = collections.filter((c) => c.published);
@@ -63,10 +58,13 @@ async function loadInventory(creds, domain, { confirmLinks = true } = {}) {
       collectionType: c.type, productCount: productCounts?.get(String(c.id)),
     })),
     ...articles.map((a) => ({
-      type: 'article', id: a.id, blogId: a.blogId, handle: a.handle, name: a.title, url: `${base}/blogs/${a.blogHandle}/${a.handle}`,
-      body: a.body_html, tags: a.tags, image: a.image, facts: stripTags(a.summary_html || a.body_html).slice(0, 300),
+      type: 'article', id: a.id, blogId: a.blogId, blogTitle: a.blogTitle, handle: a.handle, name: a.title, url: `${base}/blogs/${a.blogHandle}/${a.handle}`,
+      body: a.body_html, summary: a.summary_html, tags: a.tags, image: a.image, facts: stripTags(a.summary_html || a.body_html).slice(0, 300),
     })),
-    ...shopPages.filter(isPublished).map((p) => ({ type: 'page', id: p.id, handle: p.handle, name: p.title, url: `${base}/pages/${p.handle}`, facts: stripTags(p.body_html).slice(0, 300) })),
+    // `ownText` is what Shopify shows Google when no description is set (a collection's comes with its Google fields).
+    ...shopPages.filter(isPublished).map((p) => ({
+      type: 'page', id: p.id, handle: p.handle, name: p.title, url: `${base}/pages/${p.handle}`, facts: stripTags(p.body_html).slice(0, 300), ownText: stripTags(p.body_html),
+    })),
   ].slice(0, MAX_PAGES);
 
   const live = {
@@ -80,39 +78,59 @@ async function loadInventory(creds, domain, { confirmLinks = true } = {}) {
   return { pages, live };
 }
 
-// A busy or failing store gets a few tries. Status 0 means no response at all.
-async function fetchPage(url) {
-  for (let attempt = 1; ; attempt++) {
-    const res = await http.get(url).catch(() => ({ status: 0 }));
-    const temporary = res.status === 0 || res.status === 429 || res.status >= 500;
-    if (!temporary || attempt === CRAWL_ATTEMPTS) return res;
-    await pause(RETRY_PAUSE_MS * attempt);
-  }
-}
-
 // Only a real "not found" counts. A redirect still takes the reader somewhere, and a fix
-// removes the link, so anything less certain is left alone.
+// removes the link, so anything less certain is left alone. Behind a store password every
+// link lands on the password page, which says nothing about it: `live.locked` records that.
 async function confirmDeadLinks(pages, live, base) {
   const suspects = [...new Set(pages.flatMap((page) => suspectLinks(page.body, live)))];
   await mapLimit(suspects, CRAWL_PARALLEL, async (href) => {
-    const { status } = await fetchPage(new URL(href, base).toString());
-    if (status === 404 || status === 410) live.gone.add(href);
+    if (live.locked) return;
+    const url = new URL(href, base).toString();
+    const res = await fetchPage(url);
+    if (showsPasswordPage(res, url)) live.locked = true;
+    else if (res.status === 404 || res.status === 410) live.gone.add(href);
     await pause(CRAWL_PAUSE_MS);
   });
+  if (live.locked) live.gone.clear();
 }
 
 // Being refused says nothing about a page, so those are skipped rather than called broken,
 // and a run that was mostly refused stops here: it can't tell the site's real state.
+// Returns how many pages were read, or `locked` once a page turns out to be the store's
+// password page (the password covers every page, so the rest isn't fetched).
 async function crawl(pages) {
+  let locked = false;
   await mapLimit(pages, CRAWL_PARALLEL, async (page) => {
+    if (locked) return;
     const res = await fetchPage(page.url);
+    if (showsPasswordPage(res, page.url)) { locked = true; return; }
     if (res.status === 429) page.skipped = true;
     else page.http = { status: res.status, ...(res.status && res.status < 400 ? readPage(String(res.data)) : {}) };
     await pause(CRAWL_PAUSE_MS);
   });
+  if (locked) return { locked };
   const skipped = pages.filter((p) => p.skipped).length;
   if (skipped > pages.length * MAX_SKIPPED_SHARE) throw new Error(`The store refused ${skipped} of ${pages.length} page requests, so nothing was changed.`);
-  return pages.length - skipped;
+  return { locked, checked: pages.length - skipped };
+}
+
+// For a password-protected store: each page's Google title and description from Shopify
+// (`page.seo`), and nothing the crawl may have read before it met the password page. If
+// Shopify can't be read, titles and descriptions just aren't judged this run.
+async function readSeoFromShopify(creds, pages) {
+  for (const page of pages) { delete page.http; delete page.skipped; }
+  try {
+    const fields = await shopify.getResourceSeoMany(creds, pages.map((p) => ({ type: p.type, id: p.id })));
+    for (const page of pages) {
+      const f = fields.get(`${page.type}:${page.id}`);
+      if (!f) continue;
+      page.seo = { title: f.seoTitle, description: f.seoDescription };
+      if (page.type === 'collection') page.ownText = f.description || '';
+    }
+  } catch (err) {
+    console.error(`SEO audit: Google titles and descriptions from Shopify failed: ${err.message}`);
+  }
+  return pages.length;
 }
 
 // Pages already known to be missing get rechecked, then each day takes the next few of
@@ -147,13 +165,28 @@ export async function runAudit(workspaceId, { trigger = 'schedule', applying = t
     if (!creds) throw new Error('No Shopify store is connected.');
     if (!dna?.shop?.domain) throw new Error('Fetch your Business DNA first, so the audit knows your domain.');
 
-    const { pages, live } = await loadInventory(creds, dna.shop.domain);
-    const checked = await crawl(pages);
+    const base = `https://${dna.shop.domain}`;
+    const { pages, live } = await loadInventory(creds, dna.shop.domain, { confirmLinks: false });
+    // The password is checked first, so a protected store isn't crawled page by page for nothing.
+    let locked = await passwordProtected(base);
+    let checked = 0;
+    if (!locked) {
+      await confirmDeadLinks(pages, live, base);
+      const crawled = await crawl(pages);
+      locked = crawled.locked || Boolean(live.locked);
+      checked = crawled.checked || 0;
+    }
+    if (locked) {
+      live.gone.clear();
+      checked = await readSeoFromShopify(creds, pages);
+    }
     const search = await loadSearch(workspaceId, settings, pages, dna.shop.domain);
     const issues = detectIssues(pages, {
       search, live, facts: settings.store_facts, aeoScore: (page) => calculateAeoScore({ bodyHtml: page.body }).score,
+      locked, storeName: dna.shop.name,
     });
-    await repo.syncIssues(workspaceId, audit.id, issues);
+    // What only the live pages could show wasn't looked at, so it's set aside rather than called resolved.
+    await repo.syncIssues(workspaceId, audit.id, issues, { unchecked: locked ? CRAWL_TYPES : [] });
 
     const fixesApplied = applying ? await applyFixes({
       workspaceId, settings, creds, pages, issues, live, audit, search, storeName: dna.shop.name,
@@ -162,9 +195,9 @@ export async function runAudit(workspaceId, { trigger = 'schedule', applying = t
 
     const score = siteScore(checked, issues);
     await repo.finishAudit(audit.id, {
-      status: 'done', pagesChecked: checked, issuesFound: issues.length, fixesApplied, score, search: search?.summary,
+      status: 'done', pagesChecked: checked, issuesFound: issues.length, fixesApplied, score, search: search?.summary, passwordProtected: locked,
     });
-    return { auditId: audit.id, pages: checked, issues: issues.length, fixesApplied, score };
+    return { auditId: audit.id, pages: checked, issues: issues.length, fixesApplied, score, passwordProtected: locked };
   } catch (err) {
     await repo.finishAudit(audit.id, { status: 'failed', error: String(err.message).slice(0, 300) });
     throw err;
@@ -220,7 +253,7 @@ export async function runDueSeoAudit() {
   try {
     if (!(await allows(workspaceId, 'seo'))) { console.log(`🔎 SEO audit ${workspaceId} skipped: the plan doesn't include SEO automation`); return true; }
     const result = await runAudit(workspaceId);
-    console.log(`🔎 SEO audit ${workspaceId}: ${result.pages} pages, ${result.issues} issues, ${result.fixesApplied} improved, score ${result.score}`);
+    console.log(`🔎 SEO audit ${workspaceId}: ${result.pages} pages, ${result.issues} issues, ${result.fixesApplied} improved, score ${result.score}${result.passwordProtected ? ' (store password on: judged from Shopify data)' : ''}`);
   } catch (err) {
     console.error(`❌ SEO audit ${workspaceId} failed: ${err.message}`);
   } finally {

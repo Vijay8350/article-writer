@@ -203,6 +203,11 @@ async function fixAlt({ workspaceId, creds, page, audit, source }) {
 // A dead link keeps its words and loses only the link.
 async function fixLinks({ workspaceId, creds, page, live, audit, source }) {
   const dead = new Set(deadLinks(page.body, live));
+  if (!dead.size) {
+    throw new Error(live.locked
+      ? 'Your online store is password-protected, so its links can\'t be checked. Nothing was changed.'
+      : 'None of these links is dead any more, so nothing was changed.');
+  }
   const body = page.body.replace(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi, (full, href, label) => (dead.has(href) ? label : full));
   await shopify.updateArticle(creds, page.blogId, page.id, { title: page.name, bodyHtml: body });
   await repo.logChange(workspaceId, {
