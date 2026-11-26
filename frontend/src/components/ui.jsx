@@ -3,6 +3,19 @@ import { X } from 'lucide-react';
 
 // Shared page building blocks. Styles live in index.css (".ui" section).
 
+// Props for a masked API key / access token field. Chrome ignores autocomplete="off" on
+// password fields and fills the saved login (email into the field above, password here),
+// which would save the person's password as their key; "new-password" stops that, and the
+// data-* flags keep 1Password, LastPass and Bitwarden out too.
+export const SECRET_INPUT = {
+  type: 'password',
+  autoComplete: 'new-password',
+  spellCheck: false,
+  'data-1p-ignore': 'true',
+  'data-lpignore': 'true',
+  'data-bwignore': 'true',
+};
+
 // Title + one-line description on the left, the page's actions on the right.
 export function PageHeader({ title, subtitle, actions, children }) {
   return (

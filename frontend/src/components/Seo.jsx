@@ -4,7 +4,7 @@ import { Helmet } from 'react-helmet-async';
 // Single source of truth for per-page SEO + social metadata.
 // Pass `noindex` for any page you don't want in Google.
 // Pass `jsonLd` (object or array) for page-level structured data.
-const APP_URL = (import.meta.env.VITE_APP_URL || 'https://tools.apanjob.com').replace(/\/$/, '');
+const APP_URL = (import.meta.env.VITE_APP_URL || 'https://app.jsyxi.com').replace(/\/$/, '');
 const DEFAULT_IMAGE = `${APP_URL}/icon-512.png`;
 
 export default function Seo({

@@ -7,7 +7,7 @@ import {
 import { isEmbedded, showInstagram } from '../lib/embedded';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { PageHeader, Section, SettingRow } from '../components/ui';
+import { PageHeader, Section, SettingRow, SECRET_INPUT } from '../components/ui';
 import '../styles/workspace.css';
 
 const PROVIDER_LABELS = { gemini: 'Google Gemini', deepseek: 'DeepSeek' };
@@ -223,8 +223,7 @@ export default function Settings() {
         <input
           id={id}
           className="form-input"
-          type="password"
-          autoComplete="off"
+          {...SECRET_INPUT}
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
@@ -304,6 +303,9 @@ export default function Settings() {
                   onKeyDown={e => { if (e.key === 'Enter') handleShopifyConnect(); }}
                   placeholder="your-store.myshopify.com"
                   autoComplete="off"
+                  spellCheck={false}
+                  data-1p-ignore="true"
+                  data-lpignore="true"
                 />
                 <div className="form-helper">You'll approve access on Shopify, then come straight back here.</div>
               </div>
@@ -317,7 +319,7 @@ export default function Settings() {
                 <div style={{ marginTop: 16 }}>
                   <div className="form-group">
                     <label className="form-label" htmlFor="shop-token">Admin API access token</label>
-                    <input id="shop-token" className="form-input" type="password" autoComplete="off" value={accessToken}
+                    <input id="shop-token" className="form-input" {...SECRET_INPUT} value={accessToken}
                       onChange={e => setAccessToken(e.target.value)} placeholder="shpat_xxxxxxxxxxxxxxxxxxxxx" />
                     <div className="form-helper">Starts with shpat_. It's stored encrypted.</div>
                   </div>
@@ -348,8 +350,7 @@ export default function Settings() {
                 <input
                   id="shop-token"
                   className="form-input"
-                  type="password"
-                  autoComplete="off"
+                  {...SECRET_INPUT}
                   value={accessToken}
                   onChange={e => setAccessToken(e.target.value)}
                   placeholder="shpat_xxxxxxxxxxxxxxxxxxxxx"

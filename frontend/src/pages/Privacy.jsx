@@ -14,7 +14,7 @@ export default function Privacy() {
       />
       <article className="legal-doc">
         <h1>Privacy Policy</h1>
-        <p className="legal-muted">Last updated: {new Date().toLocaleDateString()}</p>
+        <p className="legal-muted">Last updated: November 25, 2026</p>
         <p>This policy covers Glowquill Article Writer (the "Service"), on the web and as an app in your Shopify admin.</p>
 
         <h2>What we collect</h2>

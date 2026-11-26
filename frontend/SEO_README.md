@@ -20,7 +20,7 @@ export default function Pricing() {
       <Seo
         title="Pricing"                    // becomes "Pricing — Glowquill Article Writer"
         description="Plans from ₹0 to ₹4,999/mo. Pick the article quota and seats you need."
-        path="/pricing"                    // → canonical https://tools.apanjob.com/pricing
+        path="/pricing"                    // → canonical https://app.jsyxi.com/pricing
         // image="https://.../share.png"   // optional, falls back to /favicon.svg
         // jsonLd={ { ... } }              // optional structured data
       />

@@ -21,4 +21,4 @@ Disallow: /members
 Disallow: /accept-invite/
 Disallow: /api/
 
-Sitemap: https://tools.apanjob.com/sitemap.xml
+Sitemap: https://app.jsyxi.com/sitemap.xml

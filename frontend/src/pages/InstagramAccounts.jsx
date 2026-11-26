@@ -10,7 +10,7 @@ import {
   setDefaultInstagramAccount, getInstagramAccountStatus, startFacebookLogin,
 } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
-import { PageHeader, Sheet, EmptyState, Section } from '../components/ui';
+import { PageHeader, Sheet, EmptyState, Section, SECRET_INPUT } from '../components/ui';
 import '../styles/ig-automation.css';
 
 const errMsg = (err, fallback) => err.response?.data?.error || fallback;
@@ -424,8 +424,8 @@ export default function InstagramAccounts() {
           )}
           <div className="form-group">
             <label className="form-label" htmlFor="ig-token">Access token</label>
-            <input id="ig-token" className="form-input" type="password" value={token} onChange={e => setToken(e.target.value)}
-              placeholder="IGAA…" autoComplete="off" />
+            <input id="ig-token" className="form-input" {...SECRET_INPUT} value={token} onChange={e => setToken(e.target.value)}
+              placeholder="IGAA…" />
             <div className="form-helper">Starts with IGAA for Instagram login, or EAA for a Facebook Page or System User token.</div>
           </div>
           <div className="form-group">

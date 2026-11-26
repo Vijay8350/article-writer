@@ -59,7 +59,7 @@ export default function AuthCard({ title, subtitle, children, footer, badge }) {
         .auth-back { display: inline-flex; align-items: center; gap: 2px; color: var(--text-muted); font-size: 14px; }
         .auth-back:hover { color: var(--text-primary); }
         .auth-card { width: 100%; max-width: 400px; margin: auto 0; padding: 32px 0; }
-        .auth-logo { display: inline-block; margin-bottom: 24px; }
+        .auth-logo { display: block; width: fit-content; margin-bottom: 24px; }
         .auth-logo svg { display: block; }
         .auth-badge { display: inline-block; padding: 4px 12px; border-radius: var(--radius-pill); background: var(--brand-tint); color: var(--brand); font-size: 12.5px; font-weight: 600; margin-bottom: 14px; }
         .auth-head { margin-bottom: 28px; }

@@ -13,7 +13,7 @@ export default function Terms() {
       />
       <article className="legal-doc">
         <h1>Terms of Service</h1>
-        <p className="legal-muted">Last updated: {new Date().toLocaleDateString()}</p>
+        <p className="legal-muted">Last updated: November 25, 2026</p>
 
         <h2>1. Acceptance</h2>
         <p>By creating an account or using Glowquill Article Writer (the "Service"), you agree to these Terms. If you do not agree, do not use the Service.</p>
